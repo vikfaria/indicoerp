@@ -35,7 +35,11 @@ chmod -R ug+rwX "${SHARED_DIR}/storage" bootstrap/cache
 "$COMPOSER_BIN" install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
 if [ -f package.json ]; then
-  npm ci
+  if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+    npm ci
+  else
+    npm install --no-audit --no-fund
+  fi
   npm run build
 fi
 
