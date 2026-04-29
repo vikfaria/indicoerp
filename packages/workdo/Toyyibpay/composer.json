@@ -1,0 +1,25 @@
+{
+    "name": "workdo/toyyibpay",
+    "description": "Description for toyyibpay package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Toyyibpay\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Toyyibpay\\Providers\\ToyyibpayServiceProvider"
+            ]
+        }
+    }
+}

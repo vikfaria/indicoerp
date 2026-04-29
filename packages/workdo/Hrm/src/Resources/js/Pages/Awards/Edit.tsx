@@ -1,0 +1,133 @@
+import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useForm } from "@inertiajs/react";
+import { useTranslation } from 'react-i18next';
+import { Button } from "@/components/ui/button";
+import { Label } from '@/components/ui/label';
+import InputError from '@/components/ui/input-error';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Textarea } from '@/components/ui/textarea';
+import MediaPicker from '@/components/MediaPicker';
+import { useFormFields } from '@/hooks/useFormFields';
+import { EditAwardProps, EditAwardFormData } from './types';
+import { usePage } from '@inertiajs/react';
+
+export default function EditAward({ award, onSuccess }: EditAwardProps) {
+    const { employees, awardTypes } = usePage<any>().props;
+
+    const { t } = useTranslation();
+    const { data, setData, put, processing, errors } = useForm<EditAwardFormData>({
+        employee_id: award.employee_id?.toString() ?? '',
+        award_type_id: award.award_type_id?.toString() ?? '',
+        award_date: award.award_date ?? '',
+        description: award.description ?? '',
+        certificate: award.certificate ?? '',
+    });
+
+    // AI hooks for description field
+    const descriptionAI = useFormFields('aiField', data, setData, errors, 'edit', 'description', 'Description', 'hrm', 'award');
+
+
+
+    const submit = (e: React.FormEvent) => {
+        e.preventDefault();
+        put(route('hrm.awards.update', award.id), {
+            onSuccess: () => {
+                onSuccess();
+            }
+        });
+    };
+
+    return (
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>{t('Edit Award')}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={submit} className="space-y-4">
+                <div>
+                    <Label htmlFor="employee_id" required>{t('Employee')}</Label>
+                    <Select value={data.employee_id} onValueChange={(value) => setData('employee_id', value)} required>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Select Employee')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {employees?.map((employee: any) => (
+                                <SelectItem key={employee.id} value={employee.id.toString()}>
+                                    {employee.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.employee_id} />
+                </div>
+                
+                <div>
+                    <Label htmlFor="award_type_id" required>{t('Award Type')}</Label>
+                    <Select value={data.award_type_id} onValueChange={(value) => setData('award_type_id', value)} required>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Select Award Type')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {awardTypes?.map((type: any) => (
+                                <SelectItem key={type.id} value={type.id.toString()}>
+                                    {type.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.award_type_id} />
+                </div>
+                
+                <div>
+                    <Label htmlFor="award_date" required>{t('Award Date')}</Label>
+                    <DatePicker
+                        value={data.award_date}
+                        onChange={(date) => setData('award_date', date)}
+                        placeholder={t('Select Award Date')}
+                        required
+                    />
+                    <InputError message={errors.award_date} />
+                </div>
+                
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="description">{t('Description')}</Label>
+                        <div className="flex gap-2">
+                            {descriptionAI.map(field => <div key={field.id}>{field.component}</div>)}
+                        </div>
+                    </div>
+                    <Textarea
+                        id="description"
+                        value={data.description}
+                        onChange={(e) => setData('description', e.target.value)}
+                        placeholder={t('Enter Description')}
+                        rows={3}
+                    />
+                    <InputError message={errors.description} />
+                </div>
+                
+                <div>
+                    <MediaPicker
+                        id="certificate"
+                        label={t('Certificate')}
+                        value={data.certificate}
+                        onChange={(value) => setData('certificate', Array.isArray(value) ? value[0] || '' : value)}
+                        placeholder={t('Select Certificate')}
+                        showPreview={true}
+                    />
+                    <InputError message={errors.certificate} />
+                </div>
+                
+                <div className="flex justify-end gap-2">
+                    <Button type="button" variant="outline" onClick={onSuccess}>
+                        {t('Cancel')}
+                    </Button>
+                    <Button type="submit" disabled={processing}>
+                        {processing ? t('Updating...') : t('Update')}
+                    </Button>
+                </div>
+            </form>
+        </DialogContent>
+    );
+}

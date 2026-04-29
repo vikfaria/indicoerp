@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Gem ændringer",
+    "Telegram Settings": "Telegramindstillinger",
+    "Permission denied": "Tilladelse nægtet",
+    "Telegram Chat ID": "Telegram Chat-ID",
+    "Saving...": "- Jeg redder...",
+    "Enable Telegram Integration": "Aktiverer Telegram- integration",
+    "Validation failed": "Validering mislykkedes",
+    "Notification Settings": "Indstillinger for meddelelser",
+    "Allow notifications to be sent to Telegram": "Tillad meddelelser sendes til Telegram",
+    "Configure Telegram bot integration settings": "Konfigurere Telegram bot integration indstillinger",
+    "Enter Telegram bot token": "Indtast Telegram-bot-token",
+    "Enter Telegram chat ID": "Indtast Telegram-chat-id",
+    "Failed to update telegram settings: ": "Det lykkedes ikke at opdatere telegramindstillingerne:",
+    "Telegram Bot Token": "Telegram Bot Token",
+    "Telegram settings save successfully.": "Telegram indstillinger gemmes med succes."
+}

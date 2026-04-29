@@ -1,0 +1,25 @@
+{
+    "name": "workdo/benefit",
+    "description": "Description for benefit package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Benefit\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Benefit\\Providers\\BenefitServiceProvider"
+            ]
+        }
+    }
+}

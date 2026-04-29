@@ -1,0 +1,15 @@
+{
+    "Save Changes": "שמור שינויים",
+    "Slack Settings": "הגדרות Slack",
+    "Slack Webhook URL": "כתובת ה- Slack Webhook",
+    "Permission denied": "אישור נדחה",
+    "Saving...": "להציל...",
+    "Enable Slack Integration": "אפשרות לשילוב של Slack",
+    "Validation failed": "אימות נכשל",
+    "Notification Settings": "הגדרות הודעה",
+    "Allow notifications to be sent to Slack": "לאפשר הודעות להישלח לסלק",
+    "Configure Slack integration and webhook settings": "הגדרת אינטגרציה של Slack והגדרות של Webhook",
+    "Enter Slack webhook URL": "הזן את כתובת ה- Slack webhook",
+    "Failed to update slack settings: ": "לא ניתן לעדכן את הגדרות ה- Slack:",
+    "Slack settings save successfully.": "הגדרות Slack שמרו בהצלחה."
+}

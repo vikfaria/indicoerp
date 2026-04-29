@@ -1,0 +1,25 @@
+{
+    "name": "workdo/recruitment",
+    "description": "Description for recruitment package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Recruitment\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Recruitment\\Providers\\RecruitmentServiceProvider"
+            ]
+        }
+    }
+}

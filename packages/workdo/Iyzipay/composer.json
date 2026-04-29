@@ -1,0 +1,25 @@
+{
+    "name": "workdo/iyzipay",
+    "description": "Description for iyzipay package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Iyzipay\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Iyzipay\\Providers\\IyzipayServiceProvider"
+            ]
+        }
+    }
+}

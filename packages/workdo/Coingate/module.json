@@ -1,0 +1,10 @@
+{
+    "name": "Coingate",
+    "alias": "Coingate",
+    "description": "",
+    "priority": 1670,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "coingate"
+}

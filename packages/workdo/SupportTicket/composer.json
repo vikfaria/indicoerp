@@ -1,0 +1,37 @@
+{
+    "name": "workdo/support-ticket",
+    "description": "React-based Laravel package for managing support tickets",
+    "type": "library",
+    "license": "MIT",
+    "version": "4.1.0",
+    "require": {
+        "php": "^8.1",
+        "laravel/framework": "^10.0|^11.0",
+        "inertiajs/inertia-laravel": "^0.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Workdo\\SupportTicket\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\SupportTicket\\Providers\\SupportTicketServiceProvider"
+            ]
+        }
+    },
+    "keywords": [
+        "laravel",
+        "react",
+        "support-ticket",
+        "helpdesk",
+        "customer-support"
+    ]
+}

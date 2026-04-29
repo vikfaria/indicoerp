@@ -1,0 +1,15 @@
+{
+    "Save Changes": "احفظ التغييرات",
+    "Slack Settings": "إعدادات Slack",
+    "Slack Webhook URL": "عنوان URL لـ Slack Webhook",
+    "Permission denied": "تم رفض الإذن",
+    "Saving...": "إنقاذ...",
+    "Enable Slack Integration": "تمكين دمج Slack",
+    "Validation failed": "فشل التحقق من الصحة",
+    "Notification Settings": "إعدادات الإخطار",
+    "Allow notifications to be sent to Slack": "السماح بإرسال الإشعارات إلى Slack",
+    "Configure Slack integration and webhook settings": "تكوين إعدادات دمج Slack وإعدادات webhook",
+    "Enter Slack webhook URL": "أدخل عنوان الويب الخاص بـ Slack",
+    "Failed to update slack settings: ": "فشل تحديث إعدادات التسرب:",
+    "Slack settings save successfully.": "إعدادات Slack نجحت في حفظها"
+}

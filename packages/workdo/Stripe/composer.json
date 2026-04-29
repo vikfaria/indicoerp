@@ -1,0 +1,25 @@
+{
+    "name": "workdo/stripe",
+    "description": "Description for stripe package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Stripe\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Stripe\\Providers\\StripeServiceProvider"
+            ]
+        }
+    }
+}

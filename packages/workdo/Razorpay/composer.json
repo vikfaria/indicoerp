@@ -1,0 +1,27 @@
+{
+    "name": "workdo/razorpay",
+    "description": "Description for razorpay package",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "razorpay/razorpay": "^2.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Razorpay\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Razorpay\\Providers\\RazorpayServiceProvider"
+            ]
+        }
+    }
+}

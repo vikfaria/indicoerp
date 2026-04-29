@@ -1,0 +1,25 @@
+{
+    "name": "workdo/budget-planner",
+    "description": "Description for budget-planner package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\BudgetPlanner\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\BudgetPlanner\\Providers\\BudgetPlannerServiceProvider"
+            ]
+        }
+    }
+}

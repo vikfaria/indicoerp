@@ -1,0 +1,25 @@
+{
+    "name": "workdo/pay-tr",
+    "description": "Description for pay-tr package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\PayTR\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\PayTR\\Providers\\PayTRServiceProvider"
+            ]
+        }
+    }
+}

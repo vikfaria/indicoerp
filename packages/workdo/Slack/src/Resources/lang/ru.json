@@ -1,0 +1,15 @@
+{
+    "Save Changes": "Сохранить изменения",
+    "Slack Settings": "Настройки Slack",
+    "Slack Webhook URL": "URL-адрес Slack Webhook",
+    "Permission denied": "Разрешение отказано",
+    "Saving...": "Спасать...",
+    "Enable Slack Integration": "Включить интеграцию Slack",
+    "Validation failed": "Валидация не удалась",
+    "Notification Settings": "Настройки уведомления",
+    "Allow notifications to be sent to Slack": "Разрешить отправку уведомлений в Slack",
+    "Configure Slack integration and webhook settings": "Настройка интеграции Slack и настройки webhook",
+    "Enter Slack webhook URL": "Введите URL веб-подключения Slack",
+    "Failed to update slack settings: ": "Не удалось обновить настройки свободного времени:",
+    "Slack settings save successfully.": "Настройки Slack сохранились успешно."
+}

@@ -1,0 +1,17 @@
+{
+    "Save Changes": "احفظ التغييرات",
+    "Telegram Settings": "إعدادات تلغراف",
+    "Permission denied": "تم رفض الإذن",
+    "Telegram Chat ID": "هوية الدردشة في تلغرام",
+    "Saving...": "إنقاذ...",
+    "Enable Telegram Integration": "تمكين دمج تليجرام",
+    "Validation failed": "فشل التحقق من الصحة",
+    "Notification Settings": "إعدادات الإخطار",
+    "Allow notifications to be sent to Telegram": "السماح بإرسال إشعارات إلى تلغرام",
+    "Configure Telegram bot integration settings": "إعدادات دمج البوتات في تليجرام",
+    "Enter Telegram bot token": "أدخل رمز البوت التلغرامي",
+    "Enter Telegram chat ID": "أدخل معرف الدردشة في تليجرام",
+    "Failed to update telegram settings: ": "فشل تحديث إعدادات البرقية:",
+    "Telegram Bot Token": "رمز البوت التلغراف",
+    "Telegram settings save successfully.": "إعدادات التلغراف تم حفظها بنجاح"
+}

@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Save Changes",
+    "Telegram Settings": "Telegram Settings",
+    "Permission denied": "Permission denied",
+    "Telegram Chat ID": "Telegram Chat ID",
+    "Saving...": "Saving...",
+    "Enable Telegram Integration": "Enable Telegram Integration",
+    "Validation failed": "Validation failed",
+    "Notification Settings": "Notification Settings",
+    "Allow notifications to be sent to Telegram": "Allow notifications to be sent to Telegram",
+    "Configure Telegram bot integration settings": "Configure Telegram bot integration settings",
+    "Enter Telegram bot token": "Enter Telegram bot token",
+    "Enter Telegram chat ID": "Enter Telegram chat ID",
+    "Failed to update telegram settings: ": "Failed to update telegram settings: ",
+    "Telegram Bot Token": "Telegram Bot Token",
+    "Telegram settings save successfully.": "Telegram settings save successfully."
+}

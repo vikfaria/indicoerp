@@ -1,0 +1,10 @@
+{
+    "name": "Midtrans",
+    "alias": "Midtrans",
+    "description": "",
+    "priority": 1730,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "midtrans"
+}

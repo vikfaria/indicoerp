@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Veranderingen opslaan",
+    "Telegram Settings": "Telegram-instellingen",
+    "Permission denied": "Toestemming geweigerd",
+    "Telegram Chat ID": "Telegram Chat ID",
+    "Saving...": "Redding...",
+    "Enable Telegram Integration": "Telegram-integratie activeren",
+    "Validation failed": "Validering mislukt",
+    "Notification Settings": "Instellingen voor meldingen",
+    "Allow notifications to be sent to Telegram": "Meldingen naar Telegram sturen",
+    "Configure Telegram bot integration settings": "Configureer de instellingen voor de integratie van Telegram-bots",
+    "Enter Telegram bot token": "Voer de Telegram bot token in",
+    "Enter Telegram chat ID": "Voer de Telegram-chat-ID in",
+    "Failed to update telegram settings: ": "Het is niet gelukt om de telegraminstellingen bij te werken:",
+    "Telegram Bot Token": "Telegram Bot Token",
+    "Telegram settings save successfully.": "Telegram-instellingen succesvol opgeslagen."
+}

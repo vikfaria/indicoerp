@@ -1,0 +1,15 @@
+{
+    "Save Changes": "Veranderingen opslaan",
+    "Slack Settings": "Slack-instellingen",
+    "Slack Webhook URL": "Slack Webhook URL",
+    "Permission denied": "Toestemming geweigerd",
+    "Saving...": "Redding...",
+    "Enable Slack Integration": "Slack-integratie activeren",
+    "Validation failed": "Validering mislukt",
+    "Notification Settings": "Instellingen voor meldingen",
+    "Allow notifications to be sent to Slack": "Meldingen naar Slack sturen",
+    "Configure Slack integration and webhook settings": "Configureer Slack-integratie en webhook-instellingen",
+    "Enter Slack webhook URL": "Voer de Slack webhook URL in",
+    "Failed to update slack settings: ": "Het is niet gelukt om de slack-instellingen bij te werken:",
+    "Slack settings save successfully.": "Slack-instellingen succesvol opgeslagen."
+}

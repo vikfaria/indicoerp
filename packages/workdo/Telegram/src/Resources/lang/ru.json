@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Сохранить изменения",
+    "Telegram Settings": "Настройки Telegram",
+    "Permission denied": "Разрешение отказано",
+    "Telegram Chat ID": "Телеграм Чат ИД",
+    "Saving...": "Спасать...",
+    "Enable Telegram Integration": "Включить интеграцию Telegram",
+    "Validation failed": "Валидация не удалась",
+    "Notification Settings": "Настройки уведомления",
+    "Allow notifications to be sent to Telegram": "Разрешить отправку уведомлений в Telegram",
+    "Configure Telegram bot integration settings": "Настройка интеграции бота Telegram",
+    "Enter Telegram bot token": "Введите токен бота Telegram",
+    "Enter Telegram chat ID": "Введите идентификатор чата Telegram",
+    "Failed to update telegram settings: ": "Не удалось обновить настройки телеграмма:",
+    "Telegram Bot Token": "Токен телеграм-бота",
+    "Telegram settings save successfully.": "Настройки Telegram сохранились успешно."
+}

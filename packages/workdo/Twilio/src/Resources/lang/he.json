@@ -1,0 +1,19 @@
+{
+    "Save Changes": "שמור שינויים",
+    "Twilio Settings": "הגדרות Twilio",
+    "Permission denied": "אישור נדחה",
+    "Saving...": "להציל...",
+    "Twilio Auth Token": "טוליו אות' טוקן",
+    "From Phone Number": "ממספר הטלפון",
+    "Validation failed": "אימות נכשל",
+    "Notification Settings": "הגדרות הודעה",
+    "Allow SMS notifications to be sent via Twilio": "לאפשר הודעות SMS כדי להיות נשלח באמצעות Twilio",
+    "Configure Twilio integration and SMS settings": "הגדרת אינטגרציה Twilio ואת הגדרות SMS",
+    "Enable Twilio Integration": "אפשרות לשילוב Twilio",
+    "Enter your Twilio Account SID": "הזן את SID החשבון שלך ב-Twilio",
+    "Enter your Twilio Auth Token": "הזן את סימן הסמכות שלך",
+    "Enter your Twilio phone number (e.g., +1234567890)": "הזן את מספר הטלפון שלך בטוויליו (למשל, +1234567890)",
+    "Failed to update twilio settings: ": "לא ניתן לעדכן את הגדרות twilio:",
+    "Twilio Account SID": "SID חשבון Twilio",
+    "Twilio settings save successfully.": "הגדרות Twilio להציל בהצלחה."
+}

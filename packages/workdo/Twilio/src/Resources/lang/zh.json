@@ -1,0 +1,19 @@
+{
+    "Save Changes": "保存更改",
+    "Twilio Settings": "如何设置Twilio",
+    "Permission denied": "拒绝许可",
+    "Saving...": "拯救一个...",
+    "Twilio Auth Token": "图利奥授权令牌",
+    "From Phone Number": "通过电话号码",
+    "Validation failed": "验证失败",
+    "Notification Settings": "通知设置",
+    "Allow SMS notifications to be sent via Twilio": "允许通过Twilio发送SMS通知",
+    "Configure Twilio integration and SMS settings": "配置Twilio集成和SMS设置",
+    "Enable Twilio Integration": "启用Twilio集成",
+    "Enter your Twilio Account SID": "输入您的Twilio帐户SID",
+    "Enter your Twilio Auth Token": "输入您的Twilio授权令牌",
+    "Enter your Twilio phone number (e.g., +1234567890)": "输入您的Twilio电话号码 (例如:+1234567890)",
+    "Failed to update twilio settings: ": "无法更新 twilio 设置:",
+    "Twilio Account SID": "托利奥账户SID",
+    "Twilio settings save successfully.": "设置成功保存."
+}

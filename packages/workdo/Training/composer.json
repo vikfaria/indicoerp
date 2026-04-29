@@ -1,0 +1,25 @@
+{
+    "name": "workdo/training",
+    "description": "Description for training package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Training\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Training\\Providers\\TrainingServiceProvider"
+            ]
+        }
+    }
+}

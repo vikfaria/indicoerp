@@ -1,0 +1,14 @@
+{
+    "name": "ProductService",
+    "alias": "Product & Service",
+    "description": "",
+    "priority": 0,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "child_module": [
+        "HubSpot"
+    ],
+    "display": false,
+    "package_name": "product-service"
+}

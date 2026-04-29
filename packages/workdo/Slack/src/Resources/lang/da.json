@@ -1,0 +1,15 @@
+{
+    "Save Changes": "Gem ændringer",
+    "Slack Settings": "Slack- indstillinger",
+    "Slack Webhook URL": "Slack Webhook-adresse",
+    "Permission denied": "Tilladelse nægtet",
+    "Saving...": "- Jeg redder...",
+    "Enable Slack Integration": "Aktiver Slack- integration",
+    "Validation failed": "Validering mislykkedes",
+    "Notification Settings": "Indstillinger for meddelelser",
+    "Allow notifications to be sent to Slack": "Tillad meddelelser sendes til Slack",
+    "Configure Slack integration and webhook settings": "Konfigurere Slack integration og webhook indstillinger",
+    "Enter Slack webhook URL": "Angiv Slack webhook-adresse",
+    "Failed to update slack settings: ": "Det lykkedes ikke at opdatere indstillingerne for slack:",
+    "Slack settings save successfully.": "Slack-indstillinger gemmes med succes."
+}

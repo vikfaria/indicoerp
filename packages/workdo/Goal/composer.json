@@ -1,0 +1,25 @@
+{
+    "name": "workdo/goal",
+    "description": "Description for goal package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Goal\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Goal\\Providers\\GoalServiceProvider"
+            ]
+        }
+    }
+}

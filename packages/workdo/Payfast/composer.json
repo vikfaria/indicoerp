@@ -1,0 +1,25 @@
+{
+    "name": "workdo/payfast",
+    "description": "Description for payfast package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Payfast\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Payfast\\Providers\\PayfastServiceProvider"
+            ]
+        }
+    }
+}

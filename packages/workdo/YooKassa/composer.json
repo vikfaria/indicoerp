@@ -1,0 +1,25 @@
+{
+    "name": "workdo/yoo-kassa",
+    "description": "Description for yoo-kassa package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\YooKassa\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\YooKassa\\Providers\\YooKassaServiceProvider"
+            ]
+        }
+    }
+}

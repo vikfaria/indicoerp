@@ -1,0 +1,19 @@
+{
+    "Save Changes": "変更を保存する",
+    "Twilio Settings": "Twilioの設定",
+    "Permission denied": "許可は拒否された",
+    "Saving...": "救うこと...",
+    "Twilio Auth Token": "Twilio 認証トークン",
+    "From Phone Number": "電話番号から",
+    "Validation failed": "検証失敗",
+    "Notification Settings": "通知設定",
+    "Allow SMS notifications to be sent via Twilio": "Twilio を通じてSMS通知を送信することを許可する",
+    "Configure Twilio integration and SMS settings": "Twilioの統合とSMSの設定を設定する",
+    "Enable Twilio Integration": "Twilioの統合を有効にする",
+    "Enter your Twilio Account SID": "Twilio アカウントの SID を入力します.",
+    "Enter your Twilio Auth Token": "Twilioの認証トークンを入力",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Twilioの電話番号を入力してください (例えば, +1234567890)",
+    "Failed to update twilio settings: ": "twilio の設定を更新する失敗:",
+    "Twilio Account SID": "Twilio アカウント SID",
+    "Twilio settings save successfully.": "Twilioの設定が成功しました."
+}

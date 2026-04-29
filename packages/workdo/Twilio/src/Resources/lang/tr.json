@@ -1,0 +1,19 @@
+{
+    "Save Changes": "Değişiklikleri kaydet",
+    "Twilio Settings": "Twilio Ayarları",
+    "Permission denied": "İzin verildi .",
+    "Saving...": "Kurtarmak...",
+    "Twilio Auth Token": "Twilio Auth Token",
+    "From Phone Number": "Telefon Numarasından",
+    "Validation failed": "Doğrulama başarısız oldu",
+    "Notification Settings": "İletileme Ayarları",
+    "Allow SMS notifications to be sent via Twilio": "Twilio üzerinden SMS bildirimlerinin gönderilmesine izin ver",
+    "Configure Twilio integration and SMS settings": "Twilio entegrasyon ve SMS ayarlarını yapılandır",
+    "Enable Twilio Integration": "Twilio entegrasyonunu etkinleştir",
+    "Enter your Twilio Account SID": "Twilio Hesabınızın SID'sini girin",
+    "Enter your Twilio Auth Token": "Twilio Auth Token'unuzu giriniz",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Twilio telefon numaranızı girin (örneğin +1234567890)",
+    "Failed to update twilio settings: ": "Twilio ayarlarını güncelleme başarısız oldu:",
+    "Twilio Account SID": "Twilio Hesabı SID",
+    "Twilio settings save successfully.": "Twilio ayarları başarıyla kaydedildi."
+}

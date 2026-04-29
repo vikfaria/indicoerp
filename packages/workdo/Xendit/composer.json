@@ -1,0 +1,25 @@
+{
+    "name": "workdo/xendit",
+    "description": "Description for xendit package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Xendit\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Xendit\\Providers\\XenditServiceProvider"
+            ]
+        }
+    }
+}

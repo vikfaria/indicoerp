@@ -1,0 +1,25 @@
+{
+    "name": "workdo/slack",
+    "description": "Description for slack package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Slack\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Slack\\Providers\\SlackServiceProvider"
+            ]
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "name": "workdo/google-captcha",
+    "description": "Description for google-captcha package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\GoogleCaptcha\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\GoogleCaptcha\\Providers\\GoogleCaptchaServiceProvider"
+            ]
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "name": "workdo/form-builder",
+    "description": "Description for form-builder package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\FormBuilder\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\FormBuilder\\Providers\\FormBuilderServiceProvider"
+            ]
+        }
+    }
+}

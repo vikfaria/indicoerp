@@ -1,0 +1,17 @@
+{
+    "Save Changes": "保存更改",
+    "Telegram Settings": "电报设置",
+    "Permission denied": "拒绝许可",
+    "Telegram Chat ID": "电报聊天 ID",
+    "Saving...": "拯救一个...",
+    "Enable Telegram Integration": "启用电报集成",
+    "Validation failed": "验证失败",
+    "Notification Settings": "通知设置",
+    "Allow notifications to be sent to Telegram": "允许通知发送到 Telegram",
+    "Configure Telegram bot integration settings": "配置 Telegram 机器人集成设置",
+    "Enter Telegram bot token": "输入一个Telegram机器人代码",
+    "Enter Telegram chat ID": "输入一个Telegram聊天ID",
+    "Failed to update telegram settings: ": "无法更新电报设置:",
+    "Telegram Bot Token": "电报机器人令牌",
+    "Telegram settings save successfully.": "电报设置成功保存."
+}

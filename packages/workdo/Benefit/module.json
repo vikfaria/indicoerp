@@ -1,0 +1,10 @@
+{
+    "name": "Benefit",
+    "alias": "Benefit",
+    "description": "",
+    "priority": 1650,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "benefit"
+}

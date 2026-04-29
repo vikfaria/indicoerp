@@ -1,0 +1,25 @@
+{
+    "name": "workdo/cashfree",
+    "description": "Description for cashfree package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Cashfree\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Cashfree\\Providers\\CashfreeServiceProvider"
+            ]
+        }
+    }
+}

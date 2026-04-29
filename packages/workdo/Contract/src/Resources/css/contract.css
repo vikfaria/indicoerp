@@ -1,0 +1,76 @@
+/* Contract Signature Styles */
+.signature-canvas {
+    border: 2px dashed #d1d5db;
+    border-radius: 0.5rem;
+    background-color: #fafafa;
+}
+
+.signature-canvas:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Font for digital signatures */
+.font-script {
+    font-family: 'Brush Script MT', cursive, serif;
+    font-style: italic;
+}
+
+/* Print styles for contract preview */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    
+    .print\\:block {
+        display: block !important;
+    }
+    
+    .print\\:hidden {
+        display: none !important;
+    }
+    
+    .print\\:space-y-4 > * + * {
+        margin-top: 1rem !important;
+    }
+    
+    .print\\:p-6 {
+        padding: 1.5rem !important;
+    }
+    
+    .print\\:shadow-none {
+        box-shadow: none !important;
+    }
+    
+    .print\\:border-none {
+        border: none !important;
+    }
+    
+    .print\\:border-gray-400 {
+        border-color: #9ca3af !important;
+    }
+    
+    /* Ensure contract content is visible */
+    .contract-preview,
+    .contract-preview * {
+        visibility: visible;
+    }
+    
+    .contract-preview {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    
+    /* Page breaks */
+    .page-break {
+        page-break-before: always;
+    }
+    
+    /* Signature section styling for print */
+    .signature-section {
+        page-break-inside: avoid;
+    }
+}

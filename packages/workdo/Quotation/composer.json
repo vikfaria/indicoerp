@@ -1,0 +1,25 @@
+{
+    "name": "workdo/quotation",
+    "description": "Description for quotation package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Quotation\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Quotation\\Providers\\QuotationServiceProvider"
+            ]
+        }
+    }
+}

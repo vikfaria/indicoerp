@@ -1,0 +1,25 @@
+{
+    "name": "workdo/flutterwave",
+    "description": "Description for flutterwave package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Flutterwave\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Flutterwave\\Providers\\FlutterwaveServiceProvider"
+            ]
+        }
+    }
+}

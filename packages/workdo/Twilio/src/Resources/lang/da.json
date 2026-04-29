@@ -1,0 +1,19 @@
+{
+    "Save Changes": "Gem ændringer",
+    "Twilio Settings": "Twilio- indstillinger",
+    "Permission denied": "Tilladelse nægtet",
+    "Saving...": "- Jeg redder...",
+    "Twilio Auth Token": "Twilio Auth Token",
+    "From Phone Number": "Fra telefonnummer",
+    "Validation failed": "Validering mislykkedes",
+    "Notification Settings": "Indstillinger for meddelelser",
+    "Allow SMS notifications to be sent via Twilio": "Tillad SMS- meddelelser sendes via Twilio",
+    "Configure Twilio integration and SMS settings": "Konfigurere Twilio integration og SMS indstillinger",
+    "Enable Twilio Integration": "Aktiver Twilio Integration",
+    "Enter your Twilio Account SID": "Indtast dit Twilio- konto SID",
+    "Enter your Twilio Auth Token": "Indtast dit Twilio Auth Token",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Indtast dit Twilio-telefonnummer (f.eks. +1234567890)",
+    "Failed to update twilio settings: ": "Det lykkedes ikke at opdatere Twilio- indstillinger:",
+    "Twilio Account SID": "Twilio-konto SID",
+    "Twilio settings save successfully.": "Twilio indstillinger gemmer med succes."
+}

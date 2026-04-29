@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Değişiklikleri kaydet",
+    "Telegram Settings": "Telegram Ayarları",
+    "Permission denied": "İzin verildi .",
+    "Telegram Chat ID": "Telegram Sohbet Kimliği",
+    "Saving...": "Kurtarmak...",
+    "Enable Telegram Integration": "Telegram entegrasyonunu etkinleştir",
+    "Validation failed": "Doğrulama başarısız oldu",
+    "Notification Settings": "İletileme Ayarları",
+    "Allow notifications to be sent to Telegram": "Telegram'a bildirim gönderilmesine izin ver",
+    "Configure Telegram bot integration settings": "Telegram bot entegrasyon ayarlarını yapılandır",
+    "Enter Telegram bot token": "Telegram bot token'ı gir",
+    "Enter Telegram chat ID": "Telegram sohbet kimliğini gir",
+    "Failed to update telegram settings: ": "Telegram ayarlarını güncelleme başarısız oldu:",
+    "Telegram Bot Token": "Telegram Bot Tokeni",
+    "Telegram settings save successfully.": "Telegram ayarları başarıyla kaydedildi."
+}

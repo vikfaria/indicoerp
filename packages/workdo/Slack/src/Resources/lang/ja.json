@@ -1,0 +1,15 @@
+{
+    "Save Changes": "変更を保存する",
+    "Slack Settings": "スラック設定",
+    "Slack Webhook URL": "スラック Webhook URL",
+    "Permission denied": "許可は拒否された",
+    "Saving...": "救うこと...",
+    "Enable Slack Integration": "Slackの統合を有効にする",
+    "Validation failed": "検証失敗",
+    "Notification Settings": "通知設定",
+    "Allow notifications to be sent to Slack": "Slack に通知を送信する",
+    "Configure Slack integration and webhook settings": "Slackの統合とWebhookの設定を設定する",
+    "Enter Slack webhook URL": "Slackのウェブフック URLを入力する",
+    "Failed to update slack settings: ": "スラック設定の更新に失敗:",
+    "Slack settings save successfully.": "スラック設定が正常に保存されました."
+}

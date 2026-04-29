@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Zapisać zmiany",
+    "Telegram Settings": "Ustawienia telegramu",
+    "Permission denied": "Odmowa udzielenia zezwolenia",
+    "Telegram Chat ID": "Identyfikator czatu",
+    "Saving...": "Oszczędzanie...",
+    "Enable Telegram Integration": "Włącz integrację z Telegramem",
+    "Validation failed": "Nie udało się zatwierdzić",
+    "Notification Settings": "Ustawienia powiadamiania",
+    "Allow notifications to be sent to Telegram": "Pozwolić na wysyłanie powiadomień do Telegramu",
+    "Configure Telegram bot integration settings": "Konfiguracja ustawień integracji z botem Telegram",
+    "Enter Telegram bot token": "Wprowadź token botu Telegram",
+    "Enter Telegram chat ID": "Wprowadź numer czatu",
+    "Failed to update telegram settings: ": "Nie udało się zaktualizować ustawień telegramu:",
+    "Telegram Bot Token": "Token botów Telegram",
+    "Telegram settings save successfully.": "Ustawienia Telegramu są zapisane."
+}

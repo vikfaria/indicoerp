@@ -1,0 +1,25 @@
+{
+    "name": "workdo/double-entry",
+    "description": "Description for double-entry package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\DoubleEntry\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\DoubleEntry\\Providers\\DoubleEntryServiceProvider"
+            ]
+        }
+    }
+}

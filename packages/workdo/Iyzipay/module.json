@@ -1,0 +1,10 @@
+{
+    "name": "Iyzipay",
+    "alias": "Iyzipay",
+    "description": "",
+    "priority": 1620,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "iyzipay"
+}

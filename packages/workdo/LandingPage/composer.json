@@ -1,0 +1,25 @@
+{
+    "name": "workdo/landing-page",
+    "description": "Description for landing-page package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\LandingPage\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\LandingPage\\Providers\\LandingPageServiceProvider"
+            ]
+        }
+    }
+}

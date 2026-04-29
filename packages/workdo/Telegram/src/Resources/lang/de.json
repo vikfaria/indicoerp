@@ -1,0 +1,17 @@
+{
+    "Save Changes": "Änderungen speichern",
+    "Telegram Settings": "Telegramm-Einstellungen",
+    "Permission denied": "Genehmigung verweigert",
+    "Telegram Chat ID": "Telegramm-Chat-ID:",
+    "Saving...": "Ich rette...",
+    "Enable Telegram Integration": "Aktivieren Sie die Telegramm-Integration",
+    "Validation failed": "Validierung fehlgeschlagen",
+    "Notification Settings": "Einstellungen für die Benachrichtigung",
+    "Allow notifications to be sent to Telegram": "Benachrichtigungen an Telegram zu senden",
+    "Configure Telegram bot integration settings": "Konfigurieren Sie die Einstellungen für die Integration von Telegram-Bots",
+    "Enter Telegram bot token": "Geben Sie den Telegramm-Bot-Token ein",
+    "Enter Telegram chat ID": "Geben Sie die Telegram-Chat-ID ein",
+    "Failed to update telegram settings: ": "Telegramm-Einstellungen nicht aktualisiert:",
+    "Telegram Bot Token": "Telegramm Bot Token",
+    "Telegram settings save successfully.": "Telegramm-Einstellungen erfolgreich gespeichert."
+}

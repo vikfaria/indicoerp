@@ -1,0 +1,15 @@
+{
+    "Save Changes": "Değişiklikleri kaydet",
+    "Slack Settings": "Slack Ayarları",
+    "Slack Webhook URL": "Slack Webhook URL'si",
+    "Permission denied": "İzin verildi .",
+    "Saving...": "Kurtarmak...",
+    "Enable Slack Integration": "Slack entegrasyonunu etkinleştir",
+    "Validation failed": "Doğrulama başarısız oldu",
+    "Notification Settings": "İletileme Ayarları",
+    "Allow notifications to be sent to Slack": "Slack'a bildirim gönderilmesine izin ver",
+    "Configure Slack integration and webhook settings": "Slack entegrasyonunu ve webhook ayarlarını yapılandır",
+    "Enter Slack webhook URL": "Slack webhook URL'sini gir",
+    "Failed to update slack settings: ": "Slack ayarlarını güncelleme başarısız oldu:",
+    "Slack settings save successfully.": "Slack ayarları başarıyla kaydedildi."
+}

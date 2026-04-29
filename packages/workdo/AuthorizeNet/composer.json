@@ -1,0 +1,25 @@
+{
+    "name": "workdo/authorize-net",
+    "description": "Description for authorize-net package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\AuthorizeNet\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\AuthorizeNet\\Providers\\AuthorizeNetServiceProvider"
+            ]
+        }
+    }
+}

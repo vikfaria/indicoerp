@@ -1,0 +1,17 @@
+{
+    "Save Changes": "שמור שינויים",
+    "Telegram Settings": "הגדרות טלגרם",
+    "Permission denied": "אישור נדחה",
+    "Telegram Chat ID": "מזהה צ'אט בטלגרם",
+    "Saving...": "להציל...",
+    "Enable Telegram Integration": "אפשרות לשילוב טלגרם",
+    "Validation failed": "אימות נכשל",
+    "Notification Settings": "הגדרות הודעה",
+    "Allow notifications to be sent to Telegram": "לאפשר הודעות להישלח לטלגרם",
+    "Configure Telegram bot integration settings": "הגדרת הגדרות של אינטגרציה של טלגרם בוט",
+    "Enter Telegram bot token": "הכנס את טוקן הבוט של טלגרם",
+    "Enter Telegram chat ID": "הזן את מזהה השיחה של טלגרם",
+    "Failed to update telegram settings: ": "לא ניתן לעדכן את הגדרות הטלגרם:",
+    "Telegram Bot Token": "טוקן של טלגרם בוט",
+    "Telegram settings save successfully.": "הגדרות הטלגרם נשמרות בהצלחה."
+}

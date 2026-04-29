@@ -1,0 +1,19 @@
+{
+    "Save Changes": "Salvare le modifiche",
+    "Twilio Settings": "Impostazioni Twilio",
+    "Permission denied": "Permesso negato",
+    "Saving...": "Salvare...",
+    "Twilio Auth Token": "Token di Autore Twilio",
+    "From Phone Number": "Dal numero di telefono",
+    "Validation failed": "Validazione fallita",
+    "Notification Settings": "Impostazioni di notifica",
+    "Allow SMS notifications to be sent via Twilio": "Consentire l'invio di notifiche SMS tramite Twilio",
+    "Configure Twilio integration and SMS settings": "Configurare l'integrazione Twilio e le impostazioni SMS",
+    "Enable Twilio Integration": "Abilitare l' integrazione Twilio",
+    "Enter your Twilio Account SID": "Inserire il SID del proprio account Twilio",
+    "Enter your Twilio Auth Token": "Inserisci il tuo Twilio Auth Token",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Inserire il numero di telefono Twilio (ad esempio, +1234567890)",
+    "Failed to update twilio settings: ": "Impossibile aggiornare le impostazioni twilio:",
+    "Twilio Account SID": "SID del conto Twilio",
+    "Twilio settings save successfully.": "Impostazioni Twilio salvare con successo."
+}

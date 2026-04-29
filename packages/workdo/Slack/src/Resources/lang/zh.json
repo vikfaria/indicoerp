@@ -1,0 +1,15 @@
+{
+    "Save Changes": "保存更改",
+    "Slack Settings": "放松设置",
+    "Slack Webhook URL": "需要一个 Slack Webhook URL",
+    "Permission denied": "拒绝许可",
+    "Saving...": "拯救一个...",
+    "Enable Slack Integration": "启用Slack集成",
+    "Validation failed": "验证失败",
+    "Notification Settings": "通知设置",
+    "Allow notifications to be sent to Slack": "允许通知发送到Slack",
+    "Configure Slack integration and webhook settings": "配置 Slack 集成和 webhook 设置",
+    "Enter Slack webhook URL": "输入Slack网络连接的URL",
+    "Failed to update slack settings: ": "无法更新宽松设置:",
+    "Slack settings save successfully.": "顺利保存 Slack 设置"
+}

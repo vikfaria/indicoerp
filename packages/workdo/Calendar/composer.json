@@ -1,0 +1,25 @@
+{
+    "name": "workdo/calendar",
+    "description": "Description for calendar package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Calendar\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Calendar\\Providers\\CalendarServiceProvider"
+            ]
+        }
+    }
+}

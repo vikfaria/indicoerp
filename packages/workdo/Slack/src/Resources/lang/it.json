@@ -1,0 +1,15 @@
+{
+    "Save Changes": "Salvare le modifiche",
+    "Slack Settings": "Impostazioni Slack",
+    "Slack Webhook URL": "URL di Slack Webhook",
+    "Permission denied": "Permesso negato",
+    "Saving...": "Salvare...",
+    "Enable Slack Integration": "Abilitare l'integrazione Slack",
+    "Validation failed": "Validazione fallita",
+    "Notification Settings": "Impostazioni di notifica",
+    "Allow notifications to be sent to Slack": "Consentire l'invio di notifiche a Slack",
+    "Configure Slack integration and webhook settings": "Configurare le impostazioni di integrazione e webhook di Slack",
+    "Enter Slack webhook URL": "Inserire l' URL del webhook Slack",
+    "Failed to update slack settings: ": "Impossibile aggiornare le impostazioni dello slack:",
+    "Slack settings save successfully.": "Impostazioni Slack salvate con successo."
+}

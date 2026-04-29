@@ -1,0 +1,25 @@
+{
+    "name": "workdo/tap",
+    "description": "Description for tap package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Tap\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Tap\\Providers\\TapServiceProvider"
+            ]
+        }
+    }
+}

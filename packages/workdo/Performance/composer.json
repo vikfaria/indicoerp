@@ -1,0 +1,25 @@
+{
+    "name": "workdo/performance",
+    "description": "Description for performance package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Performance\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Performance\\Providers\\PerformanceServiceProvider"
+            ]
+        }
+    }
+}

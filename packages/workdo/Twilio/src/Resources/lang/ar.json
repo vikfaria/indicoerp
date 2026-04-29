@@ -1,0 +1,19 @@
+{
+    "Save Changes": "احفظ التغييرات",
+    "Twilio Settings": "إعدادات Twilio",
+    "Permission denied": "تم رفض الإذن",
+    "Saving...": "إنقاذ...",
+    "Twilio Auth Token": "تويليو أوتوتشين",
+    "From Phone Number": "من رقم الهاتف",
+    "Validation failed": "فشل التحقق من الصحة",
+    "Notification Settings": "إعدادات الإخطار",
+    "Allow SMS notifications to be sent via Twilio": "السماح بإرسال إشعارات الرسائل القصيرة عبر Twilio",
+    "Configure Twilio integration and SMS settings": "تكوين إعدادات دمج Twilio وإعدادات الرسائل القصيرة",
+    "Enable Twilio Integration": "تمكين دمج Twilio",
+    "Enter your Twilio Account SID": "أدخل معرف حسابك في Twilio",
+    "Enter your Twilio Auth Token": "أدخل رمز التوثيق الخاص بك",
+    "Enter your Twilio phone number (e.g., +1234567890)": "أدخل رقم هاتفك في Twilio (على سبيل المثال، +1234567890)",
+    "Failed to update twilio settings: ": "فشل تحديث إعدادات twilio:",
+    "Twilio Account SID": "حساب Twilio SID",
+    "Twilio settings save successfully.": "إعدادات (تويليو) نجحت في التخزين"
+}

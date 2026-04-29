@@ -1,0 +1,25 @@
+{
+    "name": "workdo/contract",
+    "description": "Description for contract package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Contract\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Contract\\Providers\\ContractServiceProvider"
+            ]
+        }
+    }
+}

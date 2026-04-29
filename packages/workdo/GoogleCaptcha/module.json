@@ -1,0 +1,11 @@
+{
+    "name": "GoogleCaptcha",
+    "alias": "Google Captcha",
+    "description": "Protect your forms with Google reCAPTCHA v2 and v3 integration. Prevent spam and bot attacks while maintaining user experience.",
+    "priority": 880,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "google-captcha",
+    "for_admin": true
+}

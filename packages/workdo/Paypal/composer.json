@@ -1,0 +1,25 @@
+{
+    "name": "workdo/paypal",
+    "description": "Description for paypal package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Paypal\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Paypal\\Providers\\PaypalServiceProvider"
+            ]
+        }
+    }
+}

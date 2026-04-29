@@ -1,0 +1,19 @@
+{
+    "Save Changes": "Veranderingen opslaan",
+    "Twilio Settings": "Twilio-instellingen",
+    "Permission denied": "Toestemming geweigerd",
+    "Saving...": "Redding...",
+    "Twilio Auth Token": "Twilio Auth Token",
+    "From Phone Number": "Van telefoonnummer",
+    "Validation failed": "Validering mislukt",
+    "Notification Settings": "Instellingen voor meldingen",
+    "Allow SMS notifications to be sent via Twilio": "SMS-meldingen kunnen worden verzonden via Twilio",
+    "Configure Twilio integration and SMS settings": "Configureer Twilio-integratie en SMS-instellingen",
+    "Enable Twilio Integration": "Twilio-integratie inschakelen",
+    "Enter your Twilio Account SID": "Voer uw Twilio-account SID in",
+    "Enter your Twilio Auth Token": "Voer uw Twilio Auth Token in",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Voer uw Twilio-telefoonnummer in (bijvoorbeeld +1234567890)",
+    "Failed to update twilio settings: ": "Het is niet gelukt om twilio-instellingen bij te werken:",
+    "Twilio Account SID": "Twilio-account SID",
+    "Twilio settings save successfully.": "Twilio-instellingen slagen."
+}

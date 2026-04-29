@@ -1,0 +1,10 @@
+{
+    "name": "PayTR",
+    "alias": "PayTR",
+    "description": "",
+    "priority": 1630,
+    "version": 5.0,
+    "monthly_price": 0,
+    "yearly_price": 0,
+    "package_name": "pay-tr"
+}

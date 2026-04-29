@@ -1,0 +1,25 @@
+{
+    "name": "workdo/webhook",
+    "description": "Description for webhook package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Webhook\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Webhook\\Providers\\WebhookServiceProvider"
+            ]
+        }
+    }
+}

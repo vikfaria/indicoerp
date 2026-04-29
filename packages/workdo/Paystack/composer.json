@@ -1,0 +1,27 @@
+{
+    "name": "workdo/paystack",
+    "description": "Paystack Payment Gateway Integration for WorkDo",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "guzzlehttp/guzzle": "^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Paystack\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Paystack\\Providers\\PaystackServiceProvider"
+            ]
+        }
+    }
+}

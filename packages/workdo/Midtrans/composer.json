@@ -1,0 +1,25 @@
+{
+    "name": "workdo/midtrans",
+    "description": "Description for midtrans package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Midtrans\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Midtrans\\Providers\\MidtransServiceProvider"
+            ]
+        }
+    }
+}

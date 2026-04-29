@@ -1,0 +1,19 @@
+{
+    "Save Changes": "Сохранить изменения",
+    "Twilio Settings": "Настройки Twilio",
+    "Permission denied": "Разрешение отказано",
+    "Saving...": "Спасать...",
+    "Twilio Auth Token": "Токен авторизации Twilio",
+    "From Phone Number": "От номера телефона",
+    "Validation failed": "Валидация не удалась",
+    "Notification Settings": "Настройки уведомления",
+    "Allow SMS notifications to be sent via Twilio": "Разрешить отправку SMS-уведомлений через Twilio",
+    "Configure Twilio integration and SMS settings": "Настройка интеграции Twilio и настройки SMS",
+    "Enable Twilio Integration": "Включить интеграцию Twilio",
+    "Enter your Twilio Account SID": "Введите идентификатор учетной записи Twilio",
+    "Enter your Twilio Auth Token": "Введите свой Twilio Auth Token",
+    "Enter your Twilio phone number (e.g., +1234567890)": "Введите свой номер телефона Twilio (например, +1234567890)",
+    "Failed to update twilio settings: ": "Не удалось обновить настройки twilio:",
+    "Twilio Account SID": "SID учетной записи Twilio",
+    "Twilio settings save successfully.": "Настройки Twilio сохранили успешно."
+}

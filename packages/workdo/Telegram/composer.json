@@ -1,0 +1,25 @@
+{
+    "name": "workdo/telegram",
+    "description": "Description for telegram package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Telegram\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Telegram\\Providers\\TelegramServiceProvider"
+            ]
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "name": "workdo/timesheet",
+    "description": "Description for timesheet package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Timesheet\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Timesheet\\Providers\\TimesheetServiceProvider"
+            ]
+        }
+    }
+}

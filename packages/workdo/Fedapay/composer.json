@@ -1,0 +1,25 @@
+{
+    "name": "workdo/fedapay",
+    "description": "Description for fedapay package",
+    "type": "library",
+    "license": "MIT",
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "Workdo\\Fedapay\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "WorkDo",
+            "email": "support@workdo.io"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Workdo\\Fedapay\\Providers\\FedapayServiceProvider"
+            ]
+        }
+    }
+}

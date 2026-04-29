@@ -1,0 +1,17 @@
+{
+    "Save Changes": "変更を保存する",
+    "Telegram Settings": "メールの設定",
+    "Permission denied": "許可は拒否された",
+    "Telegram Chat ID": "メールのチャットID",
+    "Saving...": "救うこと...",
+    "Enable Telegram Integration": "メールの統合を有効にする",
+    "Validation failed": "検証失敗",
+    "Notification Settings": "通知設定",
+    "Allow notifications to be sent to Telegram": "通知がTelegramに送信されるようにする",
+    "Configure Telegram bot integration settings": "Telegramボット統合の設定を設定する",
+    "Enter Telegram bot token": "Telegramボットトークンを入力する",
+    "Enter Telegram chat ID": "メールのIDを入力",
+    "Failed to update telegram settings: ": "メールの設定を更新できない:",
+    "Telegram Bot Token": "メールボットトークン",
+    "Telegram settings save successfully.": "メールの設定が正常に保存されました."
+}
