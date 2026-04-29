@@ -164,7 +164,7 @@ export default function Features({ settings }: FeaturesProps) {
 
     if (config.layout === 'split') {
         return (
-            <section className={config.section}>
+            <section id="features" className={config.section}>
                 <div className={config.container}>
                     <div className={config.grid}>
                         <div>
@@ -204,7 +204,7 @@ export default function Features({ settings }: FeaturesProps) {
         };
         
         return (
-            <section className={config.section}>
+            <section id="features" className={config.section}>
                 <div className={config.container}>
                     <h2 className={config.title}>{title}</h2>
                     <p className={config.subtitle}>{subtitle}</p>
@@ -248,7 +248,7 @@ export default function Features({ settings }: FeaturesProps) {
     }
     
     return (
-        <section className={config.section}>
+        <section id="features" className={config.section}>
             <div className={config.container}>
                 <h2 className={config.title}>{title}</h2>
                 <p className={config.subtitle}>{subtitle}</p>

@@ -348,7 +348,7 @@ export default function Gallery({ settings }: GalleryProps) {
     };
 
     return (
-        <section className={config.section}>
+        <section id="gallery" className={config.section}>
             <div className={config.container}>
                 <div className="text-center mb-16">
                     <h2 className={config.title}>{title}</h2>

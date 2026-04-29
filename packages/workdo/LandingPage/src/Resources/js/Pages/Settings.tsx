@@ -22,6 +22,8 @@ import Footer from './components/settings/Footer';
 import Order from './components/settings/Order';
 import Colors from './components/settings/Colors';
 import Pricing from './components/settings/Pricing';
+import PageSettings from './components/settings/PageSettings';
+import SocialSettings from './components/settings/SocialSettings';
 import { LandingPreview } from './components/LandingPreview';
 
 
@@ -64,8 +66,8 @@ export default function Settings({ settings, customPages }: SettingsProps) {
     }
         
 
-    const [activeTab, setActiveTab] = useState<'setup' | 'layout' | 'content' | 'social' | 'engagement' | 'page'>('setup');
-    const [activeSection, setActiveSection] = useState<'general' | 'header' | 'hero' | 'stats' | 'features' | 'modules' | 'benefits' | 'gallery' | 'cta' | 'footer' | 'order' | 'colors' | 'pricing'>('general');
+    const [activeTab, setActiveTab] = useState<'setup' | 'layout' | 'content' | 'engagement' | 'page' | 'social'>('setup');
+    const [activeSection, setActiveSection] = useState<'general' | 'header' | 'hero' | 'stats' | 'features' | 'modules' | 'benefits' | 'gallery' | 'cta' | 'footer' | 'order' | 'colors' | 'pricing' | 'pageSettings' | 'socialSettings'>('general');
     const [isLoading, setIsLoading] = useState(false);
     
     const { data, setData, post, put, processing, reset } = useForm({
@@ -75,6 +77,8 @@ export default function Settings({ settings, customPages }: SettingsProps) {
         contact_address: settings.contact_address || '',
         config_sections: settings.config_sections || {
             sections: {},
+            page: {},
+            social: {},
             section_visibility: {
                 header: true,
                 hero: true,
@@ -93,6 +97,28 @@ export default function Settings({ settings, customPages }: SettingsProps) {
 
     const getSectionData = (key: string) => {
         return data.config_sections?.sections?.[key] || {};
+    };
+
+    const getPageData = () => {
+        return data.config_sections?.page || {};
+    };
+
+    const updatePageData = (updates: any) => {
+        setData('config_sections', {
+            ...data.config_sections,
+            page: { ...data.config_sections?.page, ...updates }
+        });
+    };
+
+    const getSocialData = () => {
+        return data.config_sections?.social || {};
+    };
+
+    const updateSocialData = (updates: any) => {
+        setData('config_sections', {
+            ...data.config_sections,
+            social: { ...data.config_sections?.social, ...updates }
+        });
     };
 
     const updateSectionData = (key: string, updates: any) => {
@@ -171,10 +197,10 @@ export default function Settings({ settings, customPages }: SettingsProps) {
                             {[
                                 { key: 'setup', label: t('Setup'), sections: ['general', 'order', 'colors'] },
                                 { key: 'layout', label: t('Layout'), sections: ['header', 'hero', 'footer'] },
-                                { key: 'content', label: t('Content'), sections: ['features', 'modules', 'benefits'] },
-                                { key: 'social', label: t('Social'), sections: ['stats', 'gallery'] },
-                                { key: 'engagement', label: t('Engagement'), sections: ['cta'] },
-                                { key: 'page', label: t('Page'), sections: ['pricing'] }
+                                { key: 'content', label: t('Content'), sections: ['stats', 'features', 'modules', 'benefits', 'gallery'] },
+                                { key: 'engagement', label: t('Engagement'), sections: ['cta', 'pricing'] },
+                                { key: 'page', label: t('Page'), sections: ['pageSettings'] },
+                                { key: 'social', label: t('Social'), sections: ['socialSettings'] }
                             ].map(tab => (
                                 <button
                                     key={tab.key}
@@ -203,10 +229,10 @@ export default function Settings({ settings, customPages }: SettingsProps) {
                                 const tabSections = {
                                     setup: [{ key: 'general', label: t('General') }, { key: 'order', label: t('Order') }, { key: 'colors', label: t('Colors') }],
                                     layout: [{ key: 'header', label: t('Header') }, { key: 'hero', label: t('Hero') }, { key: 'footer', label: t('Footer') }],
-                                    content: [{ key: 'features', label: t('Features') }, { key: 'modules', label: t('Modules') }, { key: 'benefits', label: t('Benefits') }],
-                                    social: [{ key: 'stats', label: t('Stats') }, { key: 'gallery', label: t('Gallery') }],
-                                    engagement: [{ key: 'cta', label: t('CTA') }],
-                                    page: [{ key: 'pricing', label: t('Pricing') }]
+                                    content: [{ key: 'stats', label: t('Stats') }, { key: 'features', label: t('Features') }, { key: 'modules', label: t('Modules') }, { key: 'benefits', label: t('Benefits') }, { key: 'gallery', label: t('Gallery') }],
+                                    engagement: [{ key: 'cta', label: t('CTA') }, { key: 'pricing', label: t('Pricing') }],
+                                    page: [{ key: 'pageSettings', label: t('Metadata') }],
+                                    social: [{ key: 'socialSettings', label: t('Sharing') }]
                                 };
                                 return tabSections[activeTab].map(section => (
                                     <Button
@@ -341,6 +367,20 @@ export default function Settings({ settings, customPages }: SettingsProps) {
                                 getSectionData={getSectionData}
                                 updateSectionData={updateSectionData}
                                 updateSectionVisibility={updateSectionVisibility}
+                            />
+                        )}
+
+                        {activeSection === 'pageSettings' && (
+                            <PageSettings
+                                getPageData={getPageData}
+                                updatePageData={updatePageData}
+                            />
+                        )}
+
+                        {activeSection === 'socialSettings' && (
+                            <SocialSettings
+                                getSocialData={getSocialData}
+                                updateSocialData={updateSocialData}
                             />
                         )}
                     </div>

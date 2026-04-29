@@ -103,6 +103,8 @@ class LandingPageController extends Controller
                     'contact_address' => '',
                     'config_sections' => [
                         'sections' => [],
+                        'page' => [],
+                        'social' => [],
                         'section_visibility' => [
                             'header' => true,
                             'hero' => true,
@@ -136,9 +138,8 @@ class LandingPageController extends Controller
                 'config_sections' => 'nullable|array'
             ]);
 
-            // Handle image paths - store only filename
-            if (isset($validated['config_sections']['sections'])) {
-                $this->processImagePaths($validated['config_sections']['sections']);
+            if (isset($validated['config_sections'])) {
+                $this->processImagePaths($validated['config_sections']);
             }
 
             LandingPageSetting::updateOrCreate(['id' => 1], $validated);
@@ -150,28 +151,43 @@ class LandingPageController extends Controller
         }
     }
 
-    private function processImagePaths(&$sections)
+    private function processImagePaths(&$config)
     {
-        foreach ($sections as $sectionKey => &$sectionData) {
-            if (is_array($sectionData)) {
-                // Handle single images (hero, cta)
-                if (isset($sectionData['image'])) {
-                    $sectionData['image'] = $this->processImagePath($sectionData['image']);
-                }
-                
-                // Handle gallery images array
-                if (isset($sectionData['images']) && is_array($sectionData['images'])) {
-                    $sectionData['images'] = array_map([$this, 'processImagePath'], $sectionData['images']);
-                }
+        if (!is_array($config)) {
+            return;
+        }
+
+        foreach ($config as $key => &$value) {
+            if (in_array($key, ['image', 'og_image'], true) && is_string($value)) {
+                $value = $this->processImagePath($value);
+                continue;
+            }
+
+            if ($key === 'images' && is_array($value)) {
+                $value = array_map([$this, 'processImagePath'], $value);
+                continue;
+            }
+
+            if (is_array($value)) {
+                $this->processImagePaths($value);
             }
         }
     }
 
     private function processImagePath($imagePath)
     {
-        if (strpos($imagePath, 'packages/workdo') !== false) {
+        if (!is_string($imagePath) || $imagePath === '') {
             return $imagePath;
         }
-        return basename($imagePath);
+
+        if (str_starts_with($imagePath, 'http')) {
+            return $imagePath;
+        }
+
+        if (strpos($imagePath, 'packages/workdo') !== false) {
+            return ltrim($imagePath, '/');
+        }
+
+        return ltrim($imagePath, '/');
     }
 }

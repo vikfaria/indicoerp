@@ -89,12 +89,12 @@ export default function Modules({ settings }: ModulesProps) {
                     <h3 className="text-2xl font-bold text-gray-900 mb-4">{modules[activeTab]?.title}</h3>
                     <p className="text-gray-600 text-lg">{modules[activeTab]?.description}</p>
                 </div>
-                <div className="bg-gray-100 rounded-lg h-80 flex items-center justify-center overflow-hidden shadow-[0px_2px_4px_0px_rgba(14,30,37,0.12),0px_2px_16px_0px_rgba(14,30,37,0.32)]">
-                    {modules[activeTab]?.image ? (
-                        <img src={modules[activeTab].image.startsWith('http') ? modules[activeTab].image : getImagePath(modules[activeTab].image)} alt={modules[activeTab].title} className="w-full h-full object-cover" />
-                    ) : (
-                        <Monitor className="h-16 w-16 text-gray-400" />
-                    )}
+                        <div className="bg-gray-100 rounded-lg h-80 flex items-center justify-center overflow-hidden shadow-[0px_2px_4px_0px_rgba(14,30,37,0.12),0px_2px_16px_0px_rgba(14,30,37,0.32)]">
+                            {modules[activeTab]?.image ? (
+                        <img src={modules[activeTab].image.startsWith('http') ? modules[activeTab].image : getImagePath(modules[activeTab].image)} alt={modules[activeTab].title} className="w-full h-full object-contain bg-slate-50 p-4" />
+                            ) : (
+                                <Monitor className="h-16 w-16 text-gray-400" />
+                            )}
                 </div>
             </div>
         </div>
@@ -106,7 +106,7 @@ export default function Modules({ settings }: ModulesProps) {
                 <div key={index} className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
                     <div className="h-48 bg-gray-100 rounded-lg mb-6 flex items-center justify-center overflow-hidden">
                         {module.image ? (
-                            <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-cover" />
+                            <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-contain bg-slate-50 p-4" />
                         ) : (
                             <Monitor className="h-12 w-12 text-gray-400" />
                         )}
@@ -147,7 +147,7 @@ export default function Modules({ settings }: ModulesProps) {
                                 </div>
                                 <div className="h-64 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden shadow-inner">
                                     {module.image ? (
-                                        <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-cover" />
+                                        <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-contain bg-slate-50 p-4" />
                                     ) : (
                                         <div className="text-center">
                                             <Monitor className="h-16 w-16 text-gray-400 mx-auto mb-2" />
@@ -184,7 +184,7 @@ export default function Modules({ settings }: ModulesProps) {
                     </div>
                     <div className="h-80 bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
                         {modules[currentSlide]?.image ? (
-                            <img src={modules[currentSlide].image.startsWith('http') ? modules[currentSlide].image : getImagePath(modules[currentSlide].image)} alt={modules[currentSlide].title} className="w-full h-full object-cover" />
+                            <img src={modules[currentSlide].image.startsWith('http') ? modules[currentSlide].image : getImagePath(modules[currentSlide].image)} alt={modules[currentSlide].title} className="w-full h-full object-contain bg-slate-50 p-4" />
                         ) : (
                             <Monitor className="h-16 w-16 text-gray-400" />
                         )}
@@ -203,7 +203,7 @@ export default function Modules({ settings }: ModulesProps) {
                             <div className="flex-shrink-0 relative">
                                 <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
                                     {module.image ? (
-                                        <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                                        <img src={module.image.startsWith('http') ? module.image : getImagePath(module.image)} alt={module.title} className="w-full h-full object-contain bg-slate-50 p-3 group-hover:scale-105 transition-transform duration-300" />
                                     ) : (
                                         <Monitor className="h-10 w-10 text-gray-400" />
                                     )}
@@ -243,7 +243,7 @@ export default function Modules({ settings }: ModulesProps) {
     };
 
     return (
-        <section className={config.section}>
+        <section id="modules" className={config.section}>
             <div className={config.container}>
                 <h2 className={config.title}>{title}</h2>
                 <p className={config.subtitle}>{subtitle}</p>

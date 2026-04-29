@@ -116,7 +116,7 @@ export default function Stats({ settings }: StatsProps) {
     };
 
     return (
-        <section className={config.section} style={getBackgroundStyle()}>
+        <section id="stats" className={config.section} style={getBackgroundStyle()}>
             <div className={config.container}>
                 <div className={config.grid}>
                     {stats.map((stat, index) => renderStat(stat, index))}

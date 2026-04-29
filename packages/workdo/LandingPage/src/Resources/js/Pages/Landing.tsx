@@ -26,6 +26,18 @@ interface ConfigSections {
     sections?: SectionData;
     section_visibility?: SectionVisibility;
     section_order?: string[];
+    page?: {
+        title?: string;
+        description?: string;
+        keywords?: string;
+        canonical_url?: string;
+    };
+    social?: {
+        og_title?: string;
+        og_description?: string;
+        og_image?: string;
+        site_name?: string;
+    };
     colors?: {
         primary: string;
         secondary: string;
@@ -44,12 +56,17 @@ interface LandingProps {
 }
 
 export default function Landing({ settings }: LandingProps) {
-    const getSectionData = (key: string) => {
-        return settings?.config_sections?.sections?.[key] || {};
-    };
     const { adminAllSetting } = usePage().props as any;
     const favicon = getAdminSetting('favicon');
     const faviconUrl = favicon ? getImagePath(favicon) : null;
+    const pageMeta = settings?.config_sections?.page || {};
+    const socialMeta = settings?.config_sections?.social || {};
+    const pageTitle = pageMeta.title || `${settings?.company_name || 'ERPGo SaaS'} - All-in-One Business Management Solution`;
+    const pageDescription = pageMeta.description || 'Business management solution';
+    const ogTitle = socialMeta.og_title || pageTitle;
+    const ogDescription = socialMeta.og_description || pageDescription;
+    const ogImage = socialMeta.og_image ? getImagePath(socialMeta.og_image) : null;
+    const canonicalUrl = pageMeta.canonical_url || undefined;
     
     const isSectionVisible = (key: string) => {
         return settings?.config_sections?.section_visibility?.[key] !== false;
@@ -87,8 +104,21 @@ export default function Landing({ settings }: LandingProps) {
 
     return (
         <div className="min-h-screen bg-white">
-            <Head title={`${settings?.company_name || 'ERPGo SaaS'} - All-in-One Business Management Solution`}>
+            <Head title={pageTitle}>
                 {faviconUrl && <link rel="icon" type="image/x-icon" href={faviconUrl} />}
+                {pageDescription && <meta name="description" content={pageDescription} />}
+                {pageMeta.keywords && <meta name="keywords" content={pageMeta.keywords} />}
+                {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+                <meta property="og:title" content={ogTitle} />
+                <meta property="og:description" content={ogDescription} />
+                <meta property="og:type" content="website" />
+                <meta property="og:site_name" content={socialMeta.site_name || settings?.company_name || 'ERPGo SaaS'} />
+                {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+                {ogImage && <meta property="og:image" content={ogImage} />}
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:title" content={ogTitle} />
+                <meta name="twitter:description" content={ogDescription} />
+                {ogImage && <meta name="twitter:image" content={ogImage} />}
             </Head>
             
             {/* Render sections in order */}

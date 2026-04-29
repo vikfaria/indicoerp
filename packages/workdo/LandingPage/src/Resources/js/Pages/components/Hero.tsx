@@ -153,7 +153,7 @@ export default function Hero({ settings }: HeroProps) {
     );
 
     return (
-        <section className={config.section}>
+        <section id="hero" className={config.section}>
             {renderBackgroundImage()}
             <div className={config.container}>
                 {config.layout === 'split' || config.layout === 'right-split' ? (

@@ -73,12 +73,14 @@ export default function Benefits({ data, getSectionData, updateSectionData, upda
                         <Repeater
                             fields={[
                                 { name: 'title', label: t('Benefit Title'), type: 'text', placeholder: t('Benefit title'), required: true },
-                                { name: 'description', label: t('Benefit Description'), type: 'textarea', placeholder: t('Benefit description'), required: true }
+                                { name: 'description', label: t('Benefit Description'), type: 'textarea', placeholder: t('Benefit description'), required: true },
+                                { name: 'image', label: t('Benefit Image'), type: 'image', placeholder: t('Select benefit image...') }
                             ]}
                             value={(getSectionData('benefits').benefits || []).map((benefit: any, index: number) => ({
                                 id: `benefit-${index}`,
                                 title: benefit.title || '',
-                                description: benefit.description || ''
+                                description: benefit.description || '',
+                                image: benefit.image || ''
                             }))}
                             onChange={(items) => {
                                 const benefits = items.map(({ id, ...item }) => item);

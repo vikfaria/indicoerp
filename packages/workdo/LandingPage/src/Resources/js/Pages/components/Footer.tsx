@@ -78,6 +78,7 @@ export default function Footer({ settings }: FooterProps) {
     const description = sectionData.description || 'The complete business management solution for modern enterprises.';
     const contactEmail = settings?.contact_email || 'support@erpgosaas.com';
     const phone = settings?.contact_phone || '+1 (555) 123-4567';
+    const address = settings?.contact_address || '';
     const newsletterTitle = sectionData.newsletter_title || 'Join Our Community';
     const newsletterDescription = sectionData.newsletter_description || 'We build modern web tools to help you jump-start your daily business work.';
     const newsletterButtonText = sectionData.newsletter_button_text || 'Subscribe';
@@ -207,6 +208,23 @@ export default function Footer({ settings }: FooterProps) {
                             {phone}
                         </span>
                     </div>
+                    {address && (
+                        <div className="flex items-center">
+                            <MapPin
+                                className={config.layout === 'centered' || config.layout === 'modern' ? 'mr-4' : 'h-5 w-5 mr-3'}
+                                style={{
+                                    color: colors.primary,
+                                    width: config.layout === 'centered' || config.layout === 'modern' ? '24px' : '20px',
+                                    height: config.layout === 'centered' || config.layout === 'modern' ? '24px' : '20px',
+                                    minWidth: config.layout === 'centered' || config.layout === 'modern' ? '24px' : '20px',
+                                    minHeight: config.layout === 'centered' || config.layout === 'modern' ? '24px' : '20px'
+                                }}
+                            />
+                            <span className={`${config.layout === 'split' ? 'text-gray-600' : config.layout === 'centered' || config.layout === 'modern' ? 'text-gray-300 text-lg' : 'text-gray-300'}`}>
+                                {address}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -456,7 +474,7 @@ export default function Footer({ settings }: FooterProps) {
 
     // Standard and modern layouts
     return (
-        <footer className={config.footer} style={getBackgroundStyle()}>
+        <footer id="contact" className={config.footer} style={getBackgroundStyle()}>
             {config.layout === 'modern' && (
                 <>
                     <div className="absolute inset-0 bg-black/20"></div>

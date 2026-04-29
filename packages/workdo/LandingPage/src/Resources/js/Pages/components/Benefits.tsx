@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, CheckCircle, ArrowRight } from 'lucide-react';
+import { ChevronDown, CheckCircle } from 'lucide-react';
+import { getImagePath } from '@/utils/helpers';
 
 interface BenefitsProps {
     settings?: any;
@@ -84,9 +85,19 @@ export default function Benefits({ settings }: BenefitsProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {benefits.map((benefit: any, index: number) => (
                 <div key={index} className="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow">
-                    <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: colors.primary }}>
-                        <CheckCircle className="h-6 w-6 text-white" />
-                    </div>
+                    {benefit.image ? (
+                        <div className="h-48 rounded-xl mb-6 overflow-hidden bg-slate-50 border border-slate-100">
+                            <img
+                                src={benefit.image.startsWith('http') ? benefit.image : getImagePath(benefit.image)}
+                                alt={benefit.title}
+                                className="w-full h-full object-contain p-4"
+                            />
+                        </div>
+                    ) : (
+                        <div className="w-12 h-12 rounded-lg mb-4 flex items-center justify-center" style={{ backgroundColor: colors.primary }}>
+                            <CheckCircle className="h-6 w-6 text-white" />
+                        </div>
+                    )}
                     <h3 className="text-xl font-semibold text-gray-900 mb-3">{benefit.title}</h3>
                     <p className="text-gray-600">{benefit.description}</p>
                 </div>
@@ -172,7 +183,7 @@ export default function Benefits({ settings }: BenefitsProps) {
     };
 
     return (
-        <section className={config.section}>
+        <section id="benefits" className={config.section}>
             <div className={config.container}>
                 <h2 className={config.title}>{title}</h2>
                 {renderContent()}

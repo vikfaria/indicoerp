@@ -63,11 +63,21 @@ export default function CTA({ settings }: CTAProps) {
 
     const getBackgroundStyle = () => {
         if (config.layout === 'centered') {
-            return { backgroundColor: colors.primary };
+            return sectionData.image
+                ? {
+                    backgroundImage: `linear-gradient(rgba(11, 93, 122, 0.82), rgba(0, 0, 0, 0.55)), url(${getImagePath(sectionData.image)})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                }
+                : { backgroundColor: colors.primary };
         }
         if (config.layout === 'gradient') {
             return { 
-                background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 50%, ${colors.accent} 100%)`,
+                background: sectionData.image
+                    ? `linear-gradient(rgba(11, 93, 122, 0.84), rgba(0, 0, 0, 0.58)), url(${getImagePath(sectionData.image)})`
+                    : `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 50%, ${colors.accent} 100%)`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
                 backgroundAttachment: 'fixed'
             };
         }
@@ -117,7 +127,7 @@ export default function CTA({ settings }: CTAProps) {
 
     if (config.layout === 'split') {
         return (
-            <section className={config.section}>
+            <section id="cta" className={config.section}>
                 <div className={config.container}>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                         <div>
@@ -153,7 +163,7 @@ export default function CTA({ settings }: CTAProps) {
 
     if (config.layout === 'card') {
         return (
-            <section className={config.section}>
+            <section id="cta" className={config.section}>
                 <div className={config.container}>
                     <div className="bg-white p-8 md:p-12 lg:p-16 rounded-2xl shadow-xl text-center border border-gray-200/50 relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-br from-gray-50/80 via-white to-gray-50/80"></div>
@@ -184,7 +194,7 @@ export default function CTA({ settings }: CTAProps) {
 
     if (config.layout === 'minimal') {
         return (
-            <section className={config.section}>
+            <section id="cta" className={config.section}>
                 <div className={config.container}>
                     <div className="w-16 h-1 mx-auto mb-6 rounded-full" style={{ backgroundColor: colors.primary }}></div>
                     <h2 className={`${config.title} leading-tight tracking-tight`}>{title}</h2>
@@ -196,7 +206,7 @@ export default function CTA({ settings }: CTAProps) {
     }
 
     return (
-        <section className={config.section} style={getBackgroundStyle()}>
+        <section id="cta" className={config.section} style={getBackgroundStyle()}>
             {config.layout === 'gradient' && (
                 <div className="absolute inset-0 bg-black/20"></div>
             )}
