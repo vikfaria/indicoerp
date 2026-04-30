@@ -44,7 +44,11 @@ class AuthenticatedSessionController extends Controller
         $this->logLoginHistory($request);
 
         $user = Auth::user();
-        $isSuperAdmin = $user && $user->type === 'super admin';
+        if ($user && $user->type === 'company') {
+            $user->ensureCompanyAccessRole();
+        }
+
+        $isSuperAdmin = $user && $user->isSuperAdminUser();
 
         if ($isSuperAdmin) {
             try {

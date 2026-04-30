@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Permission\Models\Permission as ModelsPermission;
+use Illuminate\Database\Eloquent\Builder;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
@@ -143,6 +144,79 @@ class User extends Authenticatable implements MustVerifyEmail
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function isSuperAdminUser(): bool
+    {
+        return in_array($this->type, ['superadmin', 'super admin'], true) || $this->hasRole('superadmin');
+    }
+
+    public static function superAdminQuery(): Builder
+    {
+        return static::query()
+            ->whereIn('type', ['superadmin', 'super admin'])
+            ->orWhereHas('roles', function (Builder $query) {
+                $query->where('name', 'superadmin');
+            });
+    }
+
+    public static function firstSuperAdmin(): ?self
+    {
+        return static::superAdminQuery()->orderBy('id')->first();
+    }
+
+    public function ensureCompanyAccessRole(): ?Role
+    {
+        if ($this->type !== 'company') {
+            return null;
+        }
+
+        $companyRole = Role::firstOrCreate(
+            [
+                'name' => 'company',
+                'guard_name' => 'web',
+                'created_by' => $this->id,
+            ],
+            [
+                'label' => 'Company',
+                'editable' => false,
+            ]
+        );
+
+        if ($companyRole->permissions()->count() === 0) {
+            $templateRole = null;
+            $templateAdmin = static::firstSuperAdmin();
+
+            if ($templateAdmin) {
+                $templateRole = Role::where('name', 'company')
+                    ->where('guard_name', 'web')
+                    ->where('created_by', $templateAdmin->id)
+                    ->first();
+            }
+
+            if ($templateRole && $templateRole->permissions()->count() > 0) {
+                $companyRole->syncPermissions($templateRole->permissions);
+            } else {
+                $fallbackPermissions = ModelsPermission::whereIn('name', [
+                    'manage-dashboard',
+                    'manage-plans',
+                    'view-plans',
+                    'manage-profile',
+                    'edit-profile',
+                    'change-password-profile',
+                ])->get();
+
+                if ($fallbackPermissions->isNotEmpty()) {
+                    $companyRole->syncPermissions($fallbackPermissions);
+                }
+            }
+        }
+
+        if (!$this->roles()->where('roles.id', $companyRole->id)->exists()) {
+            $this->syncRoles([$companyRole]);
+        }
+
+        return $companyRole;
     }
 
     public static function CompanySetting($user_id)

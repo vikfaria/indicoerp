@@ -13,7 +13,6 @@ use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Models\EmailTemplate;
-use Spatie\Permission\Models\Role;
 
 class RegisteredUserController extends Controller
 {
@@ -55,7 +54,7 @@ class RegisteredUserController extends Controller
         try {
             $enableEmailVerification = admin_setting('enableEmailVerification');
 
-            $adminUser = User::where('type', 'superadmin')->first();
+            $adminUser = User::firstSuperAdmin();
 
             $user = User::create([
                 'name' => $request->name,
@@ -72,22 +71,7 @@ class RegisteredUserController extends Controller
             try {
                 User::CompanySetting($user->id);
                 User::MakeRole($user->id);
-
-                $companyRole = Role::firstOrCreate(
-                    [
-                        'name' => $user->type,
-                        'guard_name' => 'web',
-                        'created_by' => $user->id,
-                    ],
-                    [
-                        'label' => ucfirst($user->type),
-                        'editable' => false,
-                    ]
-                );
-
-                if (!$user->hasRole($companyRole->name)) {
-                    $user->assignRole($companyRole);
-                }
+                $user->ensureCompanyAccessRole();
             } catch (\Throwable $roleSetupError) {
                 report($roleSetupError);
             }

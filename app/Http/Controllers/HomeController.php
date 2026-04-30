@@ -13,7 +13,7 @@ class HomeController extends Controller
 {
     public function Dashboard(Request $request)
     {
-        if(Auth::user()->type === 'superadmin') {
+        if (Auth::user()->isSuperAdminUser()) {
             return $this->superAdminDashboard();
         }
 

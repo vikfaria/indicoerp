@@ -21,8 +21,8 @@ class PlanController extends Controller
 {
     public function index()
     {
-        if (Auth::user()->can('manage-plans')) {
-            $user = Auth::user();
+        $user = Auth::user();
+        if ($user->can('manage-plans') || $user->hasRole('company') || $user->type === 'company') {
 
             // Super admin sees all plans, company users see only active plans
             $plans = Plan::query()
@@ -108,7 +108,7 @@ class PlanController extends Controller
                 'currentSubscription' => $currentSubscription,
             ]);
         } else {
-            return back()->with('error', __('Permission denied'));
+            return redirect()->route('dashboard')->with('error', __('Permission denied'));
         }
     }
 

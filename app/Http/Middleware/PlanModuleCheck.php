@@ -24,8 +24,12 @@ class PlanModuleCheck
             return $next($request);
         }
 
+        if ($user->type === 'company') {
+            $user->ensureCompanyAccessRole();
+        }
+
         // Skip check for superadmin
-        if ($user->hasRole('superadmin')) {
+        if ($user->isSuperAdminUser()) {
             return $next($request);
         } elseif ($user->hasRole('company')) {
             if (($user->plan_expire_date && now()->gt($user->plan_expire_date)) || ($user->active_plan == 0)) {
