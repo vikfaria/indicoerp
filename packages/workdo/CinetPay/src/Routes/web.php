@@ -18,6 +18,6 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:CinetPay'])->grou
 });
 
 Route::middleware(['web', 'auth'])->prefix('cinetpay')->group(function () {
-    Route::post('/payment', [CinetPayController::class, 'planPayWithCinetPay'])->name('payment.cinetpay.store');
-    Route::get('/payment/status', [CinetPayController::class, 'planGetCinetPayStatus'])->name('payment.cinetpay.status');
+    Route::post('/payment', [CinetPayController::class, 'planPayWithCinetPay'])->name('payment.cinetpay.prefixed.store');
+    Route::get('/payment/status', [CinetPayController::class, 'planGetCinetPayStatus'])->name('payment.cinetpay.prefixed.status');
 });
