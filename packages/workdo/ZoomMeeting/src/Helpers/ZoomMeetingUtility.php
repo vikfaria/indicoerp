@@ -17,28 +17,26 @@ class ZoomMeetingUtility
             'start-zoom-meetings'
         ];
             
-            if ($rolename == 'staff') {
+        if ($rolename == 'staff') {
             $roles_v = Role::where('name', 'staff')->where('id', $role_id)->first();
-                foreach ($permission as $permission_v) {
-                    $permission = Permission::where('name', $permission_v)->first();
-                    if (!empty($permission)) {
-                        if (!$roles_v->hasPermissionTo($permission_v)) {
-                            $roles_v->givePermissionTo($permission);
-                        }
-                    }
-                }
-            }
+            self::syncPermissionsByName($roles_v, $permission);
+        }
 
-            if ($rolename == 'client') {
-                $roles_v = Role::where('name', 'client')->where('id', $role_id)->first();
-                foreach ($permission as $permission_v) {
-                    $permission = Permission::where('name', $permission_v)->first();
-                    if (!empty($permission)) {
-                        if (!$roles_v->hasPermissionTo($permission_v)) {
-                            $roles_v->givePermissionTo($permission);
-                        }
-                    }
-                }
-            }        
+        if ($rolename == 'client') {
+            $roles_v = Role::where('name', 'client')->where('id', $role_id)->first();
+            self::syncPermissionsByName($roles_v, $permission);
+        }
+    }
+
+    private static function syncPermissionsByName(?Role $role, array $permissionNames): void
+    {
+        if (!$role || empty($permissionNames)) {
+            return;
+        }
+
+        $permissions = Permission::whereIn('name', array_values(array_unique($permissionNames)))->get();
+        if ($permissions->isNotEmpty()) {
+            $role->givePermissionTo($permissions);
+        }
     }
 }

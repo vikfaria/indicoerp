@@ -32,25 +32,22 @@ class CalenderUtility extends Model
         ];
 
         if ($role_id == null) {
+            $clientPermissionModels = self::resolvePermissions($client_permissions);
+            $staffPermissionModels = self::resolvePermissions($staff_permissions);
+
             // client
             $roles_c = Role::where('name', 'client')->get();
             foreach ($roles_c as $role) {
-                foreach ($client_permissions as $permission_c) {
-                    $permission = Permission::where('name', $permission_c)->first();
-                    if ($permission && !$role->hasPermissionTo($permission_c)) {
-                        $role->givePermissionTo($permission);
-                    }
+                if ($clientPermissionModels->isNotEmpty()) {
+                    $role->givePermissionTo($clientPermissionModels);
                 }
             }
 
             // staff
             $roles_s = Role::where('name', 'staff')->get();
             foreach ($roles_s as $role) {
-                foreach ($staff_permissions as $permission_s) {
-                    $permission = Permission::where('name', $permission_s)->first();
-                    if ($permission && !$role->hasPermissionTo($permission_s)) {
-                        $role->givePermissionTo($permission);
-                    }
+                if ($staffPermissionModels->isNotEmpty()) {
+                    $role->givePermissionTo($staffPermissionModels);
                 }
             }
         } else {
@@ -58,25 +55,26 @@ class CalenderUtility extends Model
             if ($rolename == 'client') {
                 $roles_c = Role::where('name', 'client')->where('id', $role_id)->first();
                 if ($roles_c) {
-                    foreach ($client_permissions as $permission_c) {
-                        $permission = Permission::where('name', $permission_c)->first();
-                        if ($permission && !$roles_c->hasPermissionTo($permission_c)) {
-                            $roles_c->givePermissionTo($permission);
-                        }
+                    $permissions = self::resolvePermissions($client_permissions);
+                    if ($permissions->isNotEmpty()) {
+                        $roles_c->givePermissionTo($permissions);
                     }
                 }
             } elseif ($rolename == 'staff') {
                 $roles_s = Role::where('name', 'staff')->where('id', $role_id)->first();
                 if ($roles_s) {
-                    foreach ($staff_permissions as $permission_s) {
-                        $permission = Permission::where('name', $permission_s)->first();
-                        if ($permission && !$roles_s->hasPermissionTo($permission_s)) {
-                            $roles_s->givePermissionTo($permission);
-                        }
+                    $permissions = self::resolvePermissions($staff_permissions);
+                    if ($permissions->isNotEmpty()) {
+                        $roles_s->givePermissionTo($permissions);
                     }
                 }
             }
         }
+    }
+
+    private static function resolvePermissions(array $permissionNames)
+    {
+        return Permission::whereIn('name', array_values(array_unique($permissionNames)))->get();
     }
 
     public static function colorCodeData($type)

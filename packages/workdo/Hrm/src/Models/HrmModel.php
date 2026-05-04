@@ -359,14 +359,8 @@ class HrmModel extends Model
             $hrRole->editable = 0;
             $hrRole->created_by = $company_id;
             $hrRole->save();
-
-            foreach ($hrRolePermissions as $permission_v) {
-                $permission = Permission::where('name', $permission_v)->first();
-                if (!empty($permission) && !$hrRole->hasPermissionTo($permission_v)) {
-                    $hrRole->givePermissionTo($permission);
-                }
-            }
         }
+        self::syncPermissionsByName($hrRole, $hrRolePermissions);
 
         // Set default working days (Monday to Friday)
         setSetting('working_days', json_encode([1, 2, 3, 4, 5]), $company_id);
@@ -513,14 +507,19 @@ class HrmModel extends Model
 
         if ($rolename == 'staff') {
             $roles_v = Role::where('name', 'staff')->where('id', $role_id)->first();
-            foreach ($staff_permission as $permission_v) {
-                $permission = Permission::where('name', $permission_v)->first();
-                if (!empty($permission)) {
-                    if (!$roles_v->hasPermissionTo($permission_v)) {
-                        $roles_v->givePermissionTo($permission);
-                    }
-                }
-            }
+            self::syncPermissionsByName($roles_v, $staff_permission);
+        }
+    }
+
+    private static function syncPermissionsByName(?Role $role, array $permissionNames): void
+    {
+        if (!$role || empty($permissionNames)) {
+            return;
+        }
+
+        $permissions = Permission::whereIn('name', array_values(array_unique($permissionNames)))->get();
+        if ($permissions->isNotEmpty()) {
+            $role->givePermissionTo($permissions);
         }
     }
 }

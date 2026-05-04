@@ -72,6 +72,7 @@ class RegisteredUserController extends Controller
                 User::CompanySetting($user->id);
                 User::MakeRole($user->id);
                 $user->ensureCompanyAccessRole();
+                $request->session()->put('company_role_checked', true);
             } catch (\Throwable $roleSetupError) {
                 report($roleSetupError);
             }

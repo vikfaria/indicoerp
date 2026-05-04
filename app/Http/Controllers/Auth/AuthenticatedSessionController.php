@@ -46,6 +46,7 @@ class AuthenticatedSessionController extends Controller
         $user = Auth::user();
         if ($user && $user->type === 'company') {
             $user->ensureCompanyAccessRole();
+            $request->session()->put('company_role_checked', true);
         }
 
         $isSuperAdmin = $user && $user->isSuperAdminUser();

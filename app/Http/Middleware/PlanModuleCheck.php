@@ -24,8 +24,14 @@ class PlanModuleCheck
             return $next($request);
         }
 
-        if ($user->type === 'company') {
-            $user->ensureCompanyAccessRole();
+        if ($user->type === 'company' && !$request->session()->get('company_role_checked')) {
+            try {
+                $user->ensureCompanyAccessRole();
+            } catch (\Throwable $exception) {
+                report($exception);
+            } finally {
+                $request->session()->put('company_role_checked', true);
+            }
         }
 
         // Skip check for superadmin

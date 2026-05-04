@@ -122,14 +122,19 @@ class SalesQuotation extends Model
 
         if ($rolename == 'client') {
             $roles_v = Role::where('name', 'client')->where('id', $role_id)->first();
-            foreach ($client_permission as $permission_v) {
-                $permission = Permission::where('name', $permission_v)->first();
-                if (!empty($permission)) {
-                    if (!$roles_v->hasPermissionTo($permission_v)) {
-                        $roles_v->givePermissionTo($permission);
-                    }
-                }
-            }
+            self::syncPermissionsByName($roles_v, $client_permission);
+        }
+    }
+
+    private static function syncPermissionsByName(?Role $role, array $permissionNames): void
+    {
+        if (!$role || empty($permissionNames)) {
+            return;
+        }
+
+        $permissions = Permission::whereIn('name', array_values(array_unique($permissionNames)))->get();
+        if ($permissions->isNotEmpty()) {
+            $role->givePermissionTo($permissions);
         }
     }
 }
