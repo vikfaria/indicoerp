@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MozPilotValidationCase extends Model
 {
+    protected $table = 'mz_pilot_validation_cases';
+
     protected $fillable = [
         'domain',
         'company_name',

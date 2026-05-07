@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MozPilotCompany extends Model
 {
+    protected $table = 'mz_pilot_companies';
+
     protected $fillable = [
         'company_name',
         'company_nuit',

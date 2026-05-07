@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MozTaxAccountMapping extends Model
 {
+    protected $table = 'mz_tax_account_mappings';
+
     protected $fillable = [
         'vat_output_account_id',
         'vat_input_account_id',
@@ -55,4 +57,3 @@ class MozTaxAccountMapping extends Model
         return $this->belongsTo(ChartOfAccount::class, 'irpc_expense_account_id');
     }
 }
-

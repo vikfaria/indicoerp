@@ -8,6 +8,8 @@ use App\Models\User;
 
 class MozFiscalClosing extends Model
 {
+    protected $table = 'mz_fiscal_closings';
+
     protected $fillable = [
         'period_from',
         'period_to',
@@ -44,4 +46,3 @@ class MozFiscalClosing extends Model
         return $this->belongsTo(User::class, 'reopened_by');
     }
 }
-
