@@ -32,7 +32,7 @@
     "Payment completed successfully! Order #:number": "Pagamento concluído com sucesso!",
     "Configure Stripe payment gateway settings": "Configurar as configurações do gateway de pagamento do Stripe",
     "Copy the ": "Recebido.",
-    "Credit\/Debit Card": "Cartão de crédito\/débito",
+    "Credit/Debit Card": "Cartão de crédito/débito",
     "Enable Stripe": "Ativar o Stripe",
     "Enable or disable Stripe payment gateway": "Ativar ou desativar o gateway de pagamento Stripe",
     "Enter Stripe key": "Digite a tecla Stripe",
@@ -50,5 +50,7 @@
     "Stripe secret is required.": "É necessário segredo.",
     "Stripe secret key for server-side integration": "Chave secreta Stripe para integração do lado do servidor",
     "Stripe settings save successfully.": "Configurações de Stripe salvar com sucesso.",
-    "Use test keys for development and live keys for production": "Utilização de chaves de teste para desenvolvimento e de chaves reais para produção"
+    "Use test keys for development and live keys for production": "Utilização de chaves de teste para desenvolvimento e de chaves reais para produção",
+    "Copy the \"Publishable key\" to the first field above": "Copie a \"Chave publicável\" para o primeiro campo acima",
+    "Reveal and copy the \"Secret key\" to the second field above": "Revele e copie a \"Chave secreta\" para o segundo campo acima"
 }

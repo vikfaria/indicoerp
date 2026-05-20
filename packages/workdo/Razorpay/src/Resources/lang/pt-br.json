@@ -28,7 +28,7 @@
     "Payment completed and booking confirmed successfully!": "Pagamento concluído e reserva confirmada com sucesso!",
     "Payment completed successfully! Order #:number": "Pagamento concluído com sucesso!",
     "Copy the ": "Recebido.",
-    "Credit\/Debit Card": "Cartão de crédito\/débito",
+    "Credit/Debit Card": "Cartão de crédito/débito",
     "Reveal and copy the ": "Revelar e copiar o",
     "Use test keys for development and live keys for production": "Utilização de chaves de teste para desenvolvimento e de chaves reais para produção",
     "Payment completed successfully! Booking #:number": "Pagamento concluído com sucesso!",
@@ -52,5 +52,8 @@
     "Razorpay secret key is required.": "A chave secreta do Razorpay é necessária.",
     "Razorpay settings save successfully.": "Razorpay configurações salvar com sucesso.",
     "Sign in to your Razorpay account or create a new one": "Faça login na sua conta Razorpay ou crie uma nova",
-    "The plan has been activated successfully.": "O plano foi activado com sucesso."
+    "The plan has been activated successfully.": "O plano foi activado com sucesso.",
+    "Copy the \"Key ID\" to the Public Key field above": "Copie o \"ID da chave\" para o campo Chave pública acima",
+    "Redirecting to Razorpay...": "Redirecionando para Razorpay...",
+    "Reveal and copy the \"Key Secret\" to the Secret Key field above": "Revele e copie o \"Segredo da Chave\" para o campo Chave Secreta acima"
 }

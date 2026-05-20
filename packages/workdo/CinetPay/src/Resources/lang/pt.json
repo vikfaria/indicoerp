@@ -73,5 +73,7 @@
     "Transaction ID is required": "Identificação da transacção é necessária",
     "Transaction ID is required for status check": "Identificação da transacção necessária para verificação do estado",
     "Transaction ID must not exceed 100 characters": "O número de identificação da transacção não deve exceder 100 caracteres",
-    "Use test credentials for development and live credentials for production": "Utilização de credenciais de teste para desenvolvimento e de credenciais de funcionamento para produção"
+    "Use test credentials for development and live credentials for production": "Utilização de credenciais de teste para desenvolvimento e de credenciais de funcionamento para produção",
+    "Copy the \"API Key\" to the first field above": "Copie a \"Chave API\" para o primeiro campo acima",
+    "Copy the \"Site ID\" to the second field above": "Copie o \"ID do site\" para o segundo campo acima"
 }

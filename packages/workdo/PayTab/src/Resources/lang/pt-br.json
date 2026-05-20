@@ -32,7 +32,7 @@
     "6.": "- Seis.",
     "Invalid session.": "Sessão inválida.",
     "Order data not found.": "Dados de encomenda não encontrados.",
-    "Credit\/Debit Card": "Cartão de crédito\/débito",
+    "Credit/Debit Card": "Cartão de crédito/débito",
     "Payment completed successfully! Booking #:number": "Pagamento concluído com sucesso!",
     "Invalid status value.": "Valor de estado inválido.",
     "The plan has been activated successfully.": "O plano foi activado com sucesso.",
@@ -68,5 +68,7 @@
     "The payment has been completed successfully! Order #:number": "O pagamento foi concluído com sucesso!",
     "The session is invalid.": "A sessão é inválida.",
     "The user has not been found.": "O utilizador não foi encontrado.",
-    "PayTabs Dashboard": "Painel de controle PayTabs"
+    "PayTabs Dashboard": "Painel de controle PayTabs",
+    "Copy the \\\"Profile ID\\\" to the first field above": "Copie o \\\"ID do perfil\\\" para o primeiro campo acima",
+    "Copy the \\\"Server Key\\\" to the second field above": "Copie a \\\"Chave do Servidor\\\" para o segundo campo acima"
 }

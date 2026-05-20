@@ -134,5 +134,8 @@
     "The payment has failed. Please try again.": "O pagamento falhou. Por favor, tente novamente.",
     "The payment is being processed...": "O pagamento está a ser processado...",
     "The required field is missing: :field": "Falta o campo obrigatório:",
-    "Unknown API error.": "Erro de API desconhecido."
+    "Unknown API error.": "Erro de API desconhecido.",
+    "Copy the \"API Login ID\" to the Merchant Login ID field above": "Copie o \"ID de login da API\" para o campo ID de login do comerciante acima",
+    "Copy the \"Transaction Key\" to the Merchant Transaction Key field above": "Copie a \"Chave de transação\" para o campo Chave de transação do comerciante acima",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production": "Selecione o modo \"Sandbox\" para teste ou o modo \"Live\" para produção"
 }

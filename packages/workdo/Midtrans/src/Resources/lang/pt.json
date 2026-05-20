@@ -63,5 +63,6 @@
     "Payment error": "Erro de pagamento",
     "Payment was not completed.": "O pagamento não foi concluído.",
     "Sign in to your Midtrans account or create a new one": "Faça login na sua conta Midtrans ou crie uma nova",
-    "cURL Error: :error": "Erro:"
+    "cURL Error: :error": "Erro:",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production transactions": "Selecione o modo \"Sandbox\" para testes ou o modo \"Live\" para transações de produção"
 }

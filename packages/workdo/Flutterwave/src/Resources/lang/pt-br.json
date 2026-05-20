@@ -30,7 +30,7 @@
     "Order data not found.": "Dados de encomenda não encontrados.",
     "Payment completed successfully! Order #:number": "Pagamento concluído com sucesso!",
     "Copy the ": "Recebido.",
-    "Credit\/Debit Card": "Cartão de crédito\/débito",
+    "Credit/Debit Card": "Cartão de crédito/débito",
     "Use test keys for development and live keys for production": "Utilização de chaves de teste para desenvolvimento e de chaves reais para produção",
     "Payment completed successfully! Booking #:number": "Pagamento concluído com sucesso!",
     "Invalid status value.": "Valor de estado inválido.",
@@ -61,5 +61,7 @@
     "The laundry service payment has been completed and request created successfully.": "O pagamento do serviço de lavandaria foi concluído e o pedido foi criado com sucesso.",
     "The transaction has been successful.": "A transação foi bem sucedida.",
     "oops, something went wrong, please try again.": "Oops, algo correu mal, por favor tente novamente.",
-    "Flutterwave Dashboard": "Painel de Flutterwave"
+    "Flutterwave Dashboard": "Painel de Flutterwave",
+    "Copy the \"Public Key\" to the first field above": "Copie a \"Chave Pública\" para o primeiro campo acima",
+    "Copy the \"Secret Key\" to the second field above": "Copie a \"Chave Secreta\" para o segundo campo acima"
 }

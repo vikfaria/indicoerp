@@ -80,5 +80,6 @@
     "The Link ID is required.": "É necessário o identificador de ligação.",
     "The Order ID is required.": "É necessário o número de identificação da encomenda.",
     "The response from Cashfree is invalid.": "A resposta da Cashfree é inválida.",
-    "Use production credentials for live transactions": "Utilização de credenciais de produção para transacções em tempo real"
+    "Use production credentials for live transactions": "Utilização de credenciais de produção para transacções em tempo real",
+    "Select \"Sandbox\" mode for testing or \"Production\" mode for live transactions": "Selecione o modo \"Sandbox\" para teste ou o modo \"Produção\" para transações ao vivo"
 }

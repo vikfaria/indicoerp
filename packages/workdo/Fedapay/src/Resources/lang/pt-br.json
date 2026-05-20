@@ -6,7 +6,7 @@
     "Sandbox": "Caixa de areia",
     "Save Changes": "Salvar alterações",
     "Secret Key": "Chave secreta",
-    "N\/A": "Não",
+    "N/A": "Não",
     "Select": "Selecionar",
     "Your cart is empty": "O seu carrinho está vazio.",
     "Basic Package": "Pacote de base",
@@ -79,5 +79,7 @@
     "Transaction creation failed": "Falha na criação de transacção",
     "Transaction verification failed.": "Verificação da transacção falhou.",
     "Your FedaPay public key": "A sua chave pública FedaPay",
-    "Your FedaPay secret key": "A sua chave secreta FedaPay"
+    "Your FedaPay secret key": "A sua chave secreta FedaPay",
+    "Fedapay Settings": "Configurações do Fedapay",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production": "Selecione o modo \"Sandbox\" para teste ou o modo \"Live\" para produção"
 }

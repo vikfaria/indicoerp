@@ -251,8 +251,8 @@ export default function Index() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{label: 'Accounting', url:route('account.index')},{label: 'Customers'}]}
-            pageTitle="Manage Customers"
+            breadcrumbs={[{label: t('Accounting'), url:route('account.index')},{label: t('Customers')}]}
+            pageTitle={t('Manage Customers')}
             pageActions={
                 <div className="flex gap-2">
                       {googleDriveButtons.map((button) => (
@@ -281,7 +281,7 @@ export default function Index() {
                 </div>
             }
         >
-            <Head title="Customers" />
+            <Head title={t('Customers')} />
 
             <Card className="shadow-sm">
                 <CardContent className="p-6 border-b bg-gray-50/50">

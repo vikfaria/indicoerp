@@ -213,5 +213,6 @@
     "The renewal has been deleted.": "A renovação foi cancelada.",
     "This prefix will be used for generating contract numbers (e.g., CON0001)": "Este prefixo será utilizado para gerar números de contratos (por exemplo, CON0001)",
     "Write your note...": "Escreve a tua nota...",
-    "per page": "por página"
+    "per page": "por página",
+    "Create Contract": "Criar contrato"
 }

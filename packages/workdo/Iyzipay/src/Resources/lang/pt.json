@@ -68,5 +68,6 @@
     "Navigate to Settings > API & Webhook": "Navegue para Configurações > API & Webhook",
     "Pay securely with Iyzipay": "Pague com segurança com o Iyzipay",
     "Price must be greater than 0": "O preço deve ser superior a 0",
-    "Sign in to your Iyzipay account or create a new one": "Faça login na sua conta Iyzipay ou crie uma nova"
+    "Sign in to your Iyzipay account or create a new one": "Faça login na sua conta Iyzipay ou crie uma nova",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production": "Selecione o modo \"Sandbox\" para teste ou o modo \"Live\" para produção"
 }

@@ -92,5 +92,7 @@
     "Your booking payment has failed!": "O pagamento da reserva falhou!",
     "Your event ticket payment has failed!": "O pagamento do seu bilhete para o evento falhou!",
     "Your laundry service payment has failed!": "O pagamento do serviço de lavandaria falhou!",
-    "Your parking slot payment has failed!": "O pagamento do estacionamento falhou!"
+    "Your parking slot payment has failed!": "O pagamento do estacionamento falhou!",
+    "Navigate to \"Developer API\" from the left menu": "Navegue até \"API do desenvolvedor\" no menu esquerdo",
+    "Use \"Sandbox\" mode for testing with test credentials or \"Live\" mode for production": "Use o modo \"Sandbox\" para testes com credenciais de teste ou o modo \"Live\" para produção"
 }

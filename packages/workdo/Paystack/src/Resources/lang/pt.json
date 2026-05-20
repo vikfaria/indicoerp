@@ -26,7 +26,7 @@
     "Payment completed and appointment created successfully!": "Pagamento concluído e consulta criada com sucesso!",
     "Payment completed and booking confirmed successfully!": "Pagamento concluído e reserva confirmada com sucesso!",
     "Payment completed successfully! Order #:number": "Pagamento concluído com sucesso!",
-    "Credit\/Debit Card": "Cartão de crédito\/débito",
+    "Credit/Debit Card": "Cartão de crédito/débito",
     "Use test keys for development and live keys for production": "Utilização de chaves de teste para desenvolvimento e de chaves reais para produção",
     "Payment completed successfully! Booking #:number": "Pagamento concluído com sucesso!",
     "Invalid status value.": "Valor de estado inválido.",
@@ -50,5 +50,6 @@
     "Paystack secret key is required.": "É necessária a chave secreta da pilha de pagamentos.",
     "Paystack settings save successfully.": "Ajustes de Paystack salvar com sucesso.",
     "Sign in to your Paystack account or create a new one": "Faça login na sua conta Paystack ou crie uma nova",
-    "Paystack Dashboard": "Painel de Painéis de Pagamentos"
+    "Paystack Dashboard": "Painel de Painéis de Pagamentos",
+    "Redirecting to Paystack...": "Redirecionando para a pilha de pagamento..."
 }

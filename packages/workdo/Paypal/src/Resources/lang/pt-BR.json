@@ -56,5 +56,6 @@
     "Select \\": "Selecionar",
     "Sign in to your PayPal account or create a new one": "Faça login na sua conta PayPal ou crie uma nova",
     "Use live credentials for production transactions": "Utilização de credenciais em tempo real para transacções de produção",
-    "Use sandbox credentials for development and testing": "Utilize credenciais sandbox para desenvolvimento e testes"
+    "Use sandbox credentials for development and testing": "Utilize credenciais sandbox para desenvolvimento e testes",
+    "Select \\\"Sandbox\\\" mode for testing or \\\"Live\\\" mode for production": "Selecione o modo \\\"Sandbox\\\" para teste ou o modo \\\"Live\\\" para produção"
 }

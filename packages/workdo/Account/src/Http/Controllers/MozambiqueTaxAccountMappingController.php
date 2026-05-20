@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response;
 use Workdo\Account\Models\ChartOfAccount;
@@ -19,18 +20,21 @@ class MozambiqueTaxAccountMappingController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
-        $mappings = MozTaxAccountMapping::query()
-            ->where('created_by', creatorId())
-            ->with([
-                'vatOutputAccount:id,account_code,account_name',
-                'vatInputAccount:id,account_code,account_name',
-                'withholdingPayableAccount:id,account_code,account_name',
-                'withholdingReceivableAccount:id,account_code,account_name',
-                'irpcExpenseAccount:id,account_code,account_name',
-            ])
-            ->latest('effective_from')
-            ->latest('id')
-            ->get();
+        $mappings = collect();
+        if (Schema::hasTable('mz_tax_account_mappings')) {
+            $mappings = MozTaxAccountMapping::query()
+                ->where('created_by', creatorId())
+                ->with([
+                    'vatOutputAccount:id,account_code,account_name',
+                    'vatInputAccount:id,account_code,account_name',
+                    'withholdingPayableAccount:id,account_code,account_name',
+                    'withholdingReceivableAccount:id,account_code,account_name',
+                    'irpcExpenseAccount:id,account_code,account_name',
+                ])
+                ->latest('effective_from')
+                ->latest('id')
+                ->get();
+        }
 
         $chartAccounts = ChartOfAccount::query()
             ->where('created_by', creatorId())
@@ -48,6 +52,9 @@ class MozambiqueTaxAccountMappingController extends Controller
     {
         if (!Auth::user()->can('edit-chart-of-accounts')) {
             return back()->with('error', __('Permission denied'));
+        }
+        if (!Schema::hasTable('mz_tax_account_mappings')) {
+            return back()->with('error', __('Tax mapping table not found. Run database migrations first.'));
         }
 
         $request->merge([
@@ -97,6 +104,9 @@ class MozambiqueTaxAccountMappingController extends Controller
     {
         if (!Auth::user()->can('delete-chart-of-accounts')) {
             return back()->with('error', __('Permission denied'));
+        }
+        if (!Schema::hasTable('mz_tax_account_mappings')) {
+            return back()->with('error', __('Tax mapping table not found. Run database migrations first.'));
         }
 
         if ((int) $mapping->created_by !== (int) creatorId()) {

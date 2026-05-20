@@ -45,5 +45,6 @@
     "Tap secret key for server-side integration": "Toque na chave secreta para integração do lado do servidor",
     "Tap secret key is required.": "É necessário tocar a chave secreta.",
     "Tap settings save successfully.": "Toque em \"Configurações salvam com sucesso\".",
-    "The payment has been completed successfully.": "O pagamento foi concluído com sucesso."
+    "The payment has been completed successfully.": "O pagamento foi concluído com sucesso.",
+    "Copy the \\\"Secret key\\\" to the field above": "Copie a \\\"Chave secreta\\\" para o campo acima"
 }

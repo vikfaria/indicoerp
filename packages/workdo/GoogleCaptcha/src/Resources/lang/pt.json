@@ -39,5 +39,6 @@
     "reCAPTCHA v2": "Recaptcha v2",
     "reCAPTCHA v3": "Recaptcha v3",
     "reCAPTCHA version is required.": "A versão reCAPTCHA é necessária.",
-    "reCAPTCHA version must be either v2 or v3.": "A versão do reCAPTCHA deve ser v2 ou v3."
+    "reCAPTCHA version must be either v2 or v3.": "A versão do reCAPTCHA deve ser v2 ou v3.",
+    "Click \"+\" to create a new site": "Clique em \"+\" para criar um novo site"
 }

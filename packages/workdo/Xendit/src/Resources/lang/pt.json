@@ -58,5 +58,7 @@
     "Xendit public key for client-side integration": "Xendit chave pública para integração do lado do cliente",
     "Xendit secret token for server-side integration": "Xendit token secreto para integração do lado do servidor",
     "Xendit settings save successfully.": "Xendit configurações salvar com sucesso.",
-    "Xendit token is required.": "O token Xendit é necessário."
+    "Xendit token is required.": "O token Xendit é necessário.",
+    "Copy the \"Public Key\" to the first field above": "Copie a \"Chave Pública\" para o primeiro campo acima",
+    "Copy the \"Secret Key\" to the second field above": "Copie a \"Chave Secreta\" para o segundo campo acima"
 }

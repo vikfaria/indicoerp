@@ -19,12 +19,45 @@ class TranslationController extends Controller
         return collect($languagesData)->pluck('code')->toArray();
     }
 
+    private function resolveLocale(?string $locale): string
+    {
+        $allowedLanguages = $this->getAllowedLanguages();
+        $localeMap = [];
+
+        foreach ($allowedLanguages as $allowedLocale) {
+            $localeMap[strtolower($allowedLocale)] = $allowedLocale;
+        }
+
+        $normalizedInput = strtolower((string) $locale);
+
+        return $localeMap[$normalizedInput] ?? 'en';
+    }
+
+    private function normalizeTranslationKeys(array $translations): array
+    {
+        $normalized = $translations;
+
+        foreach ($translations as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            $trimmedKey = trim($key);
+            if ($trimmedKey === '' || $trimmedKey === $key) {
+                continue;
+            }
+
+            if (!array_key_exists($trimmedKey, $normalized)) {
+                $normalized[$trimmedKey] = $value;
+            }
+        }
+
+        return $normalized;
+    }
+
     public function getTranslations($locale)
     {
-        $locale = strtolower($locale);
-        if (!in_array($locale, array_map('strtolower', $this->getAllowedLanguages()))) {
-            $locale = 'en';
-        }
+        $locale = $this->resolveLocale($locale);
 
         $path = resource_path("lang/{$locale}.json");
 
@@ -36,14 +69,14 @@ class TranslationController extends Controller
         // $layoutDirection = in_array($locale, ['ar', 'he']) ? 'rtl' : 'ltr';
         $layoutDirection = in_array($locale, ['ar', 'he']) ? 'rtl' : 'ltr';
 
-        $translations = json_decode(File::get($path), true) ?? [];
+        $translations = $this->normalizeTranslationKeys(json_decode(File::get($path), true) ?? []);
 
         // Merge enabled package translations
         $enabledPackages = AddOn::where('is_enable', true)->pluck('module');
         foreach ($enabledPackages as $packageName) {
             $packageLangFile = base_path("packages/workdo/{$packageName}/src/Resources/lang/{$locale}.json");
             if (File::exists($packageLangFile)) {
-                $packageTranslations = json_decode(File::get($packageLangFile), true) ?? [];
+                $packageTranslations = $this->normalizeTranslationKeys(json_decode(File::get($packageLangFile), true) ?? []);
                 $translations = array_merge($translations, $packageTranslations);
             }
         }
@@ -64,14 +97,10 @@ class TranslationController extends Controller
     public function manage(Request $request)
     {
         if (auth()->user()->can('manage-languages')) {
-            $currentLanguage = $request->get('lang', 'en');
+            $currentLanguage = $this->resolveLocale($request->get('lang', 'en'));
             $search = $request->get('search', '');
             $page = $request->get('page', 1);
             $perPage = 50;
-
-            if (!in_array($currentLanguage, $this->getAllowedLanguages())) {
-                $currentLanguage = 'en';
-            }
 
             // Load current language translations
             $path = resource_path("lang/{$currentLanguage}.json");
@@ -146,7 +175,8 @@ class TranslationController extends Controller
     public function updateTranslations(Request $request, $locale)
     {
         if (auth()->user()->can('manage-languages')) {
-            if (!in_array($locale, $this->getAllowedLanguages())) {
+            $locale = $this->resolveLocale($locale);
+            if ($locale === 'en' && strtolower((string) $request->route('locale')) !== 'en') {
                 return response()->json(['error' => __('Invalid language')], 400);
             }
 
@@ -182,7 +212,8 @@ class TranslationController extends Controller
             $page = $request->get('page', 1);
             $perPage = 50;
 
-            if (!in_array($locale, $this->getAllowedLanguages())) {
+            $locale = $this->resolveLocale($locale);
+            if ($locale === 'en' && strtolower((string) $request->route('locale')) !== 'en') {
                 return response()->json(['error' => __('Invalid language')], 400);
             }
 
@@ -199,7 +230,7 @@ class TranslationController extends Controller
                 }
             }
 
-            $translations = json_decode(File::get($packageLangFile), true) ?? [];
+            $translations = $this->normalizeTranslationKeys(json_decode(File::get($packageLangFile), true) ?? []);
 
             // Filter translations based on search
             $filteredTranslations = $translations;
@@ -238,7 +269,8 @@ class TranslationController extends Controller
     public function updatePackageTranslations(Request $request, $locale, $packageName)
     {
         if (auth()->user()->can('manage-languages')) {
-            if (!in_array($locale, $this->getAllowedLanguages())) {
+            $locale = $this->resolveLocale($locale);
+            if ($locale === 'en' && strtolower((string) $request->route('locale')) !== 'en') {
                 return response()->json(['error' => __('Invalid language')], 400);
             }
 
@@ -418,7 +450,11 @@ class TranslationController extends Controller
             'lang' => 'required|string'
         ]);
 
-        $locale = strtolower($request->input('lang'));
+        $requestedLocale = $request->input('lang');
+        $locale = $this->resolveLocale($requestedLocale);
+        if ($locale === 'en' && strtolower($requestedLocale) !== 'en') {
+            return response()->json(['error' => __('Invalid language')], 400);
+        }
         
         if (config('app.is_demo')) {
             $cookie = Cookie::make('language', $locale, 60 * 24 * 30); // 1 month

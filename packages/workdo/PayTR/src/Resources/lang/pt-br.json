@@ -82,5 +82,6 @@
     "Room is no longer available for the selected dates.": "Não há mais quartos disponíveis para as datas selecionadas.",
     "Sign in to your PayTR merchant account": "Faça login na sua conta de comerciante PayTR",
     "The order has not been found.": "A ordem não foi encontrada.",
-    "The payment has failed.": "O pagamento falhou."
+    "The payment has failed.": "O pagamento falhou.",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production": "Selecione o modo \"Sandbox\" para teste ou o modo \"Live\" para produção"
 }

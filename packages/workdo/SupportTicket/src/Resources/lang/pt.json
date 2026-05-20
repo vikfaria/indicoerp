@@ -471,5 +471,8 @@
     "Write your reply here...": "Escreva a sua resposta aqui...",
     "You do not have permission to view support ticket data. Please contact your administrator.": "Não tem permissão para ver os dados dos tickets de suporte. Por favor contacte o seu administrador.",
     "resolution rate": "taxa de resolução",
-    "success rate": "taxa de sucesso"
+    "success rate": "taxa de sucesso",
+    "Preview: ": "Visualização:",
+    "Support Dashboard": "Painel de suporte",
+    "Ticket is closed and cannot send reply.": "O ticket está fechado e não pode enviar resposta."
 }

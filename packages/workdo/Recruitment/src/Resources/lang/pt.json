@@ -333,7 +333,7 @@
     "Need Help?": "Precisas de ajuda?",
     "Salary Range": "Faixa de salários",
     "Experience (Years)": "Experiência (anos)",
-    "Resume\/CV": "Currículo\/CV",
+    "Resume/CV": "Currículo/CV",
     "Employment Type": "Tipo de emprego",
     "No Data": "Nenhum Dados",
     "Enter Requirements": "Insira Requisitos",
@@ -785,7 +785,7 @@
     "Onboarding Checklist Details": "Detalhes da lista de verificação de integração",
     "Onboarding Progress": "Progresso de integração",
     "Onboarding Tasks": "Tarefas de integração",
-    "Only candidates with Strong Hire\/Hire recommendations are shown.": "Apenas são apresentados candidatos com recomendações de contratação\/contratação fortes.",
+    "Only candidates with Strong Hire/Hire recommendations are shown.": "Apenas são apresentados candidatos com recomendações de contratação/contratação fortes.",
     "Only qualified candidates are shown.": "Só são apresentados candidatos qualificados.",
     "Our Mission is required": "A nossa missão é necessária .",
     "Overall": "Em geral",
@@ -972,5 +972,11 @@
     "Offer declined successfully.": "Oferta recusada com sucesso.",
     "Offer not found": "Ofertas não encontradas",
     "Recruitment page not found": "Não foi encontrada página de recrutamento",
-    "Select Scheduled Time": "Escolha a hora programada"
+    "Select Scheduled Time": "Escolha a hora programada",
+    "100": "100",
+    "Create branch here. ": "Crie uma filial aqui.",
+    "Create candidate here. ": "Crie candidato aqui.",
+    "Create department here. ": "Crie um departamento aqui.",
+    "Create user here. ": "Crie um usuário aqui.",
+    "Failed to generate QR code": "Falha ao gerar o código QR"
 }

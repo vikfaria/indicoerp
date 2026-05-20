@@ -55,5 +55,7 @@
     "YooKassa secret key is required.": "A chave secreta do YooKassa é necessária.",
     "YooKassa settings save successfully.": "YooKassa configurações salvar com sucesso.",
     "YooKassa shop ID for payment processing": "Identificação da loja YooKassa para processamento de pagamentos",
-    "YooKassa shop ID is required.": "É necessário um documento de identidade da loja YooKassa."
+    "YooKassa shop ID is required.": "É necessário um documento de identidade da loja YooKassa.",
+    "Enter YooKassa Secret Key": "Insira a chave secreta YooKassa",
+    "Enter YooKassa Shop ID": "Insira o ID da loja YooKassa"
 }

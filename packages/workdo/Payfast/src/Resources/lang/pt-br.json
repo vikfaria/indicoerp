@@ -67,5 +67,6 @@
     "Sign in to your Payfast account or create a new one": "Faça login na sua conta Payfast ou crie uma nova",
     "The Transaction was successful, but something went wrong.": "A transação foi bem sucedida, mas algo correu mal.",
     "Your Payfast merchant ID": "A sua identificação de comerciante Payfast",
-    "Your Payfast merchant key": "A sua chave de pagamento"
+    "Your Payfast merchant key": "A sua chave de pagamento",
+    "Select \"Sandbox\" mode for testing or \"Live\" mode for production": "Selecione o modo \"Sandbox\" para teste ou o modo \"Live\" para produção"
 }
