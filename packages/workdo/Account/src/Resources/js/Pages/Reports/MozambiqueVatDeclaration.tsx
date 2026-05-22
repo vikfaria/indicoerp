@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileCode, FileText } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/utils/helpers';
 import NoRecordsFound from '@/components/no-records-found';
 import axios from 'axios';
@@ -65,6 +65,15 @@ export default function MozambiqueVatDeclaration({ financialYear }: MozambiqueVa
                             <Download className="h-4 w-4" />
                             {t('Export CSV')}
                         </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => window.open(route('account.reports.mozambique-saft.export') + `?from_date=${fromDate}&to_date=${toDate}`, '_blank')}
+                        >
+                            <FileCode className="h-4 w-4" />
+                            {t('Export SAF-T XML')}
+                        </Button>
                     </div>
                 </div>
             </CardContent>
@@ -99,6 +108,10 @@ export default function MozambiqueVatDeclaration({ financialYear }: MozambiqueVa
                                         <td className="px-4 py-3 text-right">{formatCurrency(data.totals.sales_vat)}</td>
                                     </tr>
                                     <tr className="border-t">
+                                        <td className="px-4 py-3">{t('POS VAT')}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(data.totals.pos_vat || 0)}</td>
+                                    </tr>
+                                    <tr className="border-t">
                                         <td className="px-4 py-3">{t('Purchase VAT')}</td>
                                         <td className="px-4 py-3 text-right">{formatCurrency(data.totals.purchase_vat)}</td>
                                     </tr>
@@ -122,6 +135,7 @@ export default function MozambiqueVatDeclaration({ financialYear }: MozambiqueVa
                                         <tr className="border-b bg-gray-50">
                                             <th className="px-3 py-2 text-left">{t('Period')}</th>
                                             <th className="px-3 py-2 text-right">{t('Sales VAT')}</th>
+                                            <th className="px-3 py-2 text-right">{t('POS VAT')}</th>
                                             <th className="px-3 py-2 text-right">{t('Purchase VAT')}</th>
                                             <th className="px-3 py-2 text-right">{t('Credit Notes VAT')}</th>
                                             <th className="px-3 py-2 text-right">{t('Debit Notes VAT')}</th>
@@ -135,6 +149,7 @@ export default function MozambiqueVatDeclaration({ financialYear }: MozambiqueVa
                                             <tr key={row.period} className="border-b">
                                                 <td className="px-3 py-2">{row.period}</td>
                                                 <td className="px-3 py-2 text-right">{formatCurrency(row.sales_vat)}</td>
+                                                <td className="px-3 py-2 text-right">{formatCurrency(row.pos_vat || 0)}</td>
                                                 <td className="px-3 py-2 text-right">{formatCurrency(row.purchase_vat)}</td>
                                                 <td className="px-3 py-2 text-right">{formatCurrency(row.credit_notes_vat)}</td>
                                                 <td className="px-3 py-2 text-right">{formatCurrency(row.debit_notes_vat)}</td>

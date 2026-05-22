@@ -2,12 +2,14 @@
 
 namespace Workdo\Pos\Http\Controllers;
 
+use App\Services\FiscalDocumentComplianceService;
 use App\Models\User;
 use App\Models\Warehouse;
 use Workdo\ProductService\Models\WarehouseStock;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Workdo\Pos\Events\CreatePos;
@@ -22,6 +24,10 @@ use Workdo\ProductService\Models\ProductServiceTax;
 
 class PosController extends Controller
 {
+    public function __construct(private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService)
+    {
+    }
+
     private function canAccessSale(Pos $sale): bool
     {
         if ($sale->created_by != creatorId()) {
@@ -258,6 +264,75 @@ class PosController extends Controller
         }else{
             return redirect()->route('pos.index')->with('error', __('Permission denied'));
         }
+    }
+
+    public function updateFiscalStatus(Request $request, Pos $sale)
+    {
+        if (!Auth::user()->can('manage-pos-orders')) {
+            return redirect()->route('pos.orders')->with('error', __('Permission denied'));
+        }
+
+        if (!$this->canAccessSale($sale)) {
+            return redirect()->route('pos.orders')->with('error', __('Permission denied'));
+        }
+
+        if (!Schema::hasColumn('pos', 'fiscal_submission_status')) {
+            return back()->with('error', __('POS fiscal columns not found. Run database migrations first.'));
+        }
+
+        $validated = $request->validate([
+            'status' => 'required|string|in:pending,submitted,validated,rejected,not_required',
+            'reference' => 'nullable|string|max:120',
+            'message' => 'nullable|string|max:255',
+        ]);
+
+        try {
+            $this->fiscalDocumentComplianceService->updateSubmissionStatus(
+                $sale,
+                $validated['status'],
+                $validated['reference'] ?? null,
+                $validated['message'] ?? null
+            );
+        } catch (ValidationException $exception) {
+            return back()->withErrors($exception->errors());
+        }
+
+        return back()->with('success', __('Fiscal submission status updated successfully.'));
+    }
+
+    public function cancelFiscal(Request $request, Pos $sale)
+    {
+        if (!Auth::user()->can('manage-pos-orders')) {
+            return redirect()->route('pos.orders')->with('error', __('Permission denied'));
+        }
+
+        if (!$this->canAccessSale($sale)) {
+            return redirect()->route('pos.orders')->with('error', __('Permission denied'));
+        }
+
+        if (!Schema::hasColumn('pos', 'is_cancelled')) {
+            return back()->with('error', __('POS fiscal columns not found. Run database migrations first.'));
+        }
+
+        $validated = $request->validate([
+            'reason' => 'required|string|min:5|max:1000',
+            'cancellation_reference' => 'nullable|string|max:120',
+            'rectification_reference' => 'nullable|string|max:120',
+        ]);
+
+        try {
+            $this->fiscalDocumentComplianceService->cancelDocument(
+                $sale,
+                $validated['reason'],
+                $validated['cancellation_reference'] ?? null,
+                $validated['rectification_reference'] ?? null,
+                Auth::id()
+            );
+        } catch (ValidationException $exception) {
+            return back()->withErrors($exception->errors());
+        }
+
+        return back()->with('success', __('Document cancelled successfully.'));
     }
 
     public function show(Pos $sale)

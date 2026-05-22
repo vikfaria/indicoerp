@@ -78,7 +78,7 @@ export default function SupportTicketLayout({ children, title = "Support Ticket"
         ? (brandSettings.favicon.startsWith('http') ? brandSettings.favicon : getImagePath(brandSettings.favicon))
         : getImagePath('packages/workdo/SupportTicket/src/Resources/assets/images/favicon.png');
     const siteTitle = brandSettings?.titleText || 'Support Ticket System';
-    const footerText = brandSettings?.footerText || `© ${new Date().getFullYear()} WorkDo Support System. All rights reserved.`;
+    const footerText = brandSettings?.footerText || t('© {{year}} WorkDo Support System. All rights reserved.', { year: new Date().getFullYear() });
 
     const navigationItems = [
         { name: t('Create Ticket'), href: route('support-ticket.index', [slug]), icon: Ticket },

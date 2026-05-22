@@ -1,7 +1,9 @@
 import React from 'react';
 import { usePage } from '@inertiajs/react';
+import { useTranslation } from 'react-i18next';
 
 export default function FrontendFooter() {
+    const { t } = useTranslation();
     const { props } = usePage();
     const settings = props.settings as any;
     
@@ -10,7 +12,7 @@ export default function FrontendFooter() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="text-center">
                     <p className="text-gray-400 text-sm">
-                        {settings?.footer?.footer_text || `© ${new Date().getFullYear()} WorkDo. All rights reserved.`}
+                        {settings?.footer?.footer_text || t('© {{year}} WorkDo. All rights reserved.', { year: new Date().getFullYear() })}
                     </p>
                 </div>
             </div>

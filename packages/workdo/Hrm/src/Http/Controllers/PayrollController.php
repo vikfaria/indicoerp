@@ -3,12 +3,17 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Services\MozambiquePayrollTaxService;
+use App\Models\MozInssRate;
+use App\Models\MozIrpsBracket;
+use App\Models\MozIrpsTable;
+use App\Models\MozMinimumWage;
 use Workdo\Hrm\Models\Payroll;
 use Workdo\Hrm\Http\Requests\StorePayrollRequest;
 use Workdo\Hrm\Http\Requests\UpdatePayrollRequest;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Workdo\Hrm\Models\Allowance;
 use Workdo\Hrm\Models\AllowanceType;
@@ -187,6 +192,12 @@ class PayrollController extends Controller
 
                 // Get all employees
                 $employees = Employee::with('user')->where('created_by', creatorId())->get();
+                $legalSetupCheck = $this->validateMozambiquePayrollLegalSetup($payroll, $employees);
+                if (!$legalSetupCheck['valid']) {
+                    $payroll->update(['status' => 'draft']);
+                    return redirect()->back()->with('error', $legalSetupCheck['message']);
+                }
+
                 $newEntriesCount = 0;
 
                 foreach ($employees as $employee) {
@@ -240,6 +251,123 @@ class PayrollController extends Controller
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function validateMozambiquePayrollLegalSetup(Payroll $payroll, $employees): array
+    {
+        $requiredTables = ['mz_irps_tables', 'mz_irps_brackets', 'mz_inss_rates', 'mz_minimum_wages'];
+        $missingTables = array_values(array_filter(
+            $requiredTables,
+            static fn(string $table): bool => !Schema::hasTable($table)
+        ));
+
+        if ($missingTables !== []) {
+            return [
+                'valid' => false,
+                'message' => __('Payroll compliance tables are missing: :tables. Run migrations before processing payroll.', [
+                    'tables' => implode(', ', $missingTables),
+                ]),
+            ];
+        }
+
+        $companyId = creatorId();
+        $referenceDate = $payroll->pay_date ?: $payroll->pay_period_end ?: now()->toDateString();
+        $effectiveDate = \Illuminate\Support\Carbon::parse((string) $referenceDate)->toDateString();
+
+        $resolveActiveDateFilter = static function ($query) use ($effectiveDate): void {
+            $query
+                ->whereDate('effective_from', '<=', $effectiveDate)
+                ->where(function ($dateQuery) use ($effectiveDate): void {
+                    $dateQuery->whereNull('effective_to')->orWhereDate('effective_to', '>=', $effectiveDate);
+                });
+        };
+
+        $activeIrpsTable = MozIrpsTable::query()
+            ->where(function ($query) use ($companyId): void {
+                $query->where('created_by', $companyId)->orWhereNull('created_by');
+            })
+            ->where('is_active', true)
+            ->where($resolveActiveDateFilter)
+            ->orderByRaw('CASE WHEN created_by IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('effective_from')
+            ->first();
+
+        $issues = [];
+
+        if (!$activeIrpsTable) {
+            $issues[] = __('No active IRPS table found for date :date.', ['date' => $effectiveDate]);
+        } else {
+            $hasBrackets = MozIrpsBracket::query()
+                ->where('irps_table_id', $activeIrpsTable->id)
+                ->exists();
+
+            if (!$hasBrackets) {
+                $issues[] = __('Active IRPS table ":name" has no brackets configured.', ['name' => $activeIrpsTable->name]);
+            }
+        }
+
+        $hasActiveInss = MozInssRate::query()
+            ->where(function ($query) use ($companyId): void {
+                $query->where('created_by', $companyId)->orWhereNull('created_by');
+            })
+            ->where('is_active', true)
+            ->where($resolveActiveDateFilter)
+            ->exists();
+
+        if (!$hasActiveInss) {
+            $issues[] = __('No active INSS rate found for date :date.', ['date' => $effectiveDate]);
+        }
+
+        $minimumWages = MozMinimumWage::query()
+            ->where(function ($query) use ($companyId): void {
+                $query->where('created_by', $companyId)->orWhereNull('created_by');
+            })
+            ->where('is_active', true)
+            ->where($resolveActiveDateFilter)
+            ->get();
+
+        if ($minimumWages->isEmpty()) {
+            $issues[] = __('No active minimum wage setup found for date :date.', ['date' => $effectiveDate]);
+        } else {
+            $configuredSectors = $minimumWages
+                ->pluck('sector_code')
+                ->filter()
+                ->map(static fn($value): string => strtoupper(trim((string) $value)))
+                ->unique()
+                ->values();
+
+            $hasGeneralSector = $configuredSectors->contains('GENERAL');
+
+            if (!$hasGeneralSector) {
+                $employeeSectors = collect($employees)
+                    ->pluck('employment_type')
+                    ->map(static fn($value): string => strtoupper(trim((string) $value)))
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                $missingSectors = $employeeSectors
+                    ->filter(static fn(string $sector): bool => !$configuredSectors->contains($sector))
+                    ->values();
+
+                if ($missingSectors->isNotEmpty()) {
+                    $issues[] = __('Minimum wage setup missing for sectors: :sectors', [
+                        'sectors' => $missingSectors->implode(', '),
+                    ]);
+                }
+            }
+        }
+
+        if ($issues !== []) {
+            return [
+                'valid' => false,
+                'message' => __('Payroll legal setup is incomplete. :details', [
+                    'details' => implode(' ', $issues),
+                ]),
+            ];
+        }
+
+        return ['valid' => true, 'message' => ''];
     }
 
     private function processEmployeePayroll($payroll, $employee, $workingDaysCount, $startDate, $endDate)

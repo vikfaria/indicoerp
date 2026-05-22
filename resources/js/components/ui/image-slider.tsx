@@ -3,6 +3,7 @@ import { Button } from './button';
 import { ChevronLeft, ChevronRight, X, ZoomIn, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getImagePath } from '@/utils/helpers';
+import { useTranslation } from 'react-i18next';
 
 interface ImageSliderProps {
   images: string[];
@@ -33,6 +34,7 @@ export function ImageSlider({
   showZoom = false,
   showDownload = false
 }: ImageSliderProps) {
+  const { t } = useTranslation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
@@ -49,7 +51,7 @@ export function ImageSlider({
   if (!processedImages.length) {
     return (
       <div className={cn("flex items-center justify-center bg-muted rounded-lg h-64 w-full", className)}>
-        <p className="text-muted-foreground text-sm">No images available</p>
+        <p className="text-muted-foreground text-sm">{t('No images available')}</p>
       </div>
     );
   }

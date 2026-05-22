@@ -144,7 +144,7 @@ export default function Layout({ children, title = "Support Ticket", brandSettin
                     <div className="fixed right-4 bottom-4 md:right-8 md:bottom-8 z-10">
                         <Button
                             className="bg-teal-600 hover:bg-teal-700 text-white rounded-full w-14 h-14 p-0 shadow-lg hover:scale-110 transition-all duration-300"
-                            aria-label="Get Help"
+                            aria-label={t('Get Help')}
                         >
                             <Headphones className="h-6 w-6" />
                         </Button>
@@ -152,7 +152,7 @@ export default function Layout({ children, title = "Support Ticket", brandSettin
 
                     {/* Footer */}
                     <footer className="mt-8 md:mt-12 text-center text-gray-600 text-sm">
-                        <p>{t(`© ${new Date().getFullYear()} WorkDo Support System. All rights reserved.`)}</p>
+                        <p>{t('© {{year}} WorkDo Support System. All rights reserved.', { year: new Date().getFullYear() })}</p>
                         <div className="mt-2 flex flex-wrap justify-center space-x-4">
                             <a href="#" className="hover:text-teal-600 transition-colors duration-200">{t('Privacy Policy')}</a>
                             <a href="#" className="hover:text-teal-600 transition-colors duration-200">{t('Terms of Service')}</a>

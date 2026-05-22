@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import emojiData from "unicode-emoji-json"; // npm install unicode-emoji-json
+import { useTranslation } from "react-i18next";
 
 interface EmojiPickerProps {
   onEmojiSelect: (emoji: string) => void;
@@ -11,6 +12,7 @@ interface EmojiPickerProps {
 }
 
 export function EmojiPicker({ onEmojiSelect, className = "" }: EmojiPickerProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
   // Convert emojiData (object) → grouped by category
@@ -50,7 +52,7 @@ export function EmojiPicker({ onEmojiSelect, className = "" }: EmojiPickerProps)
       {/* Search input */}
       <input
         type="text"
-        placeholder="Search emoji..."
+        placeholder={t("Search emoji...")}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="mb-3 w-full rounded-md border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-gray-300"

@@ -155,8 +155,8 @@ export default function Index() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{label: 'Helpdesk Categories'}]}
-            pageTitle="Manage Helpdesk Categories"
+            breadcrumbs={[{label: t('Helpdesk Categories')}]}
+            pageTitle={t('Manage Helpdesk Categories')}
             pageActions={
                 <div className="flex gap-2">
                     <TooltipProvider>
@@ -179,7 +179,7 @@ export default function Index() {
                 </div>
             }
         >
-            <Head title="Helpdesk Categories" />
+            <Head title={t('Helpdesk Categories')} />
 
             <Card className="shadow-sm">
                 <CardContent className="p-6 border-b bg-gray-50/50">
@@ -189,7 +189,7 @@ export default function Index() {
                                 value={searchName}
                                 onChange={(value) => setSearchName(value)}
                                 onSearch={handleFilter}
-                                placeholder="Search categories..."
+                                placeholder={t('Search categories...')}
                             />
                         </div>
                         <div className="flex items-center gap-3">

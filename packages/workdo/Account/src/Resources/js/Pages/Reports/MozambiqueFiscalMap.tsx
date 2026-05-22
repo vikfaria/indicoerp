@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileCode, FileText } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/utils/helpers';
 import NoRecordsFound from '@/components/no-records-found';
 import axios from 'axios';
@@ -65,6 +65,15 @@ export default function MozambiqueFiscalMap({ financialYear }: MozambiqueFiscalM
                             <Download className="h-4 w-4" />
                             {t('Export CSV')}
                         </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => window.open(route('account.reports.mozambique-saft.export') + `?from_date=${fromDate}&to_date=${toDate}`, '_blank')}
+                        >
+                            <FileCode className="h-4 w-4" />
+                            {t('Export SAF-T XML')}
+                        </Button>
                     </div>
                 </div>
             </CardContent>
@@ -93,6 +102,19 @@ export default function MozambiqueFiscalMap({ financialYear }: MozambiqueFiscalM
                                     <tr className="border-t">
                                         <td className="px-4 py-3">{t('Sales Taxable Base')}</td>
                                         <td className="px-4 py-3 text-right">{formatCurrency(data.sales.taxable_base)}</td>
+                                    </tr>
+
+                                    <tr className="bg-cyan-50 border-t">
+                                        <td className="px-4 py-3 font-semibold">{t('POS Sales VAT')}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(data.pos_sales?.tax_amount || 0)}</td>
+                                    </tr>
+                                    <tr className="border-t">
+                                        <td className="px-4 py-3">{t('POS Sales Documents')}</td>
+                                        <td className="px-4 py-3 text-right">{data.pos_sales?.documents || 0}</td>
+                                    </tr>
+                                    <tr className="border-t">
+                                        <td className="px-4 py-3">{t('POS Sales Taxable Base')}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(data.pos_sales?.taxable_base || 0)}</td>
                                     </tr>
 
                                     <tr className="bg-red-50 border-t">
@@ -145,4 +167,3 @@ export default function MozambiqueFiscalMap({ financialYear }: MozambiqueFiscalM
         </Card>
     );
 }
-

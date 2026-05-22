@@ -4,6 +4,7 @@ import * as React from "react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { Input } from "./input"
+import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
 
@@ -74,6 +75,7 @@ const SelectContent = React.forwardRef<
     searchable?: boolean
   }
 >(({ className, children, position = "popper", searchable = false, ...props }, ref) => {
+  const { t } = useTranslation()
   const [search, setSearch] = React.useState("")
 
   const filteredChildren = React.useMemo(() => {
@@ -108,7 +110,7 @@ const SelectContent = React.forwardRef<
           <div className="flex items-center border-b px-3 py-2">
             <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
             <Input
-              placeholder="Search..."
+              placeholder={t("Search...")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {

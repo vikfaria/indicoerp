@@ -22,18 +22,22 @@ class MozambiqueTaxAccountMappingController extends Controller
 
         $mappings = collect();
         if (Schema::hasTable('mz_tax_account_mappings')) {
-            $mappings = MozTaxAccountMapping::query()
-                ->where('created_by', creatorId())
-                ->with([
-                    'vatOutputAccount:id,account_code,account_name',
-                    'vatInputAccount:id,account_code,account_name',
-                    'withholdingPayableAccount:id,account_code,account_name',
-                    'withholdingReceivableAccount:id,account_code,account_name',
-                    'irpcExpenseAccount:id,account_code,account_name',
-                ])
-                ->latest('effective_from')
-                ->latest('id')
-                ->get();
+            try {
+                $mappings = MozTaxAccountMapping::query()
+                    ->where('created_by', creatorId())
+                    ->with([
+                        'vatOutputAccount:id,account_code,account_name',
+                        'vatInputAccount:id,account_code,account_name',
+                        'withholdingPayableAccount:id,account_code,account_name',
+                        'withholdingReceivableAccount:id,account_code,account_name',
+                        'irpcExpenseAccount:id,account_code,account_name',
+                    ])
+                    ->latest('effective_from')
+                    ->latest('id')
+                    ->get();
+            } catch (\Throwable) {
+                $mappings = collect();
+            }
         }
 
         $chartAccounts = ChartOfAccount::query()
@@ -93,7 +97,11 @@ class MozambiqueTaxAccountMappingController extends Controller
         $validated['creator_id'] = Auth::id();
         $validated['created_by'] = creatorId();
 
-        MozTaxAccountMapping::create($validated);
+        try {
+            MozTaxAccountMapping::create($validated);
+        } catch (\Throwable) {
+            return back()->with('error', __('Unable to save tax mapping. Please verify accounting migrations and try again.'));
+        }
 
         return redirect()
             ->route('account.mozambique-tax-account-mappings.index')
@@ -113,7 +121,11 @@ class MozambiqueTaxAccountMappingController extends Controller
             abort(403);
         }
 
-        $mapping->delete();
+        try {
+            $mapping->delete();
+        } catch (\Throwable) {
+            return back()->with('error', __('Unable to delete tax mapping. Please verify accounting migrations and try again.'));
+        }
 
         return redirect()
             ->route('account.mozambique-tax-account-mappings.index')

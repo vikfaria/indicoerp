@@ -548,7 +548,7 @@ export default function Show() {
             <ConfirmationDialog
                 open={!!deleteConfig}
                 onOpenChange={() => setDeleteConfig(null)}
-                title={t(`Delete ${deleteConfig?.type || ''}`)}
+                title={`${t('Delete')} ${deleteConfig?.type || ''}`.trim()}
                 message={deleteConfig?.message || ''}
                 confirmText={t('Delete')}
                 onConfirm={handleDeleteConfirm}

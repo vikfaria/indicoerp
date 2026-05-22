@@ -91,7 +91,7 @@ export default function Show() {
     return (
         <AuthenticatedLayout
             breadcrumbs={[
-                {label: 'Helpdesk Ticket', url: route('helpdesk-tickets.index')},
+                {label: t('Helpdesk Ticket'), url: route('helpdesk-tickets.index')},
                 {label: `#${ticket.ticket_id} - ${ticket.title}`}
             ]}
             pageTitle={`Ticket #${ticket.ticket_id}`}

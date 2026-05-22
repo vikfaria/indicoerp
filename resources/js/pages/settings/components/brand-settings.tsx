@@ -42,7 +42,7 @@ export default function BrandSettings({ userSettings, auth }: BrandSettingsProps
     logo_light: userSettings?.logo_light || '',
     favicon: userSettings?.favicon || '',
     titleText: userSettings?.titleText || 'WorkDo',
-    footerText: userSettings?.footerText || `© ${new Date().getFullYear()} WorkDo. All rights reserved.`,
+    footerText: userSettings?.footerText || t('© {{year}} WorkDo. All rights reserved.', { year: new Date().getFullYear() }),
     sidebarVariant: userSettings?.sidebarVariant || 'inset',
     sidebarStyle: userSettings?.sidebarStyle || 'plain',
     layoutDirection: userSettings?.layoutDirection || 'ltr',
@@ -59,7 +59,7 @@ export default function BrandSettings({ userSettings, auth }: BrandSettingsProps
         logo_light: userSettings?.logo_light || '',
         favicon: userSettings?.favicon || '',
         titleText: userSettings?.titleText || 'WorkDo',
-        footerText: userSettings?.footerText || `© ${new Date().getFullYear()} WorkDo. All rights reserved.`,
+        footerText: userSettings?.footerText || t('© {{year}} WorkDo. All rights reserved.', { year: new Date().getFullYear() }),
         sidebarVariant: userSettings?.sidebarVariant || 'inset',
         sidebarStyle: userSettings?.sidebarStyle || 'plain',
         layoutDirection: userSettings?.layoutDirection || 'ltr',
@@ -279,7 +279,7 @@ export default function BrandSettings({ userSettings, auth }: BrandSettingsProps
                       name="footerText"
                       value={settings.footerText}
                       onChange={handleInputChange}
-                      placeholder={t(`© ${new Date().getFullYear()} WorkDo. All rights reserved.`)}
+                      placeholder={t('© {{year}} WorkDo. All rights reserved.', { year: new Date().getFullYear() })}
                       disabled={!canEdit}
                     />
                     <p className="text-xs text-muted-foreground">

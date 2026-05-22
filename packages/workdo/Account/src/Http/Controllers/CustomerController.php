@@ -3,6 +3,7 @@
 namespace Workdo\Account\Http\Controllers;
 
 use App\Models\User;
+use App\Support\MozambiqueTaxNumber;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -61,7 +62,7 @@ class CustomerController extends Controller
             $customer->contact_person_name = $validated['contact_person_name'];
             $customer->contact_person_email = $validated['contact_person_email'] ?? null;
             $customer->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
-            $customer->tax_number = $validated['tax_number'] ?? null;
+            $customer->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
             $customer->payment_terms = $validated['payment_terms'] ?? null;
             $customer->billing_address = $validated['billing_address'];
             $customer->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
@@ -87,7 +88,7 @@ class CustomerController extends Controller
             $customer->contact_person_name = $validated['contact_person_name'];
             $customer->contact_person_email = $validated['contact_person_email'] ?? null;
             $customer->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
-            $customer->tax_number = $validated['tax_number'] ?? null;
+            $customer->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
             $customer->payment_terms = $validated['payment_terms'] ?? null;
             $customer->billing_address = $validated['billing_address'];
             $customer->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];

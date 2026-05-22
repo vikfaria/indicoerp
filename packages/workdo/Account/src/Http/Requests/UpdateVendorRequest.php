@@ -2,6 +2,7 @@
 
 namespace Workdo\Account\Http\Requests;
 
+use App\Support\MozambiqueTaxNumber;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateVendorRequest extends FormRequest
@@ -39,5 +40,40 @@ class UpdateVendorRequest extends FormRequest
             'shipping_address.zip_code' => 'required_if:same_as_billing,false|string|max:20',
             'notes' => 'nullable|string',
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $taxNumber = (string) ($this->input('tax_number') ?? '');
+            $requiresNuit = $this->requiresMozambicanNuit();
+
+            if ($requiresNuit && !MozambiqueTaxNumber::isValidNuit($taxNumber)) {
+                $validator->errors()->add('tax_number', __('NUIT must contain exactly 9 digits.'));
+                return;
+            }
+
+            if ($taxNumber !== '' && !MozambiqueTaxNumber::isValidNuit($taxNumber) && $this->isMozambiqueContext()) {
+                $validator->errors()->add('tax_number', __('NUIT must contain exactly 9 digits.'));
+            }
+        });
+    }
+
+    private function requiresMozambicanNuit(): bool
+    {
+        $taxType = strtoupper((string) company_setting('tax_type', creatorId()));
+
+        return $taxType === 'NUIT' || $this->isMozambiqueContext();
+    }
+
+    private function isMozambiqueContext(): bool
+    {
+        $billingCountry = (string) data_get($this->input('billing_address', []), 'country', '');
+        $shippingCountry = (string) data_get($this->input('shipping_address', []), 'country', '');
+        $companyCountry = (string) company_setting('company_country', creatorId());
+
+        return MozambiqueTaxNumber::isMozambiqueCountry($billingCountry)
+            || MozambiqueTaxNumber::isMozambiqueCountry($shippingCountry)
+            || MozambiqueTaxNumber::isMozambiqueCountry($companyCountry);
     }
 }

@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatCurrency, formatDate, getCompanySetting } from '@/utils/helpers';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
 import { Download, ArrowLeft, User, Building2, Calendar, Package } from 'lucide-react';
@@ -45,6 +49,16 @@ interface PosSale {
     tax_amount?: number;
     pos_date: string;
     status?: string;
+    fiscal_submission_status?: string;
+    fiscal_submission_reference?: string;
+    fiscal_validation_message?: string;
+    fiscal_submitted_at?: string;
+    fiscal_validated_at?: string;
+    is_cancelled?: boolean;
+    cancelled_at?: string;
+    cancellation_reason?: string;
+    cancellation_reference?: string;
+    rectification_reference?: string;
     created_at: string;
     items: PosItem[];
     notes?: string;
@@ -52,16 +66,51 @@ interface PosSale {
 
 interface ShowProps {
     sale: PosSale;
+    auth: {
+        user?: {
+            permissions?: string[];
+        };
+    };
+    errors?: Record<string, string>;
 }
 
 export default function Show() {
     const { t } = useTranslation();
-    const { sale } = usePage<ShowProps>().props;
+    const { sale, auth, errors = {} } = usePage<ShowProps>().props;
+    const canManageFiscal = auth?.user?.permissions?.includes('manage-pos-orders') ?? false;
+    const supportsFiscalCompliance = typeof sale.fiscal_submission_status !== 'undefined';
+
+    const [fiscalStatus, setFiscalStatus] = useState(sale.fiscal_submission_status || 'pending');
+    const [fiscalReference, setFiscalReference] = useState(sale.fiscal_submission_reference || '');
+    const [fiscalMessage, setFiscalMessage] = useState('');
+    const [cancellationReason, setCancellationReason] = useState('');
+    const [cancellationReference, setCancellationReference] = useState('');
+    const [rectificationReference, setRectificationReference] = useState('');
 
 
     const downloadPDF = () => {
         const printUrl = route('pos-orders.print', sale.id) + '?download=pdf';
         window.open(printUrl, '_blank');
+    };
+
+    const submitFiscalStatus = () => {
+        router.post(route('pos.fiscal-status', sale.id), {
+            status: fiscalStatus,
+            reference: fiscalReference || null,
+            message: fiscalMessage || null,
+        }, {
+            preserveScroll: true,
+        });
+    };
+
+    const submitFiscalCancellation = () => {
+        router.post(route('pos.cancel-fiscal', sale.id), {
+            reason: cancellationReason,
+            cancellation_reference: cancellationReference || null,
+            rectification_reference: rectificationReference || null,
+        }, {
+            preserveScroll: true,
+        });
     };
 
     const getStatusBadgeClasses = (status: string) => {
@@ -175,6 +224,121 @@ export default function Show() {
                         )}
                     </CardContent>
                 </Card>
+
+                {supportsFiscalCompliance && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('POS Fiscal Compliance')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <span className="text-muted-foreground">{t('Current Fiscal Status')}: </span>
+                                    <span className="font-medium">{(sale.fiscal_submission_status || 'pending').toUpperCase()}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">{t('Fiscal Reference')}: </span>
+                                    <span className="font-medium">{sale.fiscal_submission_reference || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">{t('Submitted At')}: </span>
+                                    <span className="font-medium">{sale.fiscal_submitted_at ? formatDate(sale.fiscal_submitted_at) : '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-muted-foreground">{t('Validated At')}: </span>
+                                    <span className="font-medium">{sale.fiscal_validated_at ? formatDate(sale.fiscal_validated_at) : '-'}</span>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <span className="text-muted-foreground">{t('Fiscal Message')}: </span>
+                                    <span className="font-medium">{sale.fiscal_validation_message || '-'}</span>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <span className="text-muted-foreground">{t('Cancellation Reason')}: </span>
+                                    <span className="font-medium">{sale.cancellation_reason || '-'}</span>
+                                </div>
+                            </div>
+
+                            {canManageFiscal && (
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 border-t pt-6">
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold">{t('Update Fiscal Status')}</h4>
+                                        <div className="space-y-2">
+                                            <Label>{t('Status')}</Label>
+                                            <Select value={fiscalStatus} onValueChange={setFiscalStatus}>
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="pending">{t('PENDING')}</SelectItem>
+                                                    <SelectItem value="submitted">{t('SUBMITTED')}</SelectItem>
+                                                    <SelectItem value="validated">{t('VALIDATED')}</SelectItem>
+                                                    <SelectItem value="rejected">{t('REJECTED')}</SelectItem>
+                                                    <SelectItem value="not_required">{t('NOT REQUIRED')}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {errors.status && <p className="text-xs text-red-600">{errors.status}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('Reference')}</Label>
+                                            <Input
+                                                value={fiscalReference}
+                                                onChange={(e) => setFiscalReference(e.target.value)}
+                                                placeholder={t('Enter fiscal reference')}
+                                            />
+                                            {errors.reference && <p className="text-xs text-red-600">{errors.reference}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('Message')}</Label>
+                                            <Textarea
+                                                value={fiscalMessage}
+                                                onChange={(e) => setFiscalMessage(e.target.value)}
+                                                placeholder={t('Optional message')}
+                                            />
+                                            {errors.message && <p className="text-xs text-red-600">{errors.message}</p>}
+                                        </div>
+                                        <Button onClick={submitFiscalStatus} size="sm">
+                                            {t('Save Fiscal Status')}
+                                        </Button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <h4 className="font-semibold">{t('Cancel Fiscal Document')}</h4>
+                                        <div className="space-y-2">
+                                            <Label>{t('Reason')}</Label>
+                                            <Textarea
+                                                value={cancellationReason}
+                                                onChange={(e) => setCancellationReason(e.target.value)}
+                                                placeholder={t('Provide cancellation reason')}
+                                            />
+                                            {errors.reason && <p className="text-xs text-red-600">{errors.reason}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('Cancellation Reference')}</Label>
+                                            <Input
+                                                value={cancellationReference}
+                                                onChange={(e) => setCancellationReference(e.target.value)}
+                                                placeholder={t('Optional cancellation reference')}
+                                            />
+                                            {errors.cancellation_reference && <p className="text-xs text-red-600">{errors.cancellation_reference}</p>}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label>{t('Rectification Reference')}</Label>
+                                            <Input
+                                                value={rectificationReference}
+                                                onChange={(e) => setRectificationReference(e.target.value)}
+                                                placeholder={t('Required when status is validated')}
+                                            />
+                                            {errors.rectification_reference && <p className="text-xs text-red-600">{errors.rectification_reference}</p>}
+                                        </div>
+                                        <Button variant="destructive" onClick={submitFiscalCancellation} size="sm">
+                                            {t('Cancel Document (Fiscal)')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Sale Items */}
                 <Card>

@@ -357,8 +357,8 @@ export default function LanguageManage({
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{label: 'Languages'}]}
-            pageTitle="Language Management"
+            breadcrumbs={[{label: t('Languages')}]}
+            pageTitle={t('Language Management')}
             pageActions={
                 <div className="flex items-center gap-2">
                         {hasChanges && (

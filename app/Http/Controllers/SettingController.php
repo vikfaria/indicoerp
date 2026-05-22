@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Setting;
 use App\Mail\TestMail;
+use App\Support\MozambiqueTaxNumber;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Validation\ValidationException;
 
 class SettingController extends Controller
 {
@@ -226,6 +228,29 @@ class SettingController extends Controller
 
             if ((!isset($settings['company_tax_number']) || $settings['company_tax_number'] === '') && array_key_exists('vat_number', $settings)) {
                 $settings['company_tax_number'] = $settings['vat_number'];
+            }
+
+            $taxType = strtoupper((string) ($settings['tax_type'] ?? company_setting('tax_type', creatorId())));
+            $companyCountry = (string) ($settings['company_country'] ?? company_setting('company_country', creatorId()));
+            $requiresNuit = $taxType === 'NUIT' || MozambiqueTaxNumber::isMozambiqueCountry($companyCountry);
+            $taxNumber = (string) ($settings['company_tax_number'] ?? $settings['vat_number'] ?? '');
+
+            if ($requiresNuit && !MozambiqueTaxNumber::isValidNuit($taxNumber)) {
+                throw ValidationException::withMessages([
+                    'settings.company_tax_number' => __('NUIT must contain exactly 9 digits.'),
+                ]);
+            }
+
+            if ($taxNumber !== '' && MozambiqueTaxNumber::isMozambiqueCountry($companyCountry) && !MozambiqueTaxNumber::isValidNuit($taxNumber)) {
+                throw ValidationException::withMessages([
+                    'settings.company_tax_number' => __('NUIT must contain exactly 9 digits.'),
+                ]);
+            }
+
+            if ($taxNumber !== '') {
+                $normalizedNuit = MozambiqueTaxNumber::normalize($taxNumber);
+                $settings['company_tax_number'] = $normalizedNuit;
+                $settings['vat_number'] = $normalizedNuit;
             }
 
             foreach ($settings as $key => $value) {

@@ -33,6 +33,8 @@ interface PosSale {
     tax_amount: number;
     pos_date: string;
     created_at: string;
+    fiscal_submission_status?: string;
+    is_cancelled?: boolean;
     items_count: number;
     items?: Array<{
         total_amount: number;
@@ -70,6 +72,21 @@ export default function Index() {
 
     const pageButtons = usePageButtons('googleDriveBtn', { module: 'POS Order', settingKey: 'GoogleDrive POS Order' });
     const oneDriveButtons = usePageButtons('oneDriveBtn', { module: 'POS Order', settingKey: 'OneDrive POS Order' });
+
+    const getFiscalStatusClass = (status?: string) => {
+        switch ((status || 'pending').toLowerCase()) {
+            case 'validated':
+                return 'bg-green-100 text-green-800';
+            case 'submitted':
+                return 'bg-blue-100 text-blue-800';
+            case 'rejected':
+                return 'bg-red-100 text-red-800';
+            case 'not_required':
+                return 'bg-gray-200 text-gray-700';
+            default:
+                return 'bg-amber-100 text-amber-800';
+        }
+    };
 
     const handleFilter = () => {
         router.get(route('pos.orders'), {...filters, per_page: perPage, sort: sortField, direction: sortDirection, view: viewMode}, {
@@ -124,6 +141,20 @@ export default function Index() {
                     {formatCurrency(sale.total || 0)}
                 </span>
             )
+        },
+        {
+            key: 'fiscal_submission_status',
+            header: t('Fiscal Status'),
+            render: (_: any, sale: PosSale) => (
+                <div className="flex items-center gap-2">
+                    {sale.is_cancelled && (
+                        <Badge variant="destructive">{t('CANCELLED')}</Badge>
+                    )}
+                    <Badge className={getFiscalStatusClass(sale.fiscal_submission_status)}>
+                        {t((sale.fiscal_submission_status || 'pending').toUpperCase())}
+                    </Badge>
+                </div>
+            ),
         },
         ...(auth.user?.permissions?.includes('view-pos-orders') ? [{
             key: 'actions',
@@ -310,6 +341,17 @@ export default function Index() {
                                                     <div>
                                                         <p className="text-xs font-medium text-gray-600 mb-1">{t('Total')}</p>
                                                         <p className="text-sm">{formatCurrency(sale.total || 0)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs font-medium text-gray-600 mb-1">{t('Fiscal Status')}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            {sale.is_cancelled && (
+                                                                <Badge variant="destructive">{t('CANCELLED')}</Badge>
+                                                            )}
+                                                            <Badge className={getFiscalStatusClass(sale.fiscal_submission_status)}>
+                                                                {t((sale.fiscal_submission_status || 'pending').toUpperCase())}
+                                                            </Badge>
+                                                        </div>
                                                     </div>
                                                 </div>
 

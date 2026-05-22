@@ -15,6 +15,8 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Pos'])->group(fun
     Route::get('/pos/pos-number', [PosController::class, 'getNextPosNumber'])->name('pos.pos-number');
     Route::post('/pos/store', [PosController::class, 'store'])->name('pos.store');
     Route::get('/pos/orders/{sale}', [PosController::class, 'show'])->name('pos.show');
+    Route::post('/pos/orders/{sale}/fiscal-status', [PosController::class, 'updateFiscalStatus'])->name('pos.fiscal-status');
+    Route::post('/pos/orders/{sale}/cancel-fiscal', [PosController::class, 'cancelFiscal'])->name('pos.cancel-fiscal');
     Route::get('/pos/barcode', [PosController::class, 'barcode'])->name('pos.barcode');
     Route::get('/pos/barcode/{sale}', [PosController::class, 'printBarcode'])->name('pos.barcode.print');
     Route::get('/pos/orders/{sale}/print', [PosController::class, 'print'])->name('pos-orders.print');

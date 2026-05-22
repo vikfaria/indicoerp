@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useTranslation } from 'react-i18next';
 
 interface TranslationItemProps {
     translationKey: string;
@@ -8,6 +9,8 @@ interface TranslationItemProps {
 }
 
 export function TranslationItem({ translationKey, value, onChange }: TranslationItemProps) {
+    const { t } = useTranslation();
+
     return (
         <div className="grid grid-cols-5 gap-4 p-3 border-b hover:bg-muted/30 transition-colors">
             <div className="col-span-2">
@@ -22,14 +25,14 @@ export function TranslationItem({ translationKey, value, onChange }: Translation
                         onChange={(e) => onChange(translationKey, e.target.value)}
                         className="min-h-[60px] text-sm resize-none"
                         rows={2}
-                        placeholder="Enter translation value..."
+                        placeholder={t('Enter translation value...')}
                     />
                 ) : (
                     <Input
                         value={value}
                         onChange={(e) => onChange(translationKey, e.target.value)}
                         className="text-sm"
-                        placeholder="Enter translation value..."
+                        placeholder={t('Enter translation value...')}
                     />
                 )}
             </div>

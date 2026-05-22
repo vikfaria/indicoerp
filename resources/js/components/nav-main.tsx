@@ -4,16 +4,21 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
 import { NavItem } from '@/types';
+import { useTranslation } from 'react-i18next';
 
 export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], searchQuery?: string }) {
     const page = usePage();
+    const { t } = useTranslation();
+    const translateTitle = (title?: string) => title ? t(title) : '';
 
     // Filter items based on search query
     const filterItems = (items: NavItem[], query: string): NavItem[] => {
         if (!query) return items;
+        const queryLower = query.toLowerCase();
         
         return items.reduce((acc, item) => {
-            const matchesTitle = item.title.toLowerCase().includes(query.toLowerCase());
+            const translatedTitle = translateTitle(item.title);
+            const matchesTitle = item.title.toLowerCase().includes(queryLower) || translatedTitle.toLowerCase().includes(queryLower);
             const filteredChildren = item.children ? filterItems(item.children, query) : [];
             
             if (matchesTitle || filteredChildren.length > 0) {
@@ -72,7 +77,8 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
     return (
         <SidebarGroup>
             <SidebarMenu>
-                {filteredItems.map((item) => {
+                {filteredItems.map((item, itemIndex) => {
+                  const itemTitle = translateTitle(item.title);
                   const itemPath = item.href ? new URL(item.href, window.location.origin).pathname : '';
                   const isActive = !!(itemPath && isUrlActive(itemPath));
 
@@ -81,20 +87,21 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                   const shouldBeActive = isActive || hasActiveChild;
                     if (item.children && item.children.length > 0) {
                         return (
-                            <SidebarMenuItem key={item.title}>
+                            <SidebarMenuItem key={`${item.title}-${itemIndex}`}>
                                 {/* Expanded sidebar - use collapsible */}
                                 <Collapsible asChild defaultOpen={shouldBeActive} className="group/collapsible group-data-[collapsible=icon]:hidden">
                                     <div>
                                         <CollapsibleTrigger asChild>
-                                            <SidebarMenuButton tooltip={item.title} isActive={shouldBeActive} data-current={false}>
+                                            <SidebarMenuButton tooltip={itemTitle} isActive={shouldBeActive} data-current={false}>
                                                 {item.icon && <item.icon />}
-                                                <span>{item.title}</span>
+                                                <span>{itemTitle}</span>
                                                 <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                             </SidebarMenuButton>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                             <SidebarMenuSub>
                                                 {item.children.map((subItem) => {
+                                                    const subItemTitle = translateTitle(subItem.title);
                                                     const subItemActive = !!(subItem.href && isUrlActive(new URL(subItem.href, window.location.origin).pathname, subItem.activePaths));
                                                     const hasActiveSubChild = subItem.children ? isChildActive(subItem.children) : false;
                                                     const subItemShouldBeActive = subItemActive || hasActiveSubChild;
@@ -107,13 +114,14 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                         <CollapsibleTrigger asChild>
                                                                             <SidebarMenuSubButton isActive={subItemShouldBeActive} data-current={false}>
                                                                                 {subItem.icon && <subItem.icon className="h-4 w-4" />}
-                                                                                <span>{subItem.title}</span>
+                                                                                <span>{subItemTitle}</span>
                                                                                 <ChevronDown className="ml-auto h-3 w-3 transition-transform group-data-[state=open]/subcollapsible:rotate-180" />
                                                                             </SidebarMenuSubButton>
                                                                         </CollapsibleTrigger>
                                                                         <CollapsibleContent>
                                                                             <SidebarMenuSub>
                                                                                 {subItem.children.map((subSubItem) => {
+                                                                                    const subSubItemTitle = translateTitle(subSubItem.title);
                                                                                     const isSubSubActive = !!(subSubItem.href && isUrlActive(new URL(subSubItem.href, window.location.origin).pathname, subSubItem.activePaths));
                                                                                     return (
                                                                                     <SidebarMenuSubItem key={subSubItem.title}>
@@ -125,7 +133,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                         >
                                                                                             <Link href={subSubItem.href!}>
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
-                                                                                                <span>{subSubItem.title}</span>
+                                                                                                <span>{subSubItemTitle}</span>
                                                                                             </Link>
                                                                                         </SidebarMenuSubButton>
                                                                                     </SidebarMenuSubItem>
@@ -147,7 +155,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                             >
                                                                 <Link href={subItem.href!}>
                                                                     {subItem.icon && <subItem.icon className="h-4 w-4" />}
-                                                                    <span>{subItem.title}</span>
+                                                                    <span>{subItemTitle}</span>
                                                                 </Link>
                                                             </SidebarMenuSubButton>
                                                         </SidebarMenuSubItem>
@@ -163,34 +171,37 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <SidebarMenuButton
-                                                tooltip={item.title}
+                                                tooltip={itemTitle}
                                                 isActive={shouldBeActive}
                                             >
                                                 {item.icon && <item.icon />}
-                                                <span>{item.title}</span>
+                                                <span>{itemTitle}</span>
                                             </SidebarMenuButton>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent side="right" align="start" className="w-48">
                                             {item.children.map((subItem) => {
+                                                const subItemTitle = translateTitle(subItem.title);
                                                 if (subItem.children && subItem.children.length > 0) {
                                                     return (
                                                         <DropdownMenu key={subItem.title}>
                                                             <DropdownMenuTrigger asChild>
                                                                 <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
                                                                     {subItem.icon && <subItem.icon className="h-4 w-4" />}
-                                                                    <span>{subItem.title}</span>
+                                                                    <span>{subItemTitle}</span>
                                                                     <ChevronDown className="ml-auto h-3 w-3" />
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent side="right" align="start" className="w-44">
-                                                                {subItem.children.map((subSubItem) => (
+                                                                {subItem.children.map((subSubItem) => {
+                                                                    const subSubItemTitle = translateTitle(subSubItem.title);
+                                                                    return (
                                                                     <DropdownMenuItem key={subSubItem.title} asChild>
                                                                         <Link href={subSubItem.href!} className="flex items-center gap-2">
                                                                             {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
-                                                                            <span className="text-sm">{subSubItem.title}</span>
+                                                                            <span className="text-sm">{subSubItemTitle}</span>
                                                                         </Link>
                                                                     </DropdownMenuItem>
-                                                                ))}
+                                                                )})}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     );
@@ -200,7 +211,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                     <DropdownMenuItem key={subItem.title} asChild>
                                                         <Link href={subItem.href!} className="flex items-center gap-2">
                                                             {subItem.icon && <subItem.icon className="h-4 w-4" />}
-                                                            <span>{subItem.title}</span>
+                                                            <span>{subItemTitle}</span>
                                                         </Link>
                                                     </DropdownMenuItem>
                                                 );
@@ -213,16 +224,16 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                     }
 
                     return (
-                        <SidebarMenuItem key={item.title}>
+                        <SidebarMenuItem key={`${item.title}-${itemIndex}`}>
                             <SidebarMenuButton
                                 asChild
                                 isActive={shouldBeActive}
                                 data-current={false}
-                                tooltip={item.title}
+                                tooltip={itemTitle}
                             >
                                 <Link href={item.href!}>
                                     {item.icon && <item.icon />}
-                                    <span>{item.title}</span>
+                                    <span>{itemTitle}</span>
                                 </Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>

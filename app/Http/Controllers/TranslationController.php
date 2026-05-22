@@ -55,6 +55,69 @@ class TranslationController extends Controller
         return $normalized;
     }
 
+    private function discoverPackageNames(): array
+    {
+        $fromDatabase = AddOn::query()
+            ->where('is_enable', true)
+            ->pluck('module')
+            ->filter()
+            ->map(static fn($module) => trim((string) $module))
+            ->values()
+            ->all();
+
+        $fromFilesystem = collect(glob(base_path('packages/workdo/*'), GLOB_ONLYDIR) ?: [])
+            ->map(static fn(string $path): string => basename($path))
+            ->values()
+            ->all();
+
+        $packages = array_values(array_unique(array_merge($fromDatabase, $fromFilesystem)));
+        sort($packages, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $packages;
+    }
+
+    private function resolveLocaleCandidates(string $locale): array
+    {
+        $normalized = strtolower($locale);
+        $candidates = [];
+
+        if (str_contains($locale, '-')) {
+            $baseLocale = explode('-', $locale)[0] ?? $locale;
+            $candidates[] = $baseLocale;
+        } else {
+            foreach ($this->getAllowedLanguages() as $allowedLocale) {
+                $allowedNormalized = strtolower((string) $allowedLocale);
+                if ($allowedNormalized !== $normalized && str_starts_with($allowedNormalized, $normalized . '-')) {
+                    $candidates[] = $allowedLocale;
+                }
+            }
+        }
+
+        $candidates[] = $locale;
+
+        return array_values(array_unique($candidates));
+    }
+
+    private function mergePackageTranslations(array $translations, string $locale): array
+    {
+        $localeCandidates = $this->resolveLocaleCandidates($locale);
+
+        foreach ($this->discoverPackageNames() as $packageName) {
+            foreach ($localeCandidates as $candidateLocale) {
+                $packageLangFile = base_path("packages/workdo/{$packageName}/src/Resources/lang/{$candidateLocale}.json");
+
+                if (!File::exists($packageLangFile)) {
+                    continue;
+                }
+
+                $packageTranslations = $this->normalizeTranslationKeys(json_decode(File::get($packageLangFile), true) ?? []);
+                $translations = array_merge($translations, $packageTranslations);
+            }
+        }
+
+        return $translations;
+    }
+
     public function getTranslations($locale)
     {
         $locale = $this->resolveLocale($locale);
@@ -71,15 +134,8 @@ class TranslationController extends Controller
 
         $translations = $this->normalizeTranslationKeys(json_decode(File::get($path), true) ?? []);
 
-        // Merge enabled package translations
-        $enabledPackages = AddOn::where('is_enable', true)->pluck('module');
-        foreach ($enabledPackages as $packageName) {
-            $packageLangFile = base_path("packages/workdo/{$packageName}/src/Resources/lang/{$locale}.json");
-            if (File::exists($packageLangFile)) {
-                $packageTranslations = $this->normalizeTranslationKeys(json_decode(File::get($packageLangFile), true) ?? []);
-                $translations = array_merge($translations, $packageTranslations);
-            }
-        }
+        // Merge package translations from enabled modules and installed package folders.
+        $translations = $this->mergePackageTranslations($translations, $locale);
 
         if (empty($translations)) {
             return response()->json(['error' => __('Invalid translation file')], 500);

@@ -252,6 +252,40 @@ class ReportService
             ->where('status', 'approved')
             ->whereBetween('debit_note_date', [$fromDate, $toDate]);
 
+        $posSummary = (object) [
+            'documents' => 0,
+            'taxable_base' => 0.0,
+            'tax_amount' => 0.0,
+            'total_amount' => 0.0,
+        ];
+        $posFiscalStatus = [];
+        if (Schema::hasTable('pos') && Schema::hasTable('pos_items') && Schema::hasColumn('pos', 'pos_date')) {
+            $posBaseQuery = DB::table('pos')
+                ->where('pos.created_by', creatorId())
+                ->whereBetween('pos.pos_date', [$fromDate, $toDate]);
+
+            if (Schema::hasColumn('pos', 'status')) {
+                $posBaseQuery->where('pos.status', 'completed');
+            }
+
+            if (Schema::hasColumn('pos', 'is_cancelled')) {
+                $posBaseQuery->where('pos.is_cancelled', false);
+            }
+
+            $posSummary = (clone $posBaseQuery)
+                ->join('pos_items', 'pos.id', '=', 'pos_items.pos_id')
+                ->selectRaw('COUNT(DISTINCT pos.id) as documents, COALESCE(SUM(pos_items.subtotal),0) as taxable_base, COALESCE(SUM(pos_items.tax_amount),0) as tax_amount, COALESCE(SUM(pos_items.total_amount),0) as total_amount')
+                ->first();
+
+            if (Schema::hasColumn('pos', 'fiscal_submission_status')) {
+                $posFiscalStatus = (clone $posBaseQuery)
+                    ->select('pos.fiscal_submission_status', DB::raw('COUNT(*) as total'))
+                    ->groupBy('pos.fiscal_submission_status')
+                    ->pluck('total', 'pos.fiscal_submission_status')
+                    ->toArray();
+            }
+        }
+
         $salesSummary = (clone $salesBaseQuery)
             ->selectRaw('COUNT(*) as documents, COALESCE(SUM(subtotal),0) as taxable_base, COALESCE(SUM(tax_amount),0) as tax_amount, COALESCE(SUM(total_amount),0) as total_amount')
             ->first();
@@ -268,19 +302,29 @@ class ReportService
             ->selectRaw('COUNT(*) as documents, COALESCE(SUM(subtotal),0) as taxable_base, COALESCE(SUM(tax_amount),0) as tax_amount, COALESCE(SUM(total_amount),0) as total_amount')
             ->first();
 
-        $salesFiscalStatus = (clone $salesBaseQuery)
-            ->select('fiscal_submission_status', DB::raw('COUNT(*) as total'))
-            ->groupBy('fiscal_submission_status')
-            ->pluck('total', 'fiscal_submission_status')
-            ->toArray();
+        $salesFiscalStatus = [];
+        if (Schema::hasColumn('sales_invoices', 'fiscal_submission_status')) {
+            $salesFiscalStatus = (clone $salesBaseQuery)
+                ->select('fiscal_submission_status', DB::raw('COUNT(*) as total'))
+                ->groupBy('fiscal_submission_status')
+                ->pluck('total', 'fiscal_submission_status')
+                ->toArray();
+        }
 
-        $purchaseFiscalStatus = (clone $purchaseBaseQuery)
-            ->select('fiscal_submission_status', DB::raw('COUNT(*) as total'))
-            ->groupBy('fiscal_submission_status')
-            ->pluck('total', 'fiscal_submission_status')
-            ->toArray();
+        $purchaseFiscalStatus = [];
+        if (Schema::hasColumn('purchase_invoices', 'fiscal_submission_status')) {
+            $purchaseFiscalStatus = (clone $purchaseBaseQuery)
+                ->select('fiscal_submission_status', DB::raw('COUNT(*) as total'))
+                ->groupBy('fiscal_submission_status')
+                ->pluck('total', 'fiscal_submission_status')
+                ->toArray();
+        }
 
-        $outputVat = max((float) $salesSummary->tax_amount - (float) $creditNoteSummary->tax_amount, 0.0);
+        $outputVat = max(
+            ((float) $salesSummary->tax_amount + (float) ($posSummary->tax_amount ?? 0))
+                - (float) $creditNoteSummary->tax_amount,
+            0.0
+        );
         $inputVat = max((float) $purchaseSummary->tax_amount - (float) $debitNoteSummary->tax_amount, 0.0);
 
         return [
@@ -291,6 +335,12 @@ class ReportService
                 'taxable_base' => (float) $salesSummary->taxable_base,
                 'tax_amount' => (float) $salesSummary->tax_amount,
                 'total_amount' => (float) $salesSummary->total_amount,
+            ],
+            'pos_sales' => [
+                'documents' => (int) ($posSummary->documents ?? 0),
+                'taxable_base' => (float) ($posSummary->taxable_base ?? 0),
+                'tax_amount' => (float) ($posSummary->tax_amount ?? 0),
+                'total_amount' => (float) ($posSummary->total_amount ?? 0),
             ],
             'purchases' => [
                 'documents' => (int) $purchaseSummary->documents,
@@ -317,6 +367,7 @@ class ReportService
             ],
             'fiscal_status' => [
                 'sales' => $salesFiscalStatus,
+                'pos' => $posFiscalStatus,
                 'purchases' => $purchaseFiscalStatus,
             ],
             'tax_account_mapping' => $this->getActiveMozambiqueTaxAccountMapping($toDate),
@@ -341,6 +392,9 @@ class ReportService
         $debitNotePeriodExpression = $driver === 'sqlite'
             ? "strftime('%Y-%m', debit_note_date)"
             : "DATE_FORMAT(debit_note_date, '%Y-%m')";
+        $posPeriodExpression = $driver === 'sqlite'
+            ? "strftime('%Y-%m', pos.pos_date)"
+            : "DATE_FORMAT(pos.pos_date, '%Y-%m')";
 
         $salesByMonth = DB::table('sales_invoices')
             ->where('created_by', creatorId())
@@ -374,12 +428,34 @@ class ReportService
             ->groupBy('period')
             ->pluck('amount', 'period');
 
+        $posByMonth = collect();
+        if (Schema::hasTable('pos') && Schema::hasTable('pos_items') && Schema::hasColumn('pos', 'pos_date')) {
+            $posByMonthQuery = DB::table('pos')
+                ->join('pos_items', 'pos.id', '=', 'pos_items.pos_id')
+                ->where('pos.created_by', creatorId())
+                ->whereBetween('pos.pos_date', [$fromDate, $toDate]);
+
+            if (Schema::hasColumn('pos', 'status')) {
+                $posByMonthQuery->where('pos.status', 'completed');
+            }
+
+            if (Schema::hasColumn('pos', 'is_cancelled')) {
+                $posByMonthQuery->where('pos.is_cancelled', false);
+            }
+
+            $posByMonth = $posByMonthQuery
+                ->selectRaw("{$posPeriodExpression} as period, COALESCE(SUM(pos_items.tax_amount),0) as amount")
+                ->groupBy('period')
+                ->pluck('amount', 'period');
+        }
+
         $monthlyRows = [];
         $cursor = \Carbon\Carbon::parse($fromDate)->startOfMonth();
         $end = \Carbon\Carbon::parse($toDate)->startOfMonth();
 
         $totals = [
             'sales_vat' => 0.0,
+            'pos_vat' => 0.0,
             'purchase_vat' => 0.0,
             'credit_notes_vat' => 0.0,
             'debit_notes_vat' => 0.0,
@@ -391,16 +467,18 @@ class ReportService
         while ($cursor->lte($end)) {
             $period = $cursor->format('Y-m');
             $salesVat = (float) ($salesByMonth[$period] ?? 0);
+            $posVat = (float) ($posByMonth[$period] ?? 0);
             $purchaseVat = (float) ($purchasesByMonth[$period] ?? 0);
             $creditNotesVat = (float) ($creditNotesByMonth[$period] ?? 0);
             $debitNotesVat = (float) ($debitNotesByMonth[$period] ?? 0);
-            $outputVat = max($salesVat - $creditNotesVat, 0.0);
+            $outputVat = max(($salesVat + $posVat) - $creditNotesVat, 0.0);
             $inputVat = max($purchaseVat - $debitNotesVat, 0.0);
             $netVatPayable = $outputVat - $inputVat;
 
             $monthlyRows[] = [
                 'period' => $period,
                 'sales_vat' => $salesVat,
+                'pos_vat' => $posVat,
                 'purchase_vat' => $purchaseVat,
                 'credit_notes_vat' => $creditNotesVat,
                 'debit_notes_vat' => $debitNotesVat,
@@ -410,6 +488,7 @@ class ReportService
             ];
 
             $totals['sales_vat'] += $salesVat;
+            $totals['pos_vat'] += $posVat;
             $totals['purchase_vat'] += $purchaseVat;
             $totals['credit_notes_vat'] += $creditNotesVat;
             $totals['debit_notes_vat'] += $debitNotesVat;
@@ -445,6 +524,7 @@ class ReportService
             ['table' => 'purchase_invoices', 'date_column' => 'invoice_date', 'group' => 'purchase_invoices'],
             ['table' => 'sales_invoice_returns', 'date_column' => 'return_date', 'group' => 'sales_returns'],
             ['table' => 'purchase_returns', 'date_column' => 'return_date', 'group' => 'purchase_returns'],
+            ['table' => 'pos', 'date_column' => 'pos_date', 'group' => 'pos_sales'],
         ];
 
         $rows = [];
@@ -504,6 +584,559 @@ class ReportService
             'summary_by_status' => $summaryByStatus,
             'rows' => $rows,
         ];
+    }
+
+    public function buildMozambiqueSaftXml(array $filters = []): string
+    {
+        if (!class_exists(\XMLWriter::class)) {
+            throw new \RuntimeException('XMLWriter extension is not available on this server.');
+        }
+
+        $fromDate = $filters['from_date'] ?? date('Y-01-01');
+        $toDate = $filters['to_date'] ?? date('Y-12-31');
+        $companySettings = getCompanyAllSetting(creatorId());
+
+        $salesInvoiceColumns = array_merge([
+            'id',
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'status',
+            'customer_id',
+            'subtotal',
+            'tax_amount',
+            'discount_amount',
+            'total_amount',
+            'created_at',
+            'updated_at',
+        ], $this->existingColumns('sales_invoices', [
+            'document_type',
+            'document_series',
+            'document_sequence',
+            'fiscal_submission_status',
+            'fiscal_submission_reference',
+            'fiscal_submitted_at',
+            'fiscal_validated_at',
+            'is_cancelled',
+            'issuer_snapshot',
+            'counterparty_snapshot',
+        ]));
+
+        $purchaseInvoiceColumns = array_merge([
+            'id',
+            'invoice_number',
+            'invoice_date',
+            'due_date',
+            'status',
+            'vendor_id',
+            'subtotal',
+            'tax_amount',
+            'discount_amount',
+            'total_amount',
+            'created_at',
+            'updated_at',
+        ], $this->existingColumns('purchase_invoices', [
+            'document_type',
+            'document_series',
+            'document_sequence',
+            'fiscal_submission_status',
+            'fiscal_submission_reference',
+            'fiscal_submitted_at',
+            'fiscal_validated_at',
+            'is_cancelled',
+            'issuer_snapshot',
+            'counterparty_snapshot',
+        ]));
+
+        $salesInvoices = DB::table('sales_invoices')
+            ->where('created_by', creatorId())
+            ->whereIn('status', ['posted', 'partial', 'paid', 'cancelled'])
+            ->whereBetween('invoice_date', [$fromDate, $toDate])
+            ->orderBy('invoice_date')
+            ->orderBy('id')
+            ->get($salesInvoiceColumns);
+
+        $purchaseInvoices = DB::table('purchase_invoices')
+            ->where('created_by', creatorId())
+            ->whereIn('status', ['posted', 'partial', 'paid', 'cancelled'])
+            ->whereBetween('invoice_date', [$fromDate, $toDate])
+            ->orderBy('invoice_date')
+            ->orderBy('id')
+            ->get($purchaseInvoiceColumns);
+
+        $salesInvoiceItemColumns = array_merge([
+            'invoice_id',
+            'product_id',
+            'quantity',
+            'unit_price',
+            'discount_amount',
+            'tax_amount',
+            'total_amount',
+        ], $this->existingColumns('sales_invoice_items', [
+            'description',
+            'tax_percentage',
+        ]));
+
+        $purchaseInvoiceItemColumns = array_merge([
+            'invoice_id',
+            'product_id',
+            'quantity',
+            'unit_price',
+            'discount_amount',
+            'tax_amount',
+            'total_amount',
+        ], $this->existingColumns('purchase_invoice_items', [
+            'description',
+            'tax_percentage',
+        ]));
+
+        $salesInvoiceItems = collect();
+        if (Schema::hasTable('sales_invoice_items')) {
+            $salesInvoiceItems = DB::table('sales_invoice_items')
+                ->whereIn('invoice_id', $salesInvoices->pluck('id')->all())
+                ->orderBy('invoice_id')
+                ->orderBy('id')
+                ->get($salesInvoiceItemColumns)
+                ->groupBy('invoice_id');
+        }
+
+        $purchaseInvoiceItems = collect();
+        if (Schema::hasTable('purchase_invoice_items')) {
+            $purchaseInvoiceItems = DB::table('purchase_invoice_items')
+                ->whereIn('invoice_id', $purchaseInvoices->pluck('id')->all())
+                ->orderBy('invoice_id')
+                ->orderBy('id')
+                ->get($purchaseInvoiceItemColumns)
+                ->groupBy('invoice_id');
+        }
+
+        $customerUsers = DB::table('users')
+            ->whereIn('id', $salesInvoices->pluck('customer_id')->filter()->all())
+            ->select('id', 'name', 'email')
+            ->get()
+            ->keyBy('id');
+
+        $vendorUsers = DB::table('users')
+            ->whereIn('id', $purchaseInvoices->pluck('vendor_id')->filter()->all())
+            ->select('id', 'name', 'email')
+            ->get()
+            ->keyBy('id');
+
+        $customerTaxNumbers = collect();
+        if (Schema::hasTable('customers')) {
+            $customerTaxNumbers = DB::table('customers')
+                ->where('created_by', creatorId())
+                ->whereIn('user_id', $salesInvoices->pluck('customer_id')->filter()->all())
+                ->pluck('tax_number', 'user_id');
+        }
+
+        $vendorTaxNumbers = collect();
+        if (Schema::hasTable('vendors')) {
+            $vendorTaxNumbers = DB::table('vendors')
+                ->where('created_by', creatorId())
+                ->whereIn('user_id', $purchaseInvoices->pluck('vendor_id')->filter()->all())
+                ->pluck('tax_number', 'user_id');
+        }
+
+        $customerMaster = [];
+        foreach ($salesInvoices as $invoice) {
+            $customerId = (int) ($invoice->customer_id ?? 0);
+            if ($customerId <= 0) {
+                continue;
+            }
+
+            if (!isset($customerMaster[$customerId])) {
+                $counterpartySnapshot = $this->normaliseSnapshot($invoice->counterparty_snapshot ?? null);
+                $customerUser = $customerUsers->get($customerId);
+
+                $customerMaster[$customerId] = [
+                    'id' => $customerId,
+                    'name' => $this->pickFirstNonEmpty([
+                        data_get($counterpartySnapshot, 'company_name'),
+                        data_get($counterpartySnapshot, 'name'),
+                        $customerUser->name ?? null,
+                    ], 'Customer ' . $customerId),
+                    'email' => $this->pickFirstNonEmpty([
+                        data_get($counterpartySnapshot, 'primary_email'),
+                        data_get($counterpartySnapshot, 'email'),
+                        $customerUser->email ?? null,
+                    ], ''),
+                    'tax_number' => $this->normaliseTaxNumber(
+                        $this->pickFirstNonEmpty([
+                            data_get($counterpartySnapshot, 'tax_number'),
+                            $customerTaxNumbers[$customerId] ?? null,
+                        ], '')
+                    ),
+                ];
+            }
+        }
+
+        $supplierMaster = [];
+        foreach ($purchaseInvoices as $invoice) {
+            $vendorId = (int) ($invoice->vendor_id ?? 0);
+            if ($vendorId <= 0) {
+                continue;
+            }
+
+            if (!isset($supplierMaster[$vendorId])) {
+                $counterpartySnapshot = $this->normaliseSnapshot($invoice->counterparty_snapshot ?? null);
+                $vendorUser = $vendorUsers->get($vendorId);
+
+                $supplierMaster[$vendorId] = [
+                    'id' => $vendorId,
+                    'name' => $this->pickFirstNonEmpty([
+                        data_get($counterpartySnapshot, 'company_name'),
+                        data_get($counterpartySnapshot, 'name'),
+                        $vendorUser->name ?? null,
+                    ], 'Supplier ' . $vendorId),
+                    'email' => $this->pickFirstNonEmpty([
+                        data_get($counterpartySnapshot, 'primary_email'),
+                        data_get($counterpartySnapshot, 'email'),
+                        $vendorUser->email ?? null,
+                    ], ''),
+                    'tax_number' => $this->normaliseTaxNumber(
+                        $this->pickFirstNonEmpty([
+                            data_get($counterpartySnapshot, 'tax_number'),
+                            $vendorTaxNumbers[$vendorId] ?? null,
+                        ], '')
+                    ),
+                ];
+            }
+        }
+
+        $issuerSnapshot = $this->resolveIssuerSnapshotFromInvoices($salesInvoices, $purchaseInvoices);
+        $companyTaxNumber = $this->normaliseTaxNumber(
+            $this->pickFirstNonEmpty([
+                $companySettings['company_tax_number'] ?? null,
+                $companySettings['vat_number'] ?? null,
+                data_get($issuerSnapshot, 'tax_number'),
+            ], '')
+        );
+        $companyName = $this->pickFirstNonEmpty([
+            $companySettings['company_name'] ?? null,
+            data_get($issuerSnapshot, 'company_name'),
+            config('app.name'),
+        ], config('app.name'));
+        $companyAddress = $this->pickFirstNonEmpty([
+            $companySettings['company_address'] ?? null,
+            data_get($issuerSnapshot, 'company_address'),
+        ], '');
+        $companyPhone = $this->pickFirstNonEmpty([
+            $companySettings['company_telephone'] ?? null,
+            data_get($issuerSnapshot, 'company_telephone'),
+        ], '');
+        $companyEmail = $this->pickFirstNonEmpty([
+            $companySettings['company_email'] ?? null,
+            data_get($issuerSnapshot, 'company_email'),
+        ], '');
+
+        $writer = new \XMLWriter();
+        $writer->openMemory();
+        $writer->startDocument('1.0', 'UTF-8');
+        $writer->setIndent(true);
+
+        $writer->startElement('AuditFile');
+        $writer->writeAttribute('xmlns', 'urn:OECD:StandardAuditFile-Tax:PT_1.04_01');
+
+        $writer->startElement('Header');
+        $writer->writeElement('AuditFileVersion', '1.0-MZ-DRAFT');
+        $writer->writeElement('CompanyID', (string) $companyTaxNumber);
+        $writer->writeElement('TaxRegistrationNumber', (string) $companyTaxNumber);
+        $writer->writeElement('CompanyName', (string) $companyName);
+        $writer->writeElement('BusinessName', (string) $companyName);
+        $writer->writeElement('CompanyAddress', (string) $companyAddress);
+        $writer->writeElement('FiscalYear', (string) date('Y', strtotime($fromDate)));
+        $writer->writeElement('StartDate', $fromDate);
+        $writer->writeElement('EndDate', $toDate);
+        $writer->writeElement('CurrencyCode', (string) ($companySettings['defaultCurrency'] ?? 'MZN'));
+        $writer->writeElement('DateCreated', now()->toDateString());
+        $writer->writeElement('TaxEntity', 'MZ');
+        $writer->writeElement('ProductCompanyTaxID', (string) $companyTaxNumber);
+        $writer->writeElement('SoftwareCertificateNumber', 'N/A');
+        $writer->writeElement('ProductID', 'IndicoERP');
+        $writer->writeElement('ProductVersion', (string) app()->version());
+        $writer->writeElement('Telephone', (string) $companyPhone);
+        $writer->writeElement('Email', (string) $companyEmail);
+        $writer->endElement();
+
+        $writer->startElement('MasterFiles');
+        foreach ($customerMaster as $customer) {
+            $writer->startElement('Customer');
+            $writer->writeElement('CustomerID', 'CUST-' . (string) $customer['id']);
+            $writer->writeElement('AccountID', '1100');
+            $writer->writeElement('CustomerTaxID', (string) $customer['tax_number']);
+            $writer->writeElement('CompanyName', (string) $customer['name']);
+            if ($customer['email'] !== '') {
+                $writer->writeElement('Email', (string) $customer['email']);
+            }
+            $writer->endElement();
+        }
+        foreach ($supplierMaster as $supplier) {
+            $writer->startElement('Supplier');
+            $writer->writeElement('SupplierID', 'SUP-' . (string) $supplier['id']);
+            $writer->writeElement('AccountID', '2000');
+            $writer->writeElement('SupplierTaxID', (string) $supplier['tax_number']);
+            $writer->writeElement('CompanyName', (string) $supplier['name']);
+            if ($supplier['email'] !== '') {
+                $writer->writeElement('Email', (string) $supplier['email']);
+            }
+            $writer->endElement();
+        }
+        $writer->endElement();
+
+        $writer->startElement('SourceDocuments');
+
+        $writer->startElement('SalesInvoices');
+        $writer->writeElement('NumberOfEntries', (string) $salesInvoices->count());
+        $writer->writeElement('TotalDebit', '0.00');
+        $writer->writeElement('TotalCredit', number_format((float) $salesInvoices->sum('total_amount'), 2, '.', ''));
+
+        foreach ($salesInvoices as $invoice) {
+            $invoiceType = (string) ($invoice->document_type ?? 'FT');
+            if ($invoiceType === '') {
+                $invoiceType = 'FT';
+            }
+
+            $sourceIdentifier = $this->pickFirstNonEmpty([
+                (string) ($invoice->customer_id ?? ''),
+                (string) creatorId(),
+            ], (string) creatorId());
+
+            $writer->startElement('Invoice');
+            $writer->writeElement('InvoiceNo', (string) $invoice->invoice_number);
+            $writer->writeElement('InvoiceDate', (string) $invoice->invoice_date);
+            $writer->writeElement('InvoiceType', $invoiceType);
+            $writer->writeElement('CustomerID', 'CUST-' . (string) $invoice->customer_id);
+            $writer->writeElement('SystemEntryDate', date('Y-m-d\TH:i:s', strtotime((string) ($invoice->created_at ?? $invoice->updated_at))));
+            $writer->writeElement('SourceID', $sourceIdentifier);
+            $writer->writeElement('SourceBilling', $this->mapSaftSourceBilling((string) ($invoice->fiscal_submission_status ?? 'pending')));
+
+            $writer->startElement('DocumentStatus');
+            $writer->writeElement('InvoiceStatus', $this->mapSaftInvoiceStatus($invoice->status, (bool) $invoice->is_cancelled));
+            $writer->writeElement('InvoiceStatusDate', date('Y-m-d\TH:i:s', strtotime((string) ($invoice->updated_at ?? $invoice->created_at))));
+            $writer->endElement();
+
+            $lines = $salesInvoiceItems->get($invoice->id, collect());
+            foreach ($lines->values() as $index => $line) {
+                $lineNumber = (string) ($index + 1);
+                $taxAmount = (float) ($line->tax_amount ?? 0);
+                $lineNet = max(0, (float) $line->total_amount - $taxAmount);
+                $taxPercent = isset($line->tax_percentage)
+                    ? (float) $line->tax_percentage
+                    : ($lineNet > 0 ? round(($taxAmount / $lineNet) * 100, 2) : 0.0);
+                $productDescription = $this->pickFirstNonEmpty([
+                    $line->description ?? null,
+                    $line->product_id ? ('Item ' . (string) $line->product_id) : null,
+                ], 'Item');
+
+                $writer->startElement('Line');
+                $writer->writeElement('LineNumber', $lineNumber);
+                $writer->writeElement('ProductCode', (string) ($line->product_id ?? 'ITEM'));
+                $writer->writeElement('ProductDescription', $productDescription);
+                $writer->writeElement('Quantity', number_format((float) $line->quantity, 2, '.', ''));
+                $writer->writeElement('UnitPrice', number_format((float) $line->unit_price, 2, '.', ''));
+                $writer->writeElement('TaxPointDate', (string) $invoice->invoice_date);
+                $writer->writeElement('CreditAmount', number_format((float) $lineNet, 2, '.', ''));
+
+                $writer->startElement('Tax');
+                $writer->writeElement('TaxType', 'IVA');
+                $writer->writeElement('TaxCountryRegion', 'MZ');
+                $writer->writeElement('TaxCode', 'NOR');
+                $writer->writeElement('TaxPercentage', number_format($taxPercent, 2, '.', ''));
+                $writer->endElement();
+
+                $writer->endElement();
+            }
+
+            $writer->startElement('DocumentTotals');
+            $writer->writeElement('TaxPayable', number_format((float) $invoice->tax_amount, 2, '.', ''));
+            $writer->writeElement('NetTotal', number_format((float) $invoice->subtotal - (float) ($invoice->discount_amount ?? 0), 2, '.', ''));
+            $writer->writeElement('GrossTotal', number_format((float) $invoice->total_amount, 2, '.', ''));
+            $writer->endElement();
+
+            $writer->endElement();
+        }
+
+        $writer->endElement();
+
+        $writer->startElement('PurchaseInvoices');
+        $writer->writeElement('NumberOfEntries', (string) $purchaseInvoices->count());
+        $writer->writeElement('TotalDebit', number_format((float) $purchaseInvoices->sum('total_amount'), 2, '.', ''));
+        $writer->writeElement('TotalCredit', '0.00');
+
+        foreach ($purchaseInvoices as $invoice) {
+            $invoiceType = (string) ($invoice->document_type ?? 'FC');
+            if ($invoiceType === '') {
+                $invoiceType = 'FC';
+            }
+
+            $sourceIdentifier = $this->pickFirstNonEmpty([
+                (string) ($invoice->vendor_id ?? ''),
+                (string) creatorId(),
+            ], (string) creatorId());
+
+            $writer->startElement('Invoice');
+            $writer->writeElement('InvoiceNo', (string) $invoice->invoice_number);
+            $writer->writeElement('InvoiceDate', (string) $invoice->invoice_date);
+            $writer->writeElement('InvoiceType', $invoiceType);
+            $writer->writeElement('SupplierID', 'SUP-' . (string) $invoice->vendor_id);
+            $writer->writeElement('SystemEntryDate', date('Y-m-d\TH:i:s', strtotime((string) ($invoice->created_at ?? $invoice->updated_at))));
+            $writer->writeElement('SourceID', $sourceIdentifier);
+            $writer->writeElement('SourceBilling', $this->mapSaftSourceBilling((string) ($invoice->fiscal_submission_status ?? 'pending')));
+
+            $writer->startElement('DocumentStatus');
+            $writer->writeElement('InvoiceStatus', $this->mapSaftInvoiceStatus($invoice->status, (bool) $invoice->is_cancelled));
+            $writer->writeElement('InvoiceStatusDate', date('Y-m-d\TH:i:s', strtotime((string) ($invoice->updated_at ?? $invoice->created_at))));
+            $writer->endElement();
+
+            $lines = $purchaseInvoiceItems->get($invoice->id, collect());
+            foreach ($lines->values() as $index => $line) {
+                $lineNumber = (string) ($index + 1);
+                $taxAmount = (float) ($line->tax_amount ?? 0);
+                $lineNet = max(0, (float) $line->total_amount - $taxAmount);
+                $taxPercent = isset($line->tax_percentage)
+                    ? (float) $line->tax_percentage
+                    : ($lineNet > 0 ? round(($taxAmount / $lineNet) * 100, 2) : 0.0);
+                $productDescription = $this->pickFirstNonEmpty([
+                    $line->description ?? null,
+                    $line->product_id ? ('Item ' . (string) $line->product_id) : null,
+                ], 'Item');
+
+                $writer->startElement('Line');
+                $writer->writeElement('LineNumber', $lineNumber);
+                $writer->writeElement('ProductCode', (string) ($line->product_id ?? 'ITEM'));
+                $writer->writeElement('ProductDescription', $productDescription);
+                $writer->writeElement('Quantity', number_format((float) $line->quantity, 2, '.', ''));
+                $writer->writeElement('UnitPrice', number_format((float) $line->unit_price, 2, '.', ''));
+                $writer->writeElement('TaxPointDate', (string) $invoice->invoice_date);
+                $writer->writeElement('DebitAmount', number_format((float) $lineNet, 2, '.', ''));
+
+                $writer->startElement('Tax');
+                $writer->writeElement('TaxType', 'IVA');
+                $writer->writeElement('TaxCountryRegion', 'MZ');
+                $writer->writeElement('TaxCode', 'NOR');
+                $writer->writeElement('TaxPercentage', number_format($taxPercent, 2, '.', ''));
+                $writer->endElement();
+
+                $writer->endElement();
+            }
+
+            $writer->startElement('DocumentTotals');
+            $writer->writeElement('TaxPayable', number_format((float) $invoice->tax_amount, 2, '.', ''));
+            $writer->writeElement('NetTotal', number_format((float) $invoice->subtotal - (float) ($invoice->discount_amount ?? 0), 2, '.', ''));
+            $writer->writeElement('GrossTotal', number_format((float) $invoice->total_amount, 2, '.', ''));
+            $writer->endElement();
+
+            $writer->endElement();
+        }
+
+        $writer->endElement();
+        $writer->endElement();
+        $writer->endElement();
+        $writer->endDocument();
+
+        return $writer->outputMemory();
+    }
+
+    private function mapSaftSourceBilling(string $fiscalSubmissionStatus): string
+    {
+        $status = strtolower(trim($fiscalSubmissionStatus));
+
+        if (in_array($status, ['submitted', 'validated'], true)) {
+            return 'I';
+        }
+
+        return 'P';
+    }
+
+    private function mapSaftInvoiceStatus(?string $status, bool $isCancelled): string
+    {
+        if ($isCancelled || strtolower((string) $status) === 'cancelled') {
+            return 'A';
+        }
+
+        return 'N';
+    }
+
+    private function existingColumns(string $table, array $columns): array
+    {
+        if (!Schema::hasTable($table)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $columns,
+            static fn(string $column): bool => Schema::hasColumn($table, $column)
+        ));
+    }
+
+    private function normaliseSnapshot(mixed $snapshot): ?array
+    {
+        if (is_array($snapshot)) {
+            return $snapshot;
+        }
+
+        if (is_string($snapshot) && $snapshot !== '') {
+            $decoded = json_decode($snapshot, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    private function pickFirstNonEmpty(array $values, string $fallback = ''): string
+    {
+        foreach ($values as $value) {
+            $candidate = trim((string) ($value ?? ''));
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return $fallback;
+    }
+
+    private function normaliseTaxNumber(?string $value): string
+    {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '') {
+            return '';
+        }
+
+        return preg_replace('/\s+/', '', $raw) ?? $raw;
+    }
+
+    private function resolveIssuerSnapshotFromInvoices($salesInvoices, $purchaseInvoices): ?array
+    {
+        foreach ([$salesInvoices, $purchaseInvoices] as $collection) {
+            foreach ($collection as $invoice) {
+                $snapshot = $this->normaliseSnapshot($invoice->issuer_snapshot ?? null);
+                if ($snapshot !== null) {
+                    return $snapshot;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function requiresMozambicanNuitFromSettings(array $companySettings): bool
+    {
+        $taxType = strtoupper(trim((string) ($companySettings['tax_type'] ?? '')));
+        if ($taxType === 'NUIT') {
+            return true;
+        }
+
+        $country = mb_strtolower(trim((string) ($companySettings['company_country'] ?? '')));
+        return str_contains($country, 'mozambique') || str_contains($country, 'moçambique');
+    }
+
+    private function isValidNuit(?string $taxNumber): bool
+    {
+        $digits = preg_replace('/\D+/', '', (string) ($taxNumber ?? '')) ?? '';
+        return (bool) preg_match('/^\d{9}$/', $digits);
     }
 
     public function getMozambiqueGoLiveReadiness(): array
@@ -576,6 +1209,86 @@ class ReportService
                 'Missing required tables: ' . implode(', ', $missingTables),
                 true,
                 ['missing' => $missingTables]
+            );
+        }
+
+        $companySettings = getCompanyAllSetting(creatorId());
+        $requiresNuit = $this->requiresMozambicanNuitFromSettings($companySettings);
+        $companyTaxNumber = (string) ($companySettings['company_tax_number'] ?? $companySettings['vat_number'] ?? '');
+        $companyTaxNumberValid = $this->isValidNuit($companyTaxNumber);
+
+        $companyTaxCheckStatus = 'pass';
+        $companyTaxCheckDetails = 'Company tax number format is valid.';
+        if ($requiresNuit && !$companyTaxNumberValid) {
+            $companyTaxCheckStatus = 'fail';
+            $companyTaxCheckDetails = 'Company NUIT is missing or invalid (expected 9 digits).';
+        }
+
+        $addCheck(
+            'company.tax_number.format',
+            'Company tax number (NUIT) format',
+            $companyTaxCheckStatus,
+            $companyTaxCheckDetails,
+            $requiresNuit,
+            [
+                'requires_nuit' => $requiresNuit,
+                'has_valid_nuit' => $companyTaxNumberValid,
+            ]
+        );
+
+        if (Schema::hasTable('customers') && Schema::hasColumn('customers', 'tax_number')) {
+            $invalidCustomerNuitCount = DB::table('customers')
+                ->where('created_by', creatorId())
+                ->whereNotNull('tax_number')
+                ->where('tax_number', '!=', '')
+                ->pluck('tax_number')
+                ->filter(fn ($taxNumber): bool => !$this->isValidNuit((string) $taxNumber))
+                ->count();
+
+            $addCheck(
+                'customers.tax_number.format',
+                'Customer NUIT format',
+                $invalidCustomerNuitCount === 0 ? 'pass' : ($requiresNuit ? 'fail' : 'warn'),
+                $invalidCustomerNuitCount === 0
+                    ? 'All customer tax numbers are valid.'
+                    : "Found {$invalidCustomerNuitCount} customer tax number(s) with invalid NUIT format.",
+                $requiresNuit,
+                ['invalid_count' => $invalidCustomerNuitCount]
+            );
+        } else {
+            $addCheck(
+                'customers.tax_number.format',
+                'Customer NUIT format',
+                'warn',
+                'Customer table or tax_number column is not available.'
+            );
+        }
+
+        if (Schema::hasTable('vendors') && Schema::hasColumn('vendors', 'tax_number')) {
+            $invalidVendorNuitCount = DB::table('vendors')
+                ->where('created_by', creatorId())
+                ->whereNotNull('tax_number')
+                ->where('tax_number', '!=', '')
+                ->pluck('tax_number')
+                ->filter(fn ($taxNumber): bool => !$this->isValidNuit((string) $taxNumber))
+                ->count();
+
+            $addCheck(
+                'vendors.tax_number.format',
+                'Vendor NUIT format',
+                $invalidVendorNuitCount === 0 ? 'pass' : ($requiresNuit ? 'fail' : 'warn'),
+                $invalidVendorNuitCount === 0
+                    ? 'All vendor tax numbers are valid.'
+                    : "Found {$invalidVendorNuitCount} vendor tax number(s) with invalid NUIT format.",
+                $requiresNuit,
+                ['invalid_count' => $invalidVendorNuitCount]
+            );
+        } else {
+            $addCheck(
+                'vendors.tax_number.format',
+                'Vendor NUIT format',
+                'warn',
+                'Vendor table or tax_number column is not available.'
             );
         }
 
@@ -763,7 +1476,20 @@ class ReportService
                 ->whereIn('fiscal_submission_status', ['pending', 'rejected'])
                 ->count();
 
-            $totalBacklog = $salesBacklog + $purchaseBacklog;
+            $posBacklog = 0;
+            if (Schema::hasTable('pos') && Schema::hasColumn('pos', 'fiscal_submission_status')) {
+                $posBacklogQuery = DB::table('pos')
+                    ->where('created_by', creatorId())
+                    ->whereIn('fiscal_submission_status', ['pending', 'rejected']);
+
+                if (Schema::hasColumn('pos', 'is_cancelled')) {
+                    $posBacklogQuery->where('is_cancelled', false);
+                }
+
+                $posBacklog = $posBacklogQuery->count();
+            }
+
+            $totalBacklog = $salesBacklog + $purchaseBacklog + $posBacklog;
 
             $addCheck(
                 'fiscal.submission.backlog',
@@ -775,6 +1501,7 @@ class ReportService
                 false,
                 [
                     'sales_backlog' => $salesBacklog,
+                    'pos_backlog' => $posBacklog,
                     'purchase_backlog' => $purchaseBacklog,
                 ]
             );
@@ -784,6 +1511,42 @@ class ReportService
                 'Fiscal submission backlog',
                 'warn',
                 'Fiscal submission status columns are not available.'
+            );
+        }
+
+        if (Schema::hasTable('pos')) {
+            $requiredPosFiscalColumns = [
+                'document_type',
+                'document_series',
+                'document_sequence',
+                'fiscal_submission_status',
+                'fiscal_submission_reference',
+                'is_cancelled',
+                'cancelled_at',
+                'cancellation_reason',
+            ];
+
+            $missingPosFiscalColumns = array_values(array_filter(
+                $requiredPosFiscalColumns,
+                static fn (string $column): bool => !Schema::hasColumn('pos', $column)
+            ));
+
+            $addCheck(
+                'pos.fiscal.columns',
+                'POS fiscal compliance columns',
+                empty($missingPosFiscalColumns) ? 'pass' : 'warn',
+                empty($missingPosFiscalColumns)
+                    ? 'POS fiscal columns are configured.'
+                    : 'Missing POS fiscal columns: ' . implode(', ', $missingPosFiscalColumns),
+                false,
+                ['missing_columns' => $missingPosFiscalColumns]
+            );
+        } else {
+            $addCheck(
+                'pos.fiscal.columns',
+                'POS fiscal compliance columns',
+                'warn',
+                'POS table is not available.'
             );
         }
 
@@ -1206,6 +1969,30 @@ class ReportService
             $submissionRegisterRoutesReady
                 ? 'Fiscal submission register JSON and CSV routes are available.'
                 : 'Fiscal submission register routes are not available yet.',
+            false
+        );
+
+        $saftExportRouteReady = Route::has('account.reports.mozambique-saft.export');
+
+        $addCheck(
+            'exports.saft_route',
+            'SAF-T export route',
+            $saftExportRouteReady ? 'pass' : 'fail',
+            $saftExportRouteReady
+                ? 'SAF-T XML export route is available.'
+                : 'SAF-T XML export route is missing.',
+            true
+        );
+
+        $posFiscalRoutesReady = Route::has('pos.fiscal-status') && Route::has('pos.cancel-fiscal');
+
+        $addCheck(
+            'pos.fiscal.routes',
+            'POS fiscal operation routes',
+            $posFiscalRoutesReady ? 'pass' : 'warn',
+            $posFiscalRoutesReady
+                ? 'POS fiscal status/cancellation routes are available.'
+                : 'POS fiscal status/cancellation routes are not available yet.',
             false
         );
 

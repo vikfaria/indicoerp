@@ -7,6 +7,7 @@ use App\Models\SalesInvoiceReturn;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\ValidationException;
 use Workdo\Account\Models\CreditNote;
+use Workdo\Pos\Models\Pos;
 
 class FiscalDocumentComplianceService
 {
@@ -181,7 +182,8 @@ class FiscalDocumentComplianceService
     {
         return $document instanceof SalesInvoiceReturn
             || $document instanceof PurchaseReturn
-            || $document instanceof CreditNote;
+            || $document instanceof CreditNote
+            || $document instanceof Pos;
     }
 
     private function isCancelled(Model $document): bool

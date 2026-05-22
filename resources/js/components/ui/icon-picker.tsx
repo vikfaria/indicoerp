@@ -155,7 +155,7 @@ const allLucideIcons = Object.keys(LucideIcons).filter(name => {
 
 
 
-export function IconPicker({ value, onChange, placeholder = 'Select an icon', className = '' }: IconPickerProps) {
+export function IconPicker({ value, onChange, placeholder, className = '' }: IconPickerProps) {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -223,7 +223,7 @@ export function IconPicker({ value, onChange, placeholder = 'Select an icon', cl
                         <div className="flex items-center space-x-2">
                             {value && renderIcon(value, 16)}
                             <span className={value ? '' : 'text-muted-foreground'}>
-                                {value || placeholder}
+                                {value || placeholder || t('Select an icon')}
                             </span>
                         </div>
                         <Search size={16} className="text-muted-foreground" />
@@ -266,7 +266,7 @@ export function IconPicker({ value, onChange, placeholder = 'Select an icon', cl
                                 type="text"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Search icons..."
+                                placeholder={t('Search icons...')}
                                 className="pl-9 pr-8"
                             />
                             {search && (
@@ -300,7 +300,7 @@ export function IconPicker({ value, onChange, placeholder = 'Select an icon', cl
                         </div>
                         {filteredIcons.length === 0 && (
                             <div className="text-center text-muted-foreground py-4">
-                                No icons found
+                                {t('No icons found')}
                             </div>
                         )}
                     </div>

@@ -163,6 +163,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::get('/mozambique-vat-declaration/export', [ReportsController::class, 'exportMozambiqueVatDeclaration'])->name('mozambique-vat-declaration.export');
         Route::get('/mozambique-fiscal-submission-register', [ReportsController::class, 'mozambiqueFiscalSubmissionRegister'])->name('mozambique-fiscal-submission-register');
         Route::get('/mozambique-fiscal-submission-register/export', [ReportsController::class, 'exportMozambiqueFiscalSubmissionRegister'])->name('mozambique-fiscal-submission-register.export');
+        Route::get('/mozambique-saft/export', [ReportsController::class, 'exportMozambiqueSaft'])->name('mozambique-saft.export');
         Route::get('/mozambique-go-live-readiness', [ReportsController::class, 'mozambiqueGoLiveReadiness'])->name('mozambique-go-live-readiness');
         Route::post('/mozambique-go-live-readiness/attestation', [ReportsController::class, 'updateMozambiqueGoLiveReadinessAttestation'])->name('mozambique-go-live-readiness.attestation');
         Route::get('/mozambique-go-live-readiness/pilot-companies', [ReportsController::class, 'listMozambiquePilotCompanies'])->name('mozambique-go-live-readiness.pilot-companies.index');

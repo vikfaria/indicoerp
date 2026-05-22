@@ -102,7 +102,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground group-data-[collapsible=icon]:hidden" />
             <SidebarInput
-              placeholder="Search menu..."
+              placeholder={t('Search menu...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-8 group-data-[collapsible=icon]:hidden border-sidebar-border focus-visible:ring-1 focus-visible:ring-primary focus-visible:border-primary"

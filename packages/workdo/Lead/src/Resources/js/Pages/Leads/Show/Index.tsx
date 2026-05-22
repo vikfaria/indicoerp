@@ -68,7 +68,7 @@ export default function Show() {
                                 </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                                <p>{t(`Add ${headers[activeSection]}`)}</p>
+                                <p>{`${t('Add')} ${headers[activeSection] || ''}`}</p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>

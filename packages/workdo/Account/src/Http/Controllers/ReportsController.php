@@ -109,6 +109,10 @@ class ReportsController extends Controller
             ['sales', 'taxable_base', number_format((float) $data['sales']['taxable_base'], 2, '.', '')],
             ['sales', 'tax_amount', number_format((float) $data['sales']['tax_amount'], 2, '.', '')],
             ['sales', 'total_amount', number_format((float) $data['sales']['total_amount'], 2, '.', '')],
+            ['pos_sales', 'documents', (string) ($data['pos_sales']['documents'] ?? 0)],
+            ['pos_sales', 'taxable_base', number_format((float) ($data['pos_sales']['taxable_base'] ?? 0), 2, '.', '')],
+            ['pos_sales', 'tax_amount', number_format((float) ($data['pos_sales']['tax_amount'] ?? 0), 2, '.', '')],
+            ['pos_sales', 'total_amount', number_format((float) ($data['pos_sales']['total_amount'] ?? 0), 2, '.', '')],
             ['purchases', 'documents', (string) $data['purchases']['documents']],
             ['purchases', 'taxable_base', number_format((float) $data['purchases']['taxable_base'], 2, '.', '')],
             ['purchases', 'tax_amount', number_format((float) $data['purchases']['tax_amount'], 2, '.', '')],
@@ -122,6 +126,10 @@ class ReportsController extends Controller
 
         foreach ($data['fiscal_status']['sales'] as $status => $total) {
             $rows[] = ['fiscal_status_sales', (string) $status, (string) $total];
+        }
+
+        foreach (($data['fiscal_status']['pos'] ?? []) as $status => $total) {
+            $rows[] = ['fiscal_status_pos', (string) $status, (string) $total];
         }
 
         foreach ($data['fiscal_status']['purchases'] as $status => $total) {
@@ -188,6 +196,7 @@ class ReportsController extends Controller
             ['period', 'from_date', $data['from_date']],
             ['period', 'to_date', $data['to_date']],
             ['totals', 'sales_vat', number_format((float) $data['totals']['sales_vat'], 2, '.', '')],
+            ['totals', 'pos_vat', number_format((float) ($data['totals']['pos_vat'] ?? 0), 2, '.', '')],
             ['totals', 'purchase_vat', number_format((float) $data['totals']['purchase_vat'], 2, '.', '')],
             ['totals', 'credit_notes_vat', number_format((float) $data['totals']['credit_notes_vat'], 2, '.', '')],
             ['totals', 'debit_notes_vat', number_format((float) $data['totals']['debit_notes_vat'], 2, '.', '')],
@@ -195,7 +204,7 @@ class ReportsController extends Controller
             ['totals', 'input_vat', number_format((float) $data['totals']['input_vat'], 2, '.', '')],
             ['totals', 'net_vat_payable', number_format((float) $data['totals']['net_vat_payable'], 2, '.', '')],
             ['', '', ''],
-            ['monthly', 'period', 'sales_vat|purchase_vat|credit_notes_vat|debit_notes_vat|output_vat|input_vat|net_vat_payable'],
+            ['monthly', 'period', 'sales_vat|pos_vat|purchase_vat|credit_notes_vat|debit_notes_vat|output_vat|input_vat|net_vat_payable'],
         ];
 
         foreach ($data['monthly'] as $month) {
@@ -204,6 +213,7 @@ class ReportsController extends Controller
                 (string) $month['period'],
                 implode('|', [
                     number_format((float) $month['sales_vat'], 2, '.', ''),
+                    number_format((float) ($month['pos_vat'] ?? 0), 2, '.', ''),
                     number_format((float) $month['purchase_vat'], 2, '.', ''),
                     number_format((float) $month['credit_notes_vat'], 2, '.', ''),
                     number_format((float) $month['debit_notes_vat'], 2, '.', ''),
@@ -295,6 +305,36 @@ class ReportsController extends Controller
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    public function exportMozambiqueSaft(Request $request)
+    {
+        if (!Auth::user()->can('view-tax-summary')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $currentYear = date('Y');
+        $filters = [
+            'from_date' => $request->from_date ?: "$currentYear-01-01",
+            'to_date' => $request->to_date ?: "$currentYear-12-31",
+        ];
+
+        try {
+            $xml = $this->reportService->buildMozambiqueSaftXml($filters);
+        } catch (\Throwable $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        $filename = sprintf(
+            'mozambique-saft-%s-to-%s.xml',
+            $filters['from_date'],
+            $filters['to_date']
+        );
+
+        return response($xml, 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
     }

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, ReactNode, useEffect } from 'react';
 import { usePage } from '@inertiajs/react';
 import { getImagePath } from '@/utils/helpers';
+import i18next from 'i18next';
 
 interface BrandSettings {
   logo_dark?: string;
@@ -43,7 +44,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
     logo_light: globalSettings?.logo_light || '',
     favicon: globalSettings?.favicon || '',
     titleText: globalSettings?.titleText || 'WorkDo',
-    footerText: globalSettings?.footerText || `© ${new Date().getFullYear()} WorkDo. All rights reserved.`,
+    footerText: globalSettings?.footerText || i18next.t('© {{year}} WorkDo. All rights reserved.', { year: new Date().getFullYear() }),
     sidebarVariant: globalSettings?.sidebarVariant || 'inset',
     sidebarStyle: globalSettings?.sidebarStyle || 'plain',
     layoutDirection: globalSettings?.layoutDirection || 'ltr',
