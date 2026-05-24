@@ -606,12 +606,14 @@ class DocumentFiscalSnapshotTest extends TestCase
 
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'type' => 'company',
             'created_by' => null,
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+        \App\Models\AccountingPeriod::generateForYear($user->id, now()->format('Y'));
+        return $user;
     }
 
     private function makeClient(User $company, string $name): User

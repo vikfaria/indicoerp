@@ -1,4 +1,4 @@
-import { LayoutGrid, Users, Warehouse,ArrowRightLeft, Package, Tag, Tags, Shield, Settings, Image, CreditCard, Headphones, ShoppingCart, Kanban, Calendar, MessageCircle, Replace ,Receipt} from 'lucide-react';
+import { LayoutGrid, Users, Warehouse,ArrowRightLeft, Package, Tag, Tags, Shield, Settings, Image, CreditCard, Headphones, ShoppingCart, Kanban, Calendar, MessageCircle, Replace ,Receipt, Landmark, Calculator, FileText, Building2, BarChart3} from 'lucide-react';
 import { NavItem } from '@/types';
 
 export const getCompanyMenu = (t: (key: string) => string): NavItem[] => [
@@ -77,6 +77,108 @@ export const getCompanyMenu = (t: (key: string) => string): NavItem[] => [
                 title: t('Transfers'),
                 href: route('transfers.index'),
                 permission: 'manage-transfers',
+            },
+        ],
+    },
+    {
+        title: t('Contabilidade SCE'),
+        icon: Landmark,
+        name: 'sce-accounting',
+        order: 50,
+        children: [
+            {
+                title: t('Diários'),
+                href: route('sce.journals.index'),
+                order: 1,
+            },
+            {
+                title: t('Fecho Mensal'),
+                href: route('sce.monthly-closing.index'),
+                order: 2,
+            },
+        ],
+    },
+    {
+        title: t('Fiscal'),
+        icon: FileText,
+        name: 'sce-fiscal',
+        order: 55,
+        children: [
+            {
+                title: t('Perfil Fiscal'),
+                href: route('sce.fiscal.index'),
+                order: 1,
+            },
+            {
+                title: t('Calendário Fiscal'),
+                href: route('sce.fiscal.calendar'),
+                order: 2,
+            },
+            {
+                title: t('Plano de Contas PGC'),
+                href: route('sce.fiscal.pgc'),
+                order: 3,
+            },
+            {
+                title: t('Séries Documentais'),
+                href: route('sce.fiscal.series'),
+                order: 4,
+            },
+            {
+                title: t('Exportação SAF-T'),
+                href: route('sce.fiscal.saft-export'),
+                order: 5,
+            },
+        ],
+    },
+    {
+        title: t('Impostos'),
+        icon: Calculator,
+        name: 'sce-tax',
+        order: 60,
+        children: [
+            {
+                title: t('Mapa IVA'),
+                href: route('sce.tax.vat-map'),
+                order: 1,
+            },
+            {
+                title: t('IRPC'),
+                href: route('sce.tax.irpc'),
+                order: 2,
+            },
+            {
+                title: t('Retenções na Fonte'),
+                href: route('sce.tax.withholding'),
+                order: 3,
+            },
+        ],
+    },
+    {
+        title: t('Activos & Relatórios'),
+        icon: Building2,
+        name: 'sce-assets',
+        order: 65,
+        children: [
+            {
+                title: t('Activos Fixos'),
+                href: route('sce.fixed-assets.index'),
+                order: 1,
+            },
+            {
+                title: t('Balanço'),
+                href: route('sce.reports.balance-sheet'),
+                order: 2,
+            },
+            {
+                title: t('Demonstração Resultados'),
+                href: route('sce.reports.income-statement'),
+                order: 3,
+            },
+            {
+                title: t('Fluxos de Caixa'),
+                href: route('sce.reports.cash-flow'),
+                order: 4,
             },
         ],
     },

@@ -19,13 +19,15 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Services\DocumentFiscalSnapshotService;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use Illuminate\Validation\ValidationException;
 
 class SalesReturnController extends Controller
 {
     public function __construct(
         private readonly DocumentFiscalSnapshotService $documentFiscalSnapshotService,
-        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService
+        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        private readonly FiscalValidationService $fiscalValidationService
     )
     {
     }
@@ -167,6 +169,8 @@ class SalesReturnController extends Controller
     {
         if(Auth::user()->can('create-sales-return-invoices')){
 
+        $this->fiscalValidationService->validatePeriodOpen($request->return_date, creatorId());
+
         $totals = $this->calculateReturnTotals($request->items, $request->original_invoice_id);
         $return = new SalesInvoiceReturn();
         $return->return_date = $request->return_date;
@@ -246,6 +250,8 @@ class SalesReturnController extends Controller
                 return redirect()->back()->with('error', __('Only draft returns can be approved.'));
             }
 
+            $this->fiscalValidationService->validatePeriodOpen($salesReturn->return_date, creatorId());
+
             $this->documentFiscalSnapshotService->syncSalesReturn($salesReturn);
 
             try {
@@ -274,6 +280,8 @@ class SalesReturnController extends Controller
             return redirect()->back()->with('error', __('Only approved returns can be completed.'));
         }
 
+        $this->fiscalValidationService->validatePeriodOpen($salesReturn->return_date, creatorId());
+
         CompleteSalesReturn::dispatch($salesReturn);
 
         $salesReturn->update(['status' => 'completed']);
@@ -291,6 +299,8 @@ class SalesReturnController extends Controller
             if (!$this->checkReturnAccess($salesReturn)) {
                 return redirect()->route('sales-returns.index')->with('error', __('Permission denied'));
             }
+
+            $this->fiscalValidationService->validateDocumentMutable($salesReturn);
 
             if ($salesReturn->status !== 'draft') {
             return redirect()->back()->with('error', __('Only draft returns can be deleted.'));

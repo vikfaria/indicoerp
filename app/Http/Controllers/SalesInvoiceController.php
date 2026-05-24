@@ -21,13 +21,15 @@ use App\Events\PostSalesInvoice;
 use App\Events\EditSalesInvoice;
 use App\Services\DocumentFiscalSnapshotService;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use Illuminate\Validation\ValidationException;
 
 class SalesInvoiceController extends Controller
 {
     public function __construct(
         private readonly DocumentFiscalSnapshotService $documentFiscalSnapshotService,
-        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService
+        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        private readonly FiscalValidationService $fiscalValidationService,
     )
     {
     }
@@ -147,6 +149,13 @@ class SalesInvoiceController extends Controller
         if(Auth::user()->can('create-sales-invoices')){
             $totals = $this->calculateTotals($request->items);
 
+            // SCE: Validate that the invoice date falls within an open accounting period
+            try {
+                $this->fiscalValidationService->validatePeriodOpen($request->invoice_date, creatorId());
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             $invoice = new SalesInvoice();
             $invoice->invoice_date = $request->invoice_date;
             $invoice->due_date = $request->due_date;
@@ -242,6 +251,14 @@ class SalesInvoiceController extends Controller
             if ($salesInvoice->status != 'draft') {
                 return redirect()->route('sales-invoices.index')->with('error', __('Cannot update posted invoice.'));
             }
+
+            // SCE: Enforce fiscal immutability for submitted/validated documents
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             $totals = $this->calculateTotals($request->items);
 
             $salesInvoice->invoice_date = $request->invoice_date;
@@ -358,12 +375,23 @@ class SalesInvoiceController extends Controller
 
             $this->documentFiscalSnapshotService->syncSalesInvoice($salesInvoice);
 
+            // SCE: Validate accounting period is open before posting
+            try {
+                $this->fiscalValidationService->validatePeriodOpen(
+                    $salesInvoice->invoice_date,
+                    $salesInvoice->created_by
+                );
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             try {
                 PostSalesInvoice::dispatch($salesInvoice);
             } catch (\Throwable $th) {
                 return back()->with('error', $th->getMessage());
             }
 
+            // Hash is generated automatically by FiscalDocumentObserver
             $salesInvoice->update(['status' => 'posted']);
 
             return back()->with('success', __('The sales invoice has been posted successfully.'));

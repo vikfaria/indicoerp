@@ -44,35 +44,82 @@ class BalanceSheetService
 
     public function getAccountSection($accountCode)
     {
-        $code = intval($accountCode);
+        $code = (string) $accountCode;
 
-        // Assets (1000-1999)
-        if ($code >= 1000 && $code <= 1399) {
+        // --- PGC-MZ classes 0-9 (new format) ---
+        $firstDigit = substr($code, 0, 1);
+
+        // Class 1: Meios Financeiros Líquidos → Current Assets
+        if ($firstDigit === '1' && strlen($code) <= 4 && !is_numeric(substr($code, 1, 3)) || 
+            ($firstDigit === '1' && strlen($code) <= 3)) {
             return ['section_type' => 'assets', 'sub_section' => 'current_assets'];
-        } elseif ($code >= 1400 && $code <= 1599) {
-            return ['section_type' => 'assets', 'sub_section' => 'other_assets'];
-        } elseif ($code >= 1600 && $code <= 1999) {
+        }
+
+        // Class 2: Contas a Receber e a Pagar
+        if ($firstDigit === '2' && strlen($code) <= 4) {
+            $secondDigit = substr($code, 1, 1);
+            // 21x = receivables (debit), 28x deferrals
+            if (in_array($secondDigit, ['1', '7', '8'])) {
+                return ['section_type' => 'assets', 'sub_section' => 'current_assets'];
+            }
+            // 22x-26x, 29x = payables (credit)
+            return ['section_type' => 'liabilities', 'sub_section' => 'current_liabilities'];
+        }
+
+        // Class 3: Inventários → Current Assets
+        if ($firstDigit === '3' && strlen($code) <= 3) {
+            return ['section_type' => 'assets', 'sub_section' => 'current_assets'];
+        }
+
+        // Class 4: Investimentos → Non-Current Assets
+        if ($firstDigit === '4' && strlen($code) <= 4) {
             return ['section_type' => 'assets', 'sub_section' => 'fixed_assets'];
         }
 
-        // Liabilities (2000-2999)
-        elseif ($code >= 2000 && $code <= 2499) {
-            return ['section_type' => 'liabilities', 'sub_section' => 'current_liabilities'];
-        } elseif ($code >= 2500 && $code <= 2999) {
-            return ['section_type' => 'liabilities', 'sub_section' => 'long_term_liabilities'];
-        }
-
-        // Equity (3000-3999)
-        elseif ($code >= 3000 && $code <= 3999) {
+        // Class 5: Capital Próprio → Equity
+        if ($firstDigit === '5' && strlen($code) <= 3) {
             return ['section_type' => 'equity', 'sub_section' => 'equity'];
         }
 
-        // Revenue (4000-4999) and Expense (5000-5999) - excluded from balance sheet
-        elseif ($code >= 4000 && $code <= 5999) {
+        // Class 6: Gastos → excluded from balance sheet (P&L)
+        if ($firstDigit === '6' && strlen($code) <= 3) {
+            return ['section_type' => 'other', 'sub_section' => 'expenses'];
+        }
+
+        // Class 7: Rendimentos → excluded from balance sheet (P&L)
+        if ($firstDigit === '7' && strlen($code) <= 3) {
+            return ['section_type' => 'other', 'sub_section' => 'income'];
+        }
+
+        // Class 8: Resultados → excluded from balance sheet (P&L)
+        if ($firstDigit === '8' && strlen($code) <= 3) {
+            return ['section_type' => 'other', 'sub_section' => 'results'];
+        }
+
+        // Class 0: Contas de Ordem → off-balance
+        if ($firstDigit === '0') {
+            return ['section_type' => 'other', 'sub_section' => 'off_balance'];
+        }
+
+        // --- Legacy 1000-5999 format (backward compatibility) ---
+        $numericCode = intval($code);
+
+        if ($numericCode >= 1000 && $numericCode <= 1399) {
+            return ['section_type' => 'assets', 'sub_section' => 'current_assets'];
+        } elseif ($numericCode >= 1400 && $numericCode <= 1599) {
+            return ['section_type' => 'assets', 'sub_section' => 'other_assets'];
+        } elseif ($numericCode >= 1600 && $numericCode <= 1999) {
+            return ['section_type' => 'assets', 'sub_section' => 'fixed_assets'];
+        } elseif ($numericCode >= 2000 && $numericCode <= 2499) {
+            return ['section_type' => 'liabilities', 'sub_section' => 'current_liabilities'];
+        } elseif ($numericCode >= 2500 && $numericCode <= 2999) {
+            return ['section_type' => 'liabilities', 'sub_section' => 'long_term_liabilities'];
+        } elseif ($numericCode >= 3000 && $numericCode <= 3999) {
+            return ['section_type' => 'equity', 'sub_section' => 'equity'];
+        } elseif ($numericCode >= 4000 && $numericCode <= 5999) {
             return ['section_type' => 'other', 'sub_section' => 'other'];
         }
 
-        // Default
         return ['section_type' => 'other', 'sub_section' => 'other'];
     }
 
@@ -172,9 +219,11 @@ class BalanceSheetService
 
     public function calculateNetIncome($asOfDate)
     {
+        // Support both PGC-MZ (classes 6/7) and legacy (4000-5999)
         $revenueExpenseAccounts = DB::select("
             SELECT
                 coa.account_code,
+                coa.pgc_class,
                 CASE
                     WHEN coa.normal_balance = 'debit' THEN
                         COALESCE(coa.opening_balance, 0) +
@@ -191,15 +240,27 @@ class BalanceSheetService
                 AND ob.id = (SELECT MAX(id) FROM opening_balances WHERE account_id = coa.id AND created_by = coa.created_by)
             LEFT JOIN journal_entry_items jei ON coa.id = jei.account_id
             LEFT JOIN journal_entries je ON jei.journal_entry_id = je.id
-            WHERE coa.account_code >= '4000' AND coa.account_code <= '5999'
+            WHERE (
+                (coa.pgc_class IN (6, 7))
+                OR (coa.account_code >= '4000' AND coa.account_code <= '5999')
+            )
               AND coa.is_active = 1
               AND coa.created_by = ?
-            GROUP BY coa.id, coa.account_code, coa.account_name, coa.normal_balance, coa.opening_balance, ob.effective_date
+            GROUP BY coa.id, coa.account_code, coa.account_name, coa.normal_balance, coa.opening_balance, coa.pgc_class, ob.effective_date
         ", [$asOfDate, $asOfDate, $asOfDate, $asOfDate, creatorId()]);
 
         $netIncome = 0;
         foreach($revenueExpenseAccounts as $account) {
-            if ($account->account_code >= '4000' && $account->account_code <= '4999') {
+            $pgcClass = $account->pgc_class ?? null;
+
+            // PGC-MZ: Class 7 = income, Class 6 = expenses
+            if ($pgcClass === 7) {
+                $netIncome += $account->current_balance;
+            } elseif ($pgcClass === 6) {
+                $netIncome -= $account->current_balance;
+            }
+            // Legacy: 4xxx = revenue, 5xxx = expenses
+            elseif ($account->account_code >= '4000' && $account->account_code <= '4999') {
                 $netIncome += $account->current_balance;
             } elseif ($account->account_code >= '5000' && $account->account_code <= '5999') {
                 $netIncome -= $account->current_balance;
@@ -211,11 +272,19 @@ class BalanceSheetService
 
     public function getOrCreateRetainedEarningsAccount()
     {
-        $account = ChartOfAccount::where('account_code', '3200')
+        // PGC-MZ: Resultados transitados = code 56
+        $account = ChartOfAccount::where('account_code', '56')
             ->where('created_by', creatorId())
             ->first();
 
-        return $account;
+        if ($account) {
+            return $account;
+        }
+
+        // Legacy: Retained Earnings = code 3200
+        return ChartOfAccount::where('account_code', '3200')
+            ->where('created_by', creatorId())
+            ->first();
     }
 
     public function validateBalanceSheet($balanceSheetId)
@@ -290,10 +359,10 @@ class BalanceSheetService
 
     private function createClosingJournalEntries($financialYear, $closingDate)
     {
-        // Get retained earnings account
+        // Get retained earnings account — PGC-MZ code 56, fallback to legacy 3200
         $retainedEarningsAccount = $this->getOrCreateRetainedEarningsAccount();
         if (!$retainedEarningsAccount) {
-            throw new \Exception('Retained Earnings account (3200) not found');
+            throw new \Exception('Conta de Resultados Transitados (56 ou 3200) não encontrada');
         }
 
         // Get revenue and expense accounts as of closing date
@@ -305,23 +374,27 @@ class BalanceSheetService
 
         foreach($revenueExpenseAccounts as $account) {
             if (abs($account->current_balance) > 0.01) {
+                $pgcClass = $account->pgc_class ?? null;
                 $accountCode = intval($account->account_code);
 
-                if ($accountCode >= 4000 && $accountCode <= 4999) {
-                    // Revenue accounts - debit to close
+                $isIncome = ($pgcClass === 7) || ($pgcClass === null && $accountCode >= 4000 && $accountCode <= 4999);
+                $isExpense = ($pgcClass === 6) || ($pgcClass === null && $accountCode >= 5000 && $accountCode <= 5999);
+
+                if ($isIncome) {
+                    // Revenue/income accounts - debit to close
                     $totalRevenue += $account->current_balance;
                     $journalItems[] = [
                         'account_id' => $account->id,
-                        'description' => 'Close revenue account',
+                        'description' => 'Encerramento de conta de rendimento',
                         'debit_amount' => $account->current_balance,
                         'credit_amount' => 0
                     ];
-                } elseif ($accountCode >= 5000 && $accountCode <= 5999) {
+                } elseif ($isExpense) {
                     // Expense accounts - credit to close
                     $totalExpense += $account->current_balance;
                     $journalItems[] = [
                         'account_id' => $account->id,
-                        'description' => 'Close expense account',
+                        'description' => 'Encerramento de conta de gasto',
                         'debit_amount' => 0,
                         'credit_amount' => $account->current_balance
                     ];
@@ -386,9 +459,13 @@ class BalanceSheetService
                 coa.account_code,
                 coa.account_name,
                 coa.normal_balance,
-                coa.current_balance
+                coa.current_balance,
+                coa.pgc_class
             FROM chart_of_accounts coa
-            WHERE coa.account_code >= '4000' AND coa.account_code <= '5999'
+            WHERE (
+                (coa.pgc_class IN (6, 7))
+                OR (coa.account_code >= '4000' AND coa.account_code <= '5999')
+            )
               AND coa.is_active = 1
               AND coa.created_by = ?
             ORDER BY coa.account_code ASC

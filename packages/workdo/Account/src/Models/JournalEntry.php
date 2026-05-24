@@ -2,6 +2,8 @@
 
 namespace Workdo\Account\Models;
 
+use App\Models\AccountingJournal;
+use App\Models\AccountingPeriod;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,23 +18,43 @@ class JournalEntry extends Model
         'reference_type',
         'reference_id',
         'description',
+        'document_support',
         'total_debit',
         'total_credit',
         'status',
+        'accounting_journal_id',
+        'accounting_period_id',
+        'fiscal_year',
+        'period_number',
         'creator_id',
-        'created_by'
+        'created_by',
     ];
 
     protected $casts = [
         'journal_date' => 'date',
         'total_debit' => 'decimal:2',
-        'total_credit' => 'decimal:2'
+        'total_credit' => 'decimal:2',
+        'period_number' => 'integer',
     ];
+
+    // --- Relationships ---
 
     public function items(): HasMany
     {
         return $this->hasMany(JournalEntryItem::class);
     }
+
+    public function accountingJournal(): BelongsTo
+    {
+        return $this->belongsTo(AccountingJournal::class);
+    }
+
+    public function accountingPeriod(): BelongsTo
+    {
+        return $this->belongsTo(AccountingPeriod::class);
+    }
+
+    // --- State checks ---
 
     public function isBalanced(): bool
     {
@@ -54,17 +76,43 @@ class JournalEntry extends Model
         return $this->status === 'reversed';
     }
 
+    // --- Boot ---
+
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($journalEntry) {
             if (empty($journalEntry->journal_number)) {
-                $journalEntry->journal_number = static::generateJournalNumber();
+                // Try to use the new numbering service if available
+                try {
+                    $service = app(\App\Services\JournalNumberingService::class);
+                    $numbering = $service->generateNumber(
+                        $journalEntry->created_by ?? creatorId(),
+                        $journalEntry->journal_date?->toDateString() ?? date('Y-m-d'),
+                        $journalEntry->accounting_journal_id
+                    );
+                    $journalEntry->journal_number = $numbering['journal_number'];
+                    $journalEntry->fiscal_year = $journalEntry->fiscal_year ?? $numbering['fiscal_year'];
+                    $journalEntry->period_number = $journalEntry->period_number ?? $numbering['period_number'];
+                    $journalEntry->accounting_period_id = $journalEntry->accounting_period_id ?? $numbering['accounting_period_id'];
+                } catch (\Throwable) {
+                    // Fallback to legacy numbering
+                    $journalEntry->journal_number = static::generateJournalNumber();
+                }
+            }
+
+            // Always set fiscal_year if missing
+            if (empty($journalEntry->fiscal_year) && $journalEntry->journal_date) {
+                $journalEntry->fiscal_year = $journalEntry->journal_date->format('Y');
             }
         });
     }
 
+    /**
+     * Legacy journal number generation.
+     * Kept for backward compatibility. New entries use JournalNumberingService.
+     */
     public static function generateJournalNumber(): string
     {
         $year = date('Y');

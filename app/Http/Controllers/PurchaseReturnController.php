@@ -19,13 +19,15 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Services\DocumentFiscalSnapshotService;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseReturnController extends Controller
 {
     public function __construct(
         private readonly DocumentFiscalSnapshotService $documentFiscalSnapshotService,
-        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService
+        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        private readonly FiscalValidationService $fiscalValidationService
     )
     {
     }
@@ -166,6 +168,8 @@ class PurchaseReturnController extends Controller
     {
         if(Auth::user()->can('create-purchase-return-invoices')){
 
+        $this->fiscalValidationService->validatePeriodOpen($request->return_date, creatorId());
+
         $totals = $this->calculateReturnTotals($request->items, $request->original_invoice_id);
         $return = new PurchaseReturn();
         $return->return_date = $request->return_date;
@@ -245,6 +249,8 @@ class PurchaseReturnController extends Controller
                 return redirect()->back()->with('error', __('Only draft returns can be approved.'));
             }
 
+            $this->fiscalValidationService->validatePeriodOpen($return->return_date, creatorId());
+
             $this->documentFiscalSnapshotService->syncPurchaseReturn($return);
 
             try {
@@ -273,6 +279,8 @@ class PurchaseReturnController extends Controller
             return redirect()->back()->with('error', __('Only approved returns can be completed.'));
         }
 
+        $this->fiscalValidationService->validatePeriodOpen($return->return_date, creatorId());
+
         CompletePurchaseReturn::dispatch($return);
 
         $return->update(['status' => 'completed']);
@@ -290,6 +298,8 @@ class PurchaseReturnController extends Controller
             if (!$this->checkReturnAccess($return)) {
                 return redirect()->route('purchase-returns.index')->with('error', __('Permission denied'));
             }
+
+            $this->fiscalValidationService->validateDocumentMutable($return);
 
             if ($return->status !== 'draft') {
             return redirect()->back()->with('error', __('Only draft returns can be deleted.'));

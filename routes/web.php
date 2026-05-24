@@ -30,6 +30,13 @@ use App\Http\Controllers\PurchaseReturnController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesProposalController;
 use App\Http\Controllers\SalesReturnController;
+use App\Http\Controllers\AccountingJournalController;
+use App\Http\Controllers\FiscalProfileController;
+use App\Http\Controllers\TaxController;
+use App\Http\Controllers\FixedAssetController;
+use App\Http\Controllers\FinancialReportController;
+use App\Http\Controllers\PgcImportController;
+use App\Http\Controllers\FiscalDocumentSeriesController;
 use Inertia\Inertia;
 
 
@@ -204,6 +211,72 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::delete('media/{id}', [MediaController::class, 'destroy'])->name('media.destroy');
     Route::post('media/directories', [MediaController::class, 'createDirectory'])->name('media.directories.create');
     Route::patch('media/{id}/directory', [MediaController::class, 'updateMediaDirectory'])->name('media.directory.update');
+
+    // ========================================
+    // SCE Moçambique — Contabilidade & Fiscal
+    // ========================================
+    Route::prefix('sce')->name('sce.')->group(function () {
+        // Accounting Journals
+        Route::get('journals', [AccountingJournalController::class, 'index'])->name('journals.index');
+        Route::post('journals', [AccountingJournalController::class, 'store'])->name('journals.store');
+        Route::put('journals/{journal}', [AccountingJournalController::class, 'update'])->name('journals.update');
+        Route::delete('journals/{journal}', [AccountingJournalController::class, 'destroy'])->name('journals.destroy');
+
+        // Monthly Closing
+        Route::get('monthly-closing', [AccountingJournalController::class, 'monthlyClosing'])->name('monthly-closing.index');
+        Route::post('monthly-closing/start', [AccountingJournalController::class, 'startClosing'])->name('monthly-closing.start');
+        Route::post('monthly-closing/check/{check}', [AccountingJournalController::class, 'completeCheck'])->name('monthly-closing.complete-check');
+        Route::post('monthly-closing/finalize', [AccountingJournalController::class, 'finalizeClosing'])->name('monthly-closing.finalize');
+
+        // Fiscal Profile & Periods
+        Route::get('fiscal', [FiscalProfileController::class, 'index'])->name('fiscal.index');
+        Route::post('fiscal/profile', [FiscalProfileController::class, 'updateProfile'])->name('fiscal.update-profile');
+        Route::post('fiscal/periods/generate', [FiscalProfileController::class, 'generatePeriods'])->name('fiscal.generate-periods');
+
+        // Fiscal Calendar
+        Route::get('fiscal/calendar', [FiscalProfileController::class, 'calendar'])->name('fiscal.calendar');
+        Route::post('fiscal/calendar/generate', [FiscalProfileController::class, 'generateCalendar'])->name('fiscal.generate-calendar');
+        Route::post('fiscal/calendar/{event}/complete', [FiscalProfileController::class, 'completeCalendarEvent'])->name('fiscal.complete-event');
+
+        // SAF-T Export
+        Route::get('fiscal/saft-export', [FiscalProfileController::class, 'exportSaft'])->name('fiscal.saft-export');
+
+        // PGC Import
+        Route::get('fiscal/pgc', [PgcImportController::class, 'index'])->name('fiscal.pgc');
+        Route::post('fiscal/pgc/import', [PgcImportController::class, 'import'])->name('fiscal.pgc.import');
+        Route::post('fiscal/pgc/validate', [PgcImportController::class, 'validate'])->name('fiscal.pgc.validate');
+
+        // Document Series
+        Route::get('fiscal/series', [FiscalDocumentSeriesController::class, 'index'])->name('fiscal.series');
+        Route::post('fiscal/series', [FiscalDocumentSeriesController::class, 'store'])->name('fiscal.series.store');
+        Route::post('fiscal/series/{series}/toggle', [FiscalDocumentSeriesController::class, 'toggleActive'])->name('fiscal.series.toggle');
+        Route::post('fiscal/series/{series}/verify', [FiscalDocumentSeriesController::class, 'verifyChain'])->name('fiscal.series.verify');
+
+        // VAT Map
+        Route::get('tax/vat-map', [TaxController::class, 'vatMap'])->name('tax.vat-map');
+
+        // IRPC
+        Route::get('tax/irpc', [TaxController::class, 'irpcDashboard'])->name('tax.irpc');
+        Route::post('tax/irpc/config', [TaxController::class, 'updateIrpcConfig'])->name('tax.irpc.config');
+        Route::post('tax/irpc/adjustment', [TaxController::class, 'storeAdjustment'])->name('tax.irpc.adjustment');
+        Route::delete('tax/irpc/adjustment/{adjustment}', [TaxController::class, 'destroyAdjustment'])->name('tax.irpc.adjustment.destroy');
+
+        // Withholding Tax
+        Route::get('tax/withholding', [TaxController::class, 'withholdingIndex'])->name('tax.withholding');
+        Route::post('tax/withholding', [TaxController::class, 'withholdingStore'])->name('tax.withholding.store');
+
+        // Fixed Assets
+        Route::get('fixed-assets', [FixedAssetController::class, 'index'])->name('fixed-assets.index');
+        Route::get('fixed-assets/create', [FixedAssetController::class, 'create'])->name('fixed-assets.create');
+        Route::post('fixed-assets', [FixedAssetController::class, 'store'])->name('fixed-assets.store');
+        Route::get('fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('fixed-assets.show');
+        Route::post('fixed-assets/depreciation', [FixedAssetController::class, 'runDepreciation'])->name('fixed-assets.depreciation');
+
+        // Financial Reports
+        Route::get('reports/balance-sheet', [FinancialReportController::class, 'balanceSheet'])->name('reports.balance-sheet');
+        Route::get('reports/income-statement', [FinancialReportController::class, 'incomeStatement'])->name('reports.income-statement');
+        Route::get('reports/cash-flow', [FinancialReportController::class, 'cashFlow'])->name('reports.cash-flow');
+    });
 });
 
 Route::get('/translations/{locale}', [TranslationController::class, 'getTranslations'])->name('languages.translations');

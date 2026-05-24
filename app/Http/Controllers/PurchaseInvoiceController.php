@@ -21,6 +21,7 @@ use App\Events\PostPurchaseInvoice;
 use App\Events\EditPurchaseInvoice;
 use App\Services\DocumentFiscalSnapshotService;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use Illuminate\Validation\ValidationException;
 
 
@@ -28,7 +29,8 @@ class PurchaseInvoiceController extends Controller
 {
     public function __construct(
         private readonly DocumentFiscalSnapshotService $documentFiscalSnapshotService,
-        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService
+        private readonly FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        private readonly FiscalValidationService $fiscalValidationService,
     )
     {
     }
@@ -170,6 +172,13 @@ class PurchaseInvoiceController extends Controller
         if(Auth::user()->can('create-purchase-invoices')){
             $totals = $this->calculateTotals($request->items);
 
+            // SCE: Validate that the invoice date falls within an open accounting period
+            try {
+                $this->fiscalValidationService->validatePeriodOpen($request->invoice_date, creatorId());
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             $invoice = new PurchaseInvoice();
             $invoice->invoice_date = $request->invoice_date;
             $invoice->due_date = $request->due_date;
@@ -286,6 +295,14 @@ class PurchaseInvoiceController extends Controller
             if ($purchaseInvoice->status != 'draft') {
                 return redirect()->route('purchase-invoices.index')->with('error', __('Cannot update posted invoice.'));
             }
+
+            // SCE: Enforce fiscal immutability
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($purchaseInvoice);
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             $totals = $this->calculateTotals($request->items);
 
             $purchaseInvoice->invoice_date = $request->invoice_date;
@@ -402,12 +419,23 @@ class PurchaseInvoiceController extends Controller
 
             $this->documentFiscalSnapshotService->syncPurchaseInvoice($purchaseInvoice);
 
+            // SCE: Validate accounting period is open before posting
+            try {
+                $this->fiscalValidationService->validatePeriodOpen(
+                    $purchaseInvoice->invoice_date,
+                    $purchaseInvoice->created_by
+                );
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
             try {
                 PostPurchaseInvoice::dispatch($purchaseInvoice);
             } catch (\Throwable $th) {
                 return back()->with('error', $th->getMessage());
             }
 
+            // Hash is generated automatically by FiscalDocumentObserver
             $purchaseInvoice->update(['status' => 'posted']);
 
             return back()->with('success', __('The purchase invoice has been posted successfully.'));
