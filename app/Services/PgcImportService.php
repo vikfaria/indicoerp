@@ -228,9 +228,9 @@ class PgcImportService
             ->orderBy('account_code')
             ->get();
 
-        // Check all 9 classes exist (0-8, 0 optional)
+        // Check all required classes exist (1-9, 0 optional).
         $classesFound = $accounts->pluck('pgc_class')->unique()->sort()->values()->toArray();
-        $requiredClasses = [1, 2, 3, 4, 5, 6, 7, 8];
+        $requiredClasses = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
         foreach ($requiredClasses as $class) {
             if (!in_array($class, $classesFound)) {
@@ -271,6 +271,7 @@ class PgcImportService
             6 => 'Gastos e Perdas',
             7 => 'Rendimentos e Ganhos',
             8 => 'Resultados',
+            9 => 'Contabilidade Analítica e de Gestão',
             default => 'Outros',
         };
 

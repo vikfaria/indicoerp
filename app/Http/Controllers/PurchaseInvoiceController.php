@@ -340,8 +340,14 @@ class PurchaseInvoiceController extends Controller
                 return redirect()->route('purchase-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($purchaseInvoice->status === 'posted') {
-                return back()->withErrors(['error' => __('Cannot delete posted invoice.')]);
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($purchaseInvoice);
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
+            if ($purchaseInvoice->status !== 'draft') {
+                return back()->withErrors(['error' => __('Only draft invoices can be deleted.')]);
             }
 
             // Dispatch event before deletion
@@ -425,6 +431,19 @@ class PurchaseInvoiceController extends Controller
                     $purchaseInvoice->invoice_date,
                     $purchaseInvoice->created_by
                 );
+
+                $deductibilityMode = strtolower((string) config('sce.vat.deductibility_enforcement', 'warn'));
+                $strictDeductibility = $deductibilityMode === 'block';
+                $deductibilityIssues = $this->fiscalValidationService->validateInputVatDeductibility(
+                    $purchaseInvoice,
+                    $strictDeductibility
+                );
+
+                if (!empty($deductibilityIssues)) {
+                    $purchaseInvoice->forceFill([
+                        'fiscal_validation_message' => implode(' | ', $deductibilityIssues),
+                    ])->saveQuietly();
+                }
             } catch (ValidationException $e) {
                 return back()->withErrors($e->errors());
             }

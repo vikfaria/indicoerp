@@ -9,7 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Save, RefreshCw, Download, Calendar } from 'lucide-react';
 
-interface FiscalProfile { nuit: string; tax_regime: string; accounting_framework: string; nirf_classification: string; province: string; activity_code: string; }
+interface FiscalProfile {
+    nuit: string;
+    fiscal_regime?: string;
+    tax_regime?: string;
+    accounting_framework: string;
+    entity_classification?: string;
+    nirf_classification?: string;
+    province?: string;
+    economic_activity_code?: string;
+    activity_code?: string;
+}
 interface Period { id: number; fiscal_year: string; period_number: number; period_name: string; status: string; start_date: string; end_date: string; }
 
 export default function FiscalProfileIndex() {
@@ -17,10 +27,12 @@ export default function FiscalProfileIndex() {
     const { profile, periods } = usePage<{ profile: FiscalProfile; periods: Period[] }>().props;
 
     const form = useForm({
-        nuit: profile.nuit || '', tax_regime: profile.tax_regime || 'normal',
+        nuit: profile.nuit || '',
+        fiscal_regime: profile.fiscal_regime || profile.tax_regime || 'normal',
         accounting_framework: profile.accounting_framework || 'pgc_nirf',
-        nirf_classification: profile.nirf_classification || '', province: profile.province || '',
-        activity_code: profile.activity_code || '',
+        entity_classification: profile.entity_classification || profile.nirf_classification || 'small',
+        province: profile.province || '',
+        economic_activity_code: profile.economic_activity_code || profile.activity_code || '',
     });
 
     const handleSave = (e: React.FormEvent) => { e.preventDefault(); form.post(route('sce.fiscal.update-profile')); };
@@ -40,12 +52,24 @@ export default function FiscalProfileIndex() {
                         <form onSubmit={handleSave} className="space-y-4">
                             <div><Label>{t('NUIT')}</Label><Input value={form.data.nuit} onChange={e => form.setData('nuit', e.target.value)} maxLength={9} placeholder="123456789" required /></div>
                             <div><Label>{t('Regime Fiscal')}</Label>
-                                <Select value={form.data.tax_regime} onValueChange={v => form.setData('tax_regime', v)}>
+                                <Select value={form.data.fiscal_regime} onValueChange={v => form.setData('fiscal_regime', v)}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="normal">{t('Normal')}</SelectItem>
                                         <SelectItem value="simplified">{t('Simplificado')}</SelectItem>
                                         <SelectItem value="exempt">{t('Isento')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div><Label>{t('Classificação da Entidade')}</Label>
+                                <Select value={form.data.entity_classification} onValueChange={v => form.setData('entity_classification', v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="large">{t('Grande')}</SelectItem>
+                                        <SelectItem value="medium">{t('Média')}</SelectItem>
+                                        <SelectItem value="small">{t('Pequena')}</SelectItem>
+                                        <SelectItem value="micro">{t('Demais')}</SelectItem>
+                                        <SelectItem value="ispc">{t('ISPC')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -55,11 +79,12 @@ export default function FiscalProfileIndex() {
                                     <SelectContent>
                                         <SelectItem value="pgc_nirf">{t('PGC-NIRF (Geral)')}</SelectItem>
                                         <SelectItem value="pgc_pe">{t('PGC-PE (Pequenas Empresas)')}</SelectItem>
+                                        <SelectItem value="ispc">{t('Regime ISPC')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div><Label>{t('Província')}</Label><Input value={form.data.province} onChange={e => form.setData('province', e.target.value)} placeholder="Maputo" /></div>
-                            <div><Label>{t('Código Actividade (CAE)')}</Label><Input value={form.data.activity_code} onChange={e => form.setData('activity_code', e.target.value)} /></div>
+                            <div><Label>{t('Código Actividade (CAE)')}</Label><Input value={form.data.economic_activity_code} onChange={e => form.setData('economic_activity_code', e.target.value)} /></div>
                             <Button type="submit" disabled={form.processing} className="w-full"><Save className="h-4 w-4 mr-2" /> {t('Guardar')}</Button>
                         </form>
                     </CardContent>

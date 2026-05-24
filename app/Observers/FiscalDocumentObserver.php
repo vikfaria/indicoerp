@@ -94,16 +94,18 @@ class FiscalDocumentObserver
      */
     public function saving(Model $document): void
     {
-        // If the document was already posted/approved and is being modified, validate mutability
-        $originalStatus = $document->getOriginal('status');
-        if (!$document->isDirty('status') && in_array($originalStatus, ['posted', 'approved'])) {
+        // If the document was already finalized and is being modified, only allow operational/fiscal metadata fields.
+        $originalStatus = strtolower((string) $document->getOriginal('status'));
+        $immutableStatuses = ['posted', 'approved', 'paid', 'completed', 'finalized', 'cancelled'];
+        if (!$document->isDirty('status') && in_array($originalStatus, $immutableStatuses, true)) {
             // Allow balance_amount updates (payments) and fiscal_submission_status
             $allowedFields = [
                 'balance_amount', 'fiscal_submission_status',
-                'fiscal_submission_reference', 'fiscal_submission_at',
-                'fiscal_submission_message', 'is_cancelled',
-                'cancellation_reason', 'cancellation_date',
-                'cancelled_by', 'rectification_reference',
+                'fiscal_submission_reference', 'fiscal_submitted_at',
+                'fiscal_validated_at', 'fiscal_validation_message',
+                'is_cancelled', 'cancelled_at',
+                'cancellation_reason', 'cancellation_reference',
+                'cancelled_by', 'rectification_reference', 'updated_at',
             ];
 
             $dirty = array_keys($document->getDirty());

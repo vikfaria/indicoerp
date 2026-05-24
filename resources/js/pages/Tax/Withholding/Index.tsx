@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { Pagination } from '@/components/ui/pagination';
+import TaxNavigation from '@/components/tax/tax-navigation';
 import { Plus, Receipt } from 'lucide-react';
 import { useState } from 'react';
 
@@ -18,7 +19,10 @@ interface Transaction { id: number; rule: Rule; gross_amount: number; tax_withhe
 
 export default function WithholdingIndex() {
     const { t } = useTranslation();
-    const { rules, transactions, year, month } = usePage<{ rules: Rule[]; transactions: any; year: string; month: number }>().props;
+    const page = usePage<any>();
+    const { rules, transactions, year, month } = page.props as { rules: Rule[]; transactions: any; year: string; month: number };
+    const userPermissions: string[] = page.props?.auth?.user?.permissions || [];
+    const canManageTax = userPermissions.includes('manage-account-reports');
     const [showAdd, setShowAdd] = useState(false);
 
     const form = useForm({ rule_code: '', gross_amount: '', transaction_date: new Date().toISOString().split('T')[0], vendor_name: '', vendor_nuit: '', document_reference: '' });
@@ -26,6 +30,7 @@ export default function WithholdingIndex() {
 
     const handleStore = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canManageTax) return;
         form.post(route('sce.tax.withholding.store'), { onSuccess: () => { setShowAdd(false); form.reset(); } });
     };
 
@@ -41,8 +46,9 @@ export default function WithholdingIndex() {
 
     return (
         <AuthenticatedLayout breadcrumbs={[{ label: t('Impostos') }, { label: t('Retenções na Fonte') }]} pageTitle={t('Retenções na Fonte')}
-            pageActions={<Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Nova Retenção')}</Button>}>
+            pageActions={canManageTax ? <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Nova Retenção')}</Button> : undefined}>
             <Head title={t('Retenções na Fonte')} />
+            <TaxNavigation className="mb-4" />
 
             {/* Rules summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
@@ -75,27 +81,29 @@ export default function WithholdingIndex() {
             </Card>
 
             {/* Add dialog */}
-            <Dialog open={showAdd} onOpenChange={setShowAdd}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader><DialogTitle>{t('Nova Retenção na Fonte')}</DialogTitle></DialogHeader>
-                    <form onSubmit={handleStore} className="space-y-4">
-                        <div><Label>{t('Regra')}</Label>
-                            <Select value={form.data.rule_code} onValueChange={v => form.setData('rule_code', v)}>
-                                <SelectTrigger><SelectValue placeholder={t('Seleccionar regra')} /></SelectTrigger>
-                                <SelectContent>{rules.map(r => <SelectItem key={r.id} value={r.code}>{r.code} — {r.description} ({r.rate}%)</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        <div><Label>{t('Valor Bruto')}</Label><Input type="number" step="0.01" value={form.data.gross_amount} onChange={e => form.setData('gross_amount', e.target.value)} required /></div>
-                        <div><Label>{t('Data')}</Label><Input type="date" value={form.data.transaction_date} onChange={e => form.setData('transaction_date', e.target.value)} required /></div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><Label>{t('Fornecedor')}</Label><Input value={form.data.vendor_name} onChange={e => form.setData('vendor_name', e.target.value)} /></div>
-                            <div><Label>{t('NUIT')}</Label><Input value={form.data.vendor_nuit} onChange={e => form.setData('vendor_nuit', e.target.value)} maxLength={9} /></div>
-                        </div>
-                        <div><Label>{t('Referência Documento')}</Label><Input value={form.data.document_reference} onChange={e => form.setData('document_reference', e.target.value)} /></div>
-                        <DialogFooter><Button variant="outline" type="button" onClick={() => setShowAdd(false)}>{t('Cancelar')}</Button><Button type="submit" disabled={form.processing}>{t('Registar')}</Button></DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            {canManageTax && (
+                <Dialog open={showAdd} onOpenChange={setShowAdd}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader><DialogTitle>{t('Nova Retenção na Fonte')}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleStore} className="space-y-4">
+                            <div><Label>{t('Regra')}</Label>
+                                <Select value={form.data.rule_code} onValueChange={v => form.setData('rule_code', v)}>
+                                    <SelectTrigger><SelectValue placeholder={t('Seleccionar regra')} /></SelectTrigger>
+                                    <SelectContent>{rules.map(r => <SelectItem key={r.id} value={r.code}>{r.code} — {r.description} ({r.rate}%)</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div><Label>{t('Valor Bruto')}</Label><Input type="number" step="0.01" value={form.data.gross_amount} onChange={e => form.setData('gross_amount', e.target.value)} required /></div>
+                            <div><Label>{t('Data')}</Label><Input type="date" value={form.data.transaction_date} onChange={e => form.setData('transaction_date', e.target.value)} required /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><Label>{t('Fornecedor')}</Label><Input value={form.data.vendor_name} onChange={e => form.setData('vendor_name', e.target.value)} /></div>
+                                <div><Label>{t('NUIT')}</Label><Input value={form.data.vendor_nuit} onChange={e => form.setData('vendor_nuit', e.target.value)} maxLength={9} /></div>
+                            </div>
+                            <div><Label>{t('Referência Documento')}</Label><Input value={form.data.document_reference} onChange={e => form.setData('document_reference', e.target.value)} /></div>
+                            <DialogFooter><Button variant="outline" type="button" onClick={() => setShowAdd(false)}>{t('Cancelar')}</Button><Button type="submit" disabled={form.processing}>{t('Registar')}</Button></DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            )}
         </AuthenticatedLayout>
     );
 }

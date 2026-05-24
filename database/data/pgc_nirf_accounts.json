@@ -156,6 +156,18 @@
   {"code":"84","name":"Resultado operacional","parent":"8","class":8,"level":2,"balance":"credit","movement":true,"tax":null,"fs_line":"operating_result"},
   {"code":"85","name":"Imposto sobre o rendimento do período","parent":"8","class":8,"level":2,"balance":"debit","movement":true,"tax":"irpc","fs_line":"income_tax"},
 
+  {"code":"9","name":"Contabilidade Analítica e de Gestão","parent":null,"class":9,"level":1,"balance":"debit","movement":false,"tax":null,"fs_line":"management_accounts"},
+  {"code":"91","name":"Centros de custo","parent":"9","class":9,"level":2,"balance":"debit","movement":false,"tax":null,"fs_line":"management_accounts"},
+  {"code":"911","name":"Centro de custo - Administração","parent":"91","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"912","name":"Centro de custo - Comercial","parent":"91","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"92","name":"Projectos","parent":"9","class":9,"level":2,"balance":"debit","movement":false,"tax":null,"fs_line":"management_accounts"},
+  {"code":"921","name":"Projecto A","parent":"92","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"922","name":"Projecto B","parent":"92","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"93","name":"Unidades de negócio","parent":"9","class":9,"level":2,"balance":"debit","movement":false,"tax":null,"fs_line":"management_accounts"},
+  {"code":"931","name":"Unidade de negócio - Retalho","parent":"93","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"932","name":"Unidade de negócio - Serviços","parent":"93","class":9,"level":3,"balance":"debit","movement":true,"tax":null,"fs_line":"management_accounts"},
+  {"code":"99","name":"Contrapartidas analíticas","parent":"9","class":9,"level":2,"balance":"credit","movement":true,"tax":null,"fs_line":"management_accounts"},
+
   {"code":"0","name":"Contas de Ordem","parent":null,"class":0,"level":1,"balance":"debit","movement":false,"tax":null,"fs_line":"off_balance"},
   {"code":"01","name":"Activos contingentes","parent":"0","class":0,"level":2,"balance":"debit","movement":true,"tax":null,"fs_line":"off_balance"},
   {"code":"02","name":"Passivos contingentes","parent":"0","class":0,"level":2,"balance":"credit","movement":true,"tax":null,"fs_line":"off_balance"},

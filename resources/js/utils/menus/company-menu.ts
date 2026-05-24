@@ -140,17 +140,38 @@ export const getCompanyMenu = (t: (key: string) => string): NavItem[] => [
             {
                 title: t('Mapa IVA'),
                 href: route('sce.tax.vat-map'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
                 order: 1,
             },
             {
                 title: t('IRPC'),
                 href: route('sce.tax.irpc'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
                 order: 2,
             },
             {
                 title: t('Retenções na Fonte'),
                 href: route('sce.tax.withholding'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
                 order: 3,
+            },
+            {
+                title: t('Declaração de Retenções'),
+                href: route('sce.tax.withholding.declaration.page'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
+                order: 4,
+            },
+            {
+                title: t('Modelo 20'),
+                href: route('sce.tax.modelo20.page'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
+                order: 5,
+            },
+            {
+                title: t('Declaração Anual'),
+                href: route('sce.tax.annual-declaration.page'),
+                permissionsAny: ['view-tax-summary', 'manage-account-reports'],
+                order: 6,
             },
         ],
     },

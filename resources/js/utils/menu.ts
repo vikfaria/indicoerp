@@ -100,14 +100,13 @@ const groupMenusByParent = (menuItems: NavItem[], packageMenuItems: NavItem[]): 
 // Filter menu items based on permissions
 const filterByPermission = (items: NavItem[], userPermissions: string[]): NavItem[] => {
     return items.filter(item => {
-        if (!item.permission) {
-            if (item.children) {
-                item.children = filterByPermission(item.children, userPermissions);
-            }
-            return true;
-        }
+        const requiresSinglePermission = !!item.permission;
+        const requiresAnyPermission = Array.isArray(item.permissionsAny) && item.permissionsAny.length > 0;
 
-        if (!userPermissions.includes(item.permission)) {
+        const singlePermissionGranted = !requiresSinglePermission || userPermissions.includes(item.permission as string);
+        const anyPermissionGranted = !requiresAnyPermission || (item.permissionsAny as string[]).some((permission) => userPermissions.includes(permission));
+
+        if (!singlePermissionGranted || !anyPermissionGranted) {
             return false;
         }
 

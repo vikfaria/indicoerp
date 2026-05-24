@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\DB;
 use App\Models\CompanyFiscalProfile;
 use App\Models\MzVatCode;
+use RuntimeException;
 
 /**
  * SAF-T (Standard Audit File for Tax) generator for Mozambique.
@@ -53,6 +54,7 @@ class SaftExportService
     public function exportToFile(int $companyId, string $startDate, string $endDate, ?string $path = null): string
     {
         $xml = $this->generate($companyId, $startDate, $endDate);
+        $this->validateXml($xml);
 
         if (!$path) {
             $path = storage_path("app/saft/SAFT-MZ-{$companyId}-{$this->fiscalYear}.xml");
@@ -290,9 +292,6 @@ class SaftExportService
         // Sales Invoices
         $this->writeSalesInvoices($xml);
 
-        // Purchase Invoices
-        $this->writePurchaseInvoices($xml);
-
         $xml->endElement();
     }
 
@@ -418,5 +417,62 @@ class SaftExportService
             'cancelled' => 'A',  // Anulado
             default => 'N',
         };
+    }
+
+    /**
+     * Validate generated SAF-T XML:
+     * 1) Always check if XML is well formed.
+     * 2) Optionally validate against configured XSD.
+     *
+     * @throws RuntimeException
+     */
+    private function validateXml(string $xml): void
+    {
+        $requireXsd = (bool) config('sce.saft.require_xsd_validation', false);
+        $xsdPath = (string) config('sce.saft.xsd_path', '');
+
+        $previousState = libxml_use_internal_errors(true);
+        libxml_clear_errors();
+
+        try {
+            $dom = new \DOMDocument('1.0', 'UTF-8');
+
+            if (!$dom->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS)) {
+                $errors = $this->collectLibxmlErrors();
+                throw new RuntimeException(__('SAF-T inválido: XML mal formado. :errors', ['errors' => $errors]));
+            }
+
+            if (!$requireXsd) {
+                return;
+            }
+
+            if ($xsdPath === '' || !is_file($xsdPath)) {
+                throw new RuntimeException(__('SAF-T XSD não encontrado. Configure SAFT_MZ_XSD_PATH para validação oficial.'));
+            }
+
+            libxml_clear_errors();
+            if (!$dom->schemaValidate($xsdPath)) {
+                $errors = $this->collectLibxmlErrors();
+                throw new RuntimeException(__('SAF-T inválido contra o XSD oficial: :errors', ['errors' => $errors]));
+            }
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousState);
+        }
+    }
+
+    private function collectLibxmlErrors(int $limit = 5): string
+    {
+        $errors = libxml_get_errors();
+        if (empty($errors)) {
+            return __('sem detalhes do parser XML');
+        }
+
+        return collect($errors)
+            ->take($limit)
+            ->map(function (\LibXMLError $error) {
+                return trim($error->message) . " (linha {$error->line})";
+            })
+            ->implode('; ');
     }
 }

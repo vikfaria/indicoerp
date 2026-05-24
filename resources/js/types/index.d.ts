@@ -15,6 +15,7 @@ export interface NavItem {
     href?: string;
     icon?: LucideIcon;
     permission?: string;
+    permissionsAny?: string[];
     children?: NavItem[];
     isActive?: boolean;
     parent?: string;

@@ -5,6 +5,7 @@ namespace Workdo\Account\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\SalesInvoiceReturn;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use App\Models\User;
 use Workdo\Account\Models\CreditNote;
 use Illuminate\Http\Request;
@@ -19,11 +20,17 @@ class CreditNoteController extends Controller
 {
     protected $journalService;
     protected $fiscalDocumentComplianceService;
+    protected $fiscalValidationService;
 
-    public function __construct(JournalService $journalService, FiscalDocumentComplianceService $fiscalDocumentComplianceService)
+    public function __construct(
+        JournalService $journalService,
+        FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        FiscalValidationService $fiscalValidationService
+    )
     {
         $this->journalService = $journalService;
         $this->fiscalDocumentComplianceService = $fiscalDocumentComplianceService;
+        $this->fiscalValidationService = $fiscalValidationService;
     }
 
     private function checkCreditNoteAccess(CreditNote $creditNote)
@@ -166,6 +173,12 @@ class CreditNoteController extends Controller
     public function destroy(CreditNote $creditNote)
     {
         if(Auth::user()->can('delete-credit-notes')){
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($creditNote);
+            } catch (ValidationException $exception) {
+                return back()->withErrors($exception->errors());
+            }
+
             if ($creditNote->status !== 'draft') {
                 return back()->with('error', __('Only draft credit notes can be deleted.'));
             }

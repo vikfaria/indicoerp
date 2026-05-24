@@ -202,9 +202,11 @@ class ReportsController extends Controller
             ['totals', 'debit_notes_vat', number_format((float) $data['totals']['debit_notes_vat'], 2, '.', '')],
             ['totals', 'output_vat', number_format((float) $data['totals']['output_vat'], 2, '.', '')],
             ['totals', 'input_vat', number_format((float) $data['totals']['input_vat'], 2, '.', '')],
+            ['totals', 'deductible_input_vat', number_format((float) ($data['totals']['deductible_input_vat'] ?? 0), 2, '.', '')],
+            ['totals', 'non_deductible_input_vat', number_format((float) ($data['totals']['non_deductible_input_vat'] ?? 0), 2, '.', '')],
             ['totals', 'net_vat_payable', number_format((float) $data['totals']['net_vat_payable'], 2, '.', '')],
             ['', '', ''],
-            ['monthly', 'period', 'sales_vat|pos_vat|purchase_vat|credit_notes_vat|debit_notes_vat|output_vat|input_vat|net_vat_payable'],
+            ['monthly', 'period', 'sales_vat|pos_vat|purchase_vat|credit_notes_vat|debit_notes_vat|output_vat|input_vat|deductible_input_vat|non_deductible_input_vat|net_vat_payable'],
         ];
 
         foreach ($data['monthly'] as $month) {
@@ -219,6 +221,8 @@ class ReportsController extends Controller
                     number_format((float) $month['debit_notes_vat'], 2, '.', ''),
                     number_format((float) $month['output_vat'], 2, '.', ''),
                     number_format((float) $month['input_vat'], 2, '.', ''),
+                    number_format((float) ($month['deductible_input_vat'] ?? 0), 2, '.', ''),
+                    number_format((float) ($month['non_deductible_input_vat'] ?? 0), 2, '.', ''),
                     number_format((float) $month['net_vat_payable'], 2, '.', ''),
                 ]),
             ];

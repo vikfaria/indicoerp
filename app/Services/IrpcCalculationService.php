@@ -63,6 +63,7 @@ class IrpcCalculationService
 
         // 7. Net tax payable
         $netTax = $grossTax - $totalPpc - $withholdingsSuffered;
+        $netPayable = round($netTax, 2);
 
         return [
             'fiscal_year' => $fiscalYear,
@@ -71,7 +72,9 @@ class IrpcCalculationService
             'deductions' => round($deductions, 2),
             'taxable_income' => round($taxableIncome, 2),
             'rate' => $rate,
+            'irpc_rate' => $rate, // backward compatibility for existing UI components
             'gross_tax' => $grossTax,
+            'irpc_due' => $grossTax, // backward compatibility for existing UI components
             'payments_on_account' => [
                 'total' => $totalPpc,
                 'installment' => $ppcInstallment,
@@ -79,9 +82,11 @@ class IrpcCalculationService
                 'july' => $ppcInstallment,
                 'september' => round($totalPpc - ($ppcInstallment * 2), 2), // Remainder
             ],
+            'ppc_total' => $totalPpc, // backward compatibility for existing UI components
             'withholdings_suffered' => round($withholdingsSuffered, 2),
             'net_tax_payable' => round(max($netTax, 0), 2),
             'net_tax_recoverable' => round(max(-$netTax, 0), 2),
+            'net_payable' => $netPayable, // backward compatibility for existing UI components
             'adjustments_detail' => $adjustments->toArray(),
         ];
     }
@@ -122,7 +127,7 @@ class IrpcCalculationService
             ->join('chart_of_accounts as coa', 'jei.account_id', '=', 'coa.id')
             ->where('je.created_by', $companyId)
             ->where('je.status', 'posted')
-            ->where('je.fiscal_year', $prevYear)
+            ->whereYear('je.journal_date', $prevYear)
             ->where('coa.account_code', 'like', '85%') // PGC Class 8: imposto sobre rendimento
             ->selectRaw('COALESCE(SUM(jei.debit_amount), 0) as total')
             ->first();
@@ -138,7 +143,7 @@ class IrpcCalculationService
             ->join('chart_of_accounts as coa', 'jei.account_id', '=', 'coa.id')
             ->where('je.created_by', $companyId)
             ->where('je.status', 'posted')
-            ->where('je.fiscal_year', $fiscalYear)
+            ->whereYear('je.journal_date', $fiscalYear)
             ->where('coa.account_code', 'like', '249%')
             ->selectRaw('COALESCE(SUM(jei.debit_amount) - SUM(jei.credit_amount), 0) as total')
             ->first();

@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Models\AccountingPeriod;
 use App\Models\CompanyFiscalProfile;
+use App\Models\PurchaseInvoice;
 use App\Support\MozambiqueTaxNumber;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Workdo\Account\Models\ChartOfAccount;
+use Workdo\Account\Models\Vendor;
 
 /**
  * Central fiscal validation service for SCE Moçambique compliance.
@@ -171,11 +173,17 @@ class FiscalValidationService
 
         // Check operational status
         $status = strtolower((string) $document->getAttribute('status'));
-        $immutableStatuses = ['paid', 'completed', 'finalized'];
+        $immutableStatuses = ['posted', 'approved', 'paid', 'completed', 'finalized', 'cancelled'];
 
         if (in_array($status, $immutableStatuses, true)) {
             throw ValidationException::withMessages([
                 'document' => __('Documento com estado ":status" não pode ser alterado.', ['status' => $status]),
+            ]);
+        }
+
+        if (!empty($document->getAttribute('fiscal_hash'))) {
+            throw ValidationException::withMessages([
+                'document' => __('Documento fiscal com hash emitido não pode ser alterado. Use documento rectificativo.'),
             ]);
         }
     }
@@ -205,6 +213,69 @@ class FiscalValidationService
     }
 
     /**
+     * Validate VAT deductibility prerequisites for a purchase invoice.
+     * Returns warning messages when the document can be posted but input VAT may be non-deductible.
+     *
+     * @throws ValidationException
+     * @return array<int, string>
+     */
+    public function validateInputVatDeductibility(PurchaseInvoice $invoice, bool $strict = false): array
+    {
+        $issues = $this->assessInputVatDeductibility($invoice);
+
+        if ($strict && !empty($issues)) {
+            throw ValidationException::withMessages([
+                'vat_deductibility' => $issues,
+            ]);
+        }
+
+        return $issues;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function assessInputVatDeductibility(PurchaseInvoice $invoice): array
+    {
+        $issues = [];
+        $taxAmount = (float) ($invoice->tax_amount ?? 0);
+        if ($taxAmount <= 0) {
+            return $issues;
+        }
+
+        if (!$this->isMozambiqueFiscalContext((int) $invoice->created_by)) {
+            return $issues;
+        }
+
+        if ((bool) $invoice->is_cancelled) {
+            $issues[] = __('Documento cancelado não permite dedução de IVA.');
+        }
+
+        $fiscalStatus = strtolower((string) ($invoice->fiscal_submission_status ?? 'pending'));
+        if ($fiscalStatus === 'rejected') {
+            $issues[] = __('Documento com submissão fiscal rejeitada não deve ser usado para dedução de IVA.');
+        }
+
+        $vendorDetails = $invoice->relationLoaded('vendorDetails')
+            ? $invoice->vendorDetails
+            : Vendor::where('user_id', $invoice->vendor_id)
+                ->where('created_by', $invoice->created_by)
+                ->first();
+
+        $vendorNuit = $vendorDetails?->tax_number;
+        if ($vendorNuit === null || trim((string) $vendorNuit) === '') {
+            $snapshotNuit = data_get($invoice->counterparty_snapshot, 'tax_number');
+            $vendorNuit = is_string($snapshotNuit) ? $snapshotNuit : null;
+        }
+
+        if (!MozambiqueTaxNumber::isValidNuit($vendorNuit)) {
+            $issues[] = __('Fornecedor sem NUIT válido para dedução de IVA.');
+        }
+
+        return $issues;
+    }
+
+    /**
      * Resolve the database table for a given document type.
      */
     private function resolveDocumentTable(string $documentType): string
@@ -219,5 +290,28 @@ class FiscalValidationService
             'pos' => 'pos',
             default => $documentType,
         };
+    }
+
+    private function isMozambiqueFiscalContext(int $companyId): bool
+    {
+        $taxType = strtoupper((string) (company_setting('tax_type', $companyId) ?? ''));
+        if ($taxType === 'NUIT') {
+            return true;
+        }
+
+        $companyCountry = (string) (company_setting('company_country', $companyId) ?? '');
+        if (MozambiqueTaxNumber::isMozambiqueCountry($companyCountry)) {
+            return true;
+        }
+
+        if (!Schema::hasTable('company_fiscal_profiles')) {
+            return false;
+        }
+
+        $profile = CompanyFiscalProfile::where('company_id', $companyId)
+            ->where('is_active', true)
+            ->first();
+
+        return $profile !== null && !empty($profile->nuit);
     }
 }

@@ -166,13 +166,15 @@ class SceSetupCommand extends Command
                 ['company_id' => $companyId],
                 [
                     'accounting_framework' => $framework,
-                    'tax_regime' => 'normal',
+                    'fiscal_regime' => 'normal',
+                    'entity_classification' => 'small',
+                    'fiscal_year_start_month' => 1,
                     'is_active' => true,
                     'created_by' => $companyId,
                 ]
             );
 
-            $this->line("   → Perfil fiscal: {$profile->accounting_framework}, regime: {$profile->tax_regime}");
+            $this->line("   → Perfil fiscal: {$profile->accounting_framework}, regime: {$profile->fiscal_regime}");
             return true;
         });
 

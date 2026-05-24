@@ -296,8 +296,14 @@ class SalesInvoiceController extends Controller
                 return redirect()->route('sales-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($salesInvoice->status === 'posted') {
-                return back()->withErrors(['error' => __('Cannot delete posted invoice.')]);
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
+            } catch (ValidationException $e) {
+                return back()->withErrors($e->errors());
+            }
+
+            if ($salesInvoice->status !== 'draft') {
+                return back()->withErrors(['error' => __('Only draft invoices can be deleted.')]);
             }
 
             // Dispatch event before deletion

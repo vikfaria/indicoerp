@@ -2,6 +2,7 @@
 
 namespace Workdo\Account\Services;
 
+use App\Support\MozambiqueTaxNumber;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -326,6 +327,8 @@ class ReportService
             0.0
         );
         $inputVat = max((float) $purchaseSummary->tax_amount - (float) $debitNoteSummary->tax_amount, 0.0);
+        $nonDeductibleInputVat = $this->getNonDeductibleInputVatTotal($fromDate, $toDate);
+        $deductibleInputVat = max($inputVat - $nonDeductibleInputVat, 0.0);
 
         return [
             'from_date' => $fromDate,
@@ -363,6 +366,8 @@ class ReportService
             'vat' => [
                 'output_vat' => $outputVat,
                 'input_vat' => $inputVat,
+                'input_vat_deductible' => $deductibleInputVat,
+                'input_vat_non_deductible' => $nonDeductibleInputVat,
                 'net_vat_payable' => $outputVat - $inputVat,
             ],
             'fiscal_status' => [
@@ -449,6 +454,8 @@ class ReportService
                 ->pluck('amount', 'period');
         }
 
+        $nonDeductibleByMonth = $this->getNonDeductibleInputVatByMonth($fromDate, $toDate, $purchasePeriodExpression);
+
         $monthlyRows = [];
         $cursor = \Carbon\Carbon::parse($fromDate)->startOfMonth();
         $end = \Carbon\Carbon::parse($toDate)->startOfMonth();
@@ -461,6 +468,8 @@ class ReportService
             'debit_notes_vat' => 0.0,
             'output_vat' => 0.0,
             'input_vat' => 0.0,
+            'deductible_input_vat' => 0.0,
+            'non_deductible_input_vat' => 0.0,
             'net_vat_payable' => 0.0,
         ];
 
@@ -473,6 +482,8 @@ class ReportService
             $debitNotesVat = (float) ($debitNotesByMonth[$period] ?? 0);
             $outputVat = max(($salesVat + $posVat) - $creditNotesVat, 0.0);
             $inputVat = max($purchaseVat - $debitNotesVat, 0.0);
+            $nonDeductibleInputVat = min((float) ($nonDeductibleByMonth[$period] ?? 0), $inputVat);
+            $deductibleInputVat = max($inputVat - $nonDeductibleInputVat, 0.0);
             $netVatPayable = $outputVat - $inputVat;
 
             $monthlyRows[] = [
@@ -484,6 +495,8 @@ class ReportService
                 'debit_notes_vat' => $debitNotesVat,
                 'output_vat' => $outputVat,
                 'input_vat' => $inputVat,
+                'deductible_input_vat' => $deductibleInputVat,
+                'non_deductible_input_vat' => $nonDeductibleInputVat,
                 'net_vat_payable' => $netVatPayable,
             ];
 
@@ -494,6 +507,8 @@ class ReportService
             $totals['debit_notes_vat'] += $debitNotesVat;
             $totals['output_vat'] += $outputVat;
             $totals['input_vat'] += $inputVat;
+            $totals['deductible_input_vat'] += $deductibleInputVat;
+            $totals['non_deductible_input_vat'] += $nonDeductibleInputVat;
             $totals['net_vat_payable'] += $netVatPayable;
 
             $cursor->addMonth();
@@ -584,6 +599,72 @@ class ReportService
             'summary_by_status' => $summaryByStatus,
             'rows' => $rows,
         ];
+    }
+
+    private function getNonDeductibleInputVatTotal(string $fromDate, string $toDate): float
+    {
+        return (float) collect(
+            $this->getNonDeductibleInputVatByMonth($fromDate, $toDate)
+        )->sum();
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function getNonDeductibleInputVatByMonth(
+        string $fromDate,
+        string $toDate,
+        ?string $periodExpression = null
+    ): array {
+        if (!Schema::hasTable('purchase_invoices')) {
+            return [];
+        }
+
+        $driver = DB::connection()->getDriverName();
+        $periodExpression = $periodExpression ?: (
+            $driver === 'sqlite'
+                ? "strftime('%Y-%m', pi.invoice_date)"
+                : "DATE_FORMAT(pi.invoice_date, '%Y-%m')"
+        );
+
+        $query = DB::table('purchase_invoices as pi')
+            ->where('pi.created_by', creatorId())
+            ->whereIn('pi.status', ['posted', 'partial', 'paid'])
+            ->whereBetween('pi.invoice_date', [$fromDate, $toDate])
+            ->selectRaw("{$periodExpression} as period, pi.tax_amount, pi.counterparty_snapshot, pi.vendor_id");
+
+        if (Schema::hasTable('vendors') && Schema::hasColumn('vendors', 'tax_number')) {
+            $query->leftJoin('vendors as v', function ($join) {
+                $join->on('v.user_id', '=', 'pi.vendor_id')
+                    ->on('v.created_by', '=', 'pi.created_by');
+            });
+            $query->addSelect('v.tax_number as vendor_tax_number');
+        }
+
+        $rows = $query->get();
+
+        $invalidByMonth = [];
+        foreach ($rows as $row) {
+            $period = (string) ($row->period ?? '');
+            if ($period === '') {
+                continue;
+            }
+
+            $snapshot = $this->normaliseSnapshot($row->counterparty_snapshot ?? null);
+            $candidateNuit = (string) (
+                $row->vendor_tax_number
+                ?? data_get($snapshot, 'tax_number')
+                ?? ''
+            );
+
+            if (MozambiqueTaxNumber::isValidNuit($candidateNuit)) {
+                continue;
+            }
+
+            $invalidByMonth[$period] = ($invalidByMonth[$period] ?? 0.0) + (float) ($row->tax_amount ?? 0);
+        }
+
+        return $invalidByMonth;
     }
 
     public function buildMozambiqueSaftXml(array $filters = []): string

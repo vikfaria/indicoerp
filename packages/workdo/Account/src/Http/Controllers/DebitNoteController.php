@@ -5,6 +5,7 @@ namespace Workdo\Account\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\PurchaseReturn;
 use App\Services\FiscalDocumentComplianceService;
+use App\Services\FiscalValidationService;
 use App\Models\User;
 use Workdo\Account\Models\DebitNote;
 use Illuminate\Http\Request;
@@ -20,11 +21,17 @@ class DebitNoteController extends Controller
 {
     protected $journalService;
     protected $fiscalDocumentComplianceService;
+    protected $fiscalValidationService;
 
-    public function __construct(JournalService $journalService, FiscalDocumentComplianceService $fiscalDocumentComplianceService)
+    public function __construct(
+        JournalService $journalService,
+        FiscalDocumentComplianceService $fiscalDocumentComplianceService,
+        FiscalValidationService $fiscalValidationService
+    )
     {
         $this->journalService = $journalService;
         $this->fiscalDocumentComplianceService = $fiscalDocumentComplianceService;
+        $this->fiscalValidationService = $fiscalValidationService;
     }
 
     private function checkDebitNoteAccess(DebitNote $debitNote)
@@ -166,6 +173,12 @@ class DebitNoteController extends Controller
     public function destroy(DebitNote $debitNote)
     {
         if(Auth::user()->can('delete-debit-notes')){
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($debitNote);
+            } catch (ValidationException $exception) {
+                return back()->withErrors($exception->errors());
+            }
+
             if ($debitNote->status !== 'draft') {
                 return back()->with('error', __('Only draft debit notes can be deleted.'));
             }

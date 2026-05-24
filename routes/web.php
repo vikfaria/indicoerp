@@ -260,10 +260,21 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::post('tax/irpc/config', [TaxController::class, 'updateIrpcConfig'])->name('tax.irpc.config');
         Route::post('tax/irpc/adjustment', [TaxController::class, 'storeAdjustment'])->name('tax.irpc.adjustment');
         Route::delete('tax/irpc/adjustment/{adjustment}', [TaxController::class, 'destroyAdjustment'])->name('tax.irpc.adjustment.destroy');
+        Route::get('tax/irpc/guide', [TaxController::class, 'irpcGuide'])->name('tax.irpc.guide');
 
         // Withholding Tax
         Route::get('tax/withholding', [TaxController::class, 'withholdingIndex'])->name('tax.withholding');
         Route::post('tax/withholding', [TaxController::class, 'withholdingStore'])->name('tax.withholding.store');
+        Route::get('tax/withholding/declaration/report', [TaxController::class, 'withholdingDeclarationPage'])->name('tax.withholding.declaration.page');
+        Route::get('tax/withholding/declaration', [TaxController::class, 'withholdingDeclaration'])->name('tax.withholding.declaration');
+        Route::get('tax/withholding/declaration/export', [TaxController::class, 'exportWithholdingDeclaration'])->name('tax.withholding.declaration.export');
+
+        // Modelo 20 and Annual Declaration
+        Route::get('tax/modelo20/report', [TaxController::class, 'model20SupportPage'])->name('tax.modelo20.page');
+        Route::get('tax/modelo20', [TaxController::class, 'model20Support'])->name('tax.modelo20');
+        Route::get('tax/modelo20/export', [TaxController::class, 'exportModel20Support'])->name('tax.modelo20.export');
+        Route::get('tax/annual-declaration/report', [TaxController::class, 'annualDeclarationPage'])->name('tax.annual-declaration.page');
+        Route::get('tax/annual-declaration', [TaxController::class, 'annualDeclaration'])->name('tax.annual-declaration');
 
         // Fixed Assets
         Route::get('fixed-assets', [FixedAssetController::class, 'index'])->name('fixed-assets.index');

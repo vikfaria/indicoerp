@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import TaxNavigation from '@/components/tax/tax-navigation';
 import { Calculator, Plus, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,7 +17,10 @@ interface IrpcResult { accounting_result: number; add_backs: number; deductions:
 
 export default function IrpcIndex() {
     const { t } = useTranslation();
-    const { config, adjustments, irpcResult, categories, year } = usePage<{ config: any; adjustments: Adjustment[]; irpcResult: IrpcResult | null; categories: string[]; year: string }>().props;
+    const page = usePage<any>();
+    const { config, adjustments, irpcResult, categories, year } = page.props as { config: any; adjustments: Adjustment[]; irpcResult: IrpcResult | null; categories: string[]; year: string };
+    const userPermissions: string[] = page.props?.auth?.user?.permissions || [];
+    const canManageTax = userPermissions.includes('manage-account-reports');
     const [showAdd, setShowAdd] = useState(false);
 
     const adjForm = useForm({ fiscal_year: year, type: 'add_back', category: '', description: '', amount: '', legal_basis: '' });
@@ -24,6 +28,7 @@ export default function IrpcIndex() {
 
     const handleAddAdjustment = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canManageTax) return;
         adjForm.post(route('sce.tax.irpc.adjustment'), { onSuccess: () => { setShowAdd(false); adjForm.reset(); } });
     };
 
@@ -36,10 +41,11 @@ export default function IrpcIndex() {
     return (
         <AuthenticatedLayout breadcrumbs={[{ label: t('Impostos') }, { label: 'IRPC' }]} pageTitle={`IRPC — ${t('Exercício')} ${year}`}
             pageActions={<div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Correcção')}</Button>
+                {canManageTax && <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Correcção')}</Button>}
                 <Button size="sm" onClick={calculate}><Calculator className="h-4 w-4 mr-1" /> {t('Calcular')}</Button>
             </div>}>
             <Head title="IRPC" />
+            <TaxNavigation className="mb-4" />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 {/* Add-backs */}
@@ -51,7 +57,7 @@ export default function IrpcIndex() {
                                 <div key={a.id} className="flex items-center gap-3 px-4 py-2">
                                     <div className="flex-1"><p className="text-sm font-medium">{a.description}</p><p className="text-xs text-muted-foreground">{a.category}</p></div>
                                     <span className="text-sm font-mono text-red-600">+{fmt(a.amount)}</span>
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteAdj(a.id)}><Trash2 className="h-3 w-3" /></Button>
+                                    {canManageTax && <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteAdj(a.id)}><Trash2 className="h-3 w-3" /></Button>}
                                 </div>
                             ))}</div>
                         )}
@@ -66,7 +72,7 @@ export default function IrpcIndex() {
                                 <div key={a.id} className="flex items-center gap-3 px-4 py-2">
                                     <div className="flex-1"><p className="text-sm font-medium">{a.description}</p><p className="text-xs text-muted-foreground">{a.category}</p></div>
                                     <span className="text-sm font-mono text-green-600">-{fmt(a.amount)}</span>
-                                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteAdj(a.id)}><Trash2 className="h-3 w-3" /></Button>
+                                    {canManageTax && <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteAdj(a.id)}><Trash2 className="h-3 w-3" /></Button>}
                                 </div>
                             ))}</div>
                         )}
@@ -102,24 +108,26 @@ export default function IrpcIndex() {
             )}
 
             {/* Add adjustment dialog */}
-            <Dialog open={showAdd} onOpenChange={setShowAdd}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader><DialogTitle>{t('Nova Correcção Fiscal')}</DialogTitle></DialogHeader>
-                    <form onSubmit={handleAddAdjustment} className="space-y-4">
-                        <div><Label>{t('Tipo')}</Label>
-                            <Select value={adjForm.data.type} onValueChange={v => adjForm.setData('type', v)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="add_back">{t('Acréscimo')}</SelectItem><SelectItem value="deduction">{t('Dedução')}</SelectItem></SelectContent>
-                            </Select>
-                        </div>
-                        <div><Label>{t('Categoria')}</Label><Input value={adjForm.data.category} onChange={e => adjForm.setData('category', e.target.value)} required placeholder="ex: Multas" /></div>
-                        <div><Label>{t('Descrição')}</Label><Input value={adjForm.data.description} onChange={e => adjForm.setData('description', e.target.value)} required /></div>
-                        <div><Label>{t('Montante')}</Label><Input type="number" step="0.01" value={adjForm.data.amount} onChange={e => adjForm.setData('amount', e.target.value)} required /></div>
-                        <div><Label>{t('Base Legal')}</Label><Input value={adjForm.data.legal_basis} onChange={e => adjForm.setData('legal_basis', e.target.value)} placeholder="Art. X CIRPC" /></div>
-                        <DialogFooter><Button variant="outline" type="button" onClick={() => setShowAdd(false)}>{t('Cancelar')}</Button><Button type="submit" disabled={adjForm.processing}>{t('Registar')}</Button></DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
+            {canManageTax && (
+                <Dialog open={showAdd} onOpenChange={setShowAdd}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader><DialogTitle>{t('Nova Correcção Fiscal')}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleAddAdjustment} className="space-y-4">
+                            <div><Label>{t('Tipo')}</Label>
+                                <Select value={adjForm.data.type} onValueChange={v => adjForm.setData('type', v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent><SelectItem value="add_back">{t('Acréscimo')}</SelectItem><SelectItem value="deduction">{t('Dedução')}</SelectItem></SelectContent>
+                                </Select>
+                            </div>
+                            <div><Label>{t('Categoria')}</Label><Input value={adjForm.data.category} onChange={e => adjForm.setData('category', e.target.value)} required placeholder="ex: Multas" /></div>
+                            <div><Label>{t('Descrição')}</Label><Input value={adjForm.data.description} onChange={e => adjForm.setData('description', e.target.value)} required /></div>
+                            <div><Label>{t('Montante')}</Label><Input type="number" step="0.01" value={adjForm.data.amount} onChange={e => adjForm.setData('amount', e.target.value)} required /></div>
+                            <div><Label>{t('Base Legal')}</Label><Input value={adjForm.data.legal_basis} onChange={e => adjForm.setData('legal_basis', e.target.value)} placeholder="Art. X CIRPC" /></div>
+                            <DialogFooter><Button variant="outline" type="button" onClick={() => setShowAdd(false)}>{t('Cancelar')}</Button><Button type="submit" disabled={adjForm.processing}>{t('Registar')}</Button></DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            )}
         </AuthenticatedLayout>
     );
 }

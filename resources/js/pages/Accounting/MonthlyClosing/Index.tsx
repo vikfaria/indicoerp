@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CheckCircle2, Circle, Clock, Lock, Play, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
-interface CheckItem { id: number; check_name: string; check_order: number; is_completed: boolean; completed_at: string | null; }
+interface CheckItem { id: number; check_name: string; status: string; completed_at: string | null; }
 interface Period { id: number; period_number: number; period_name: string; status: string; }
 
 export default function MonthlyClosingIndex() {
@@ -16,7 +16,7 @@ export default function MonthlyClosingIndex() {
     const { periods, checklists, currentYear, currentMonth } = usePage<{ periods: Period[]; checklists: CheckItem[]; currentYear: string; currentMonth: number; }>().props;
     const [month, setMonth] = useState(currentMonth);
 
-    const completedCount = checklists.filter(c => c.is_completed).length;
+    const completedCount = checklists.filter(c => c.status !== 'pending').length;
     const totalCount = checklists.length;
     const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
     const currentPeriod = periods.find(p => p.period_number === month);
@@ -75,16 +75,16 @@ export default function MonthlyClosingIndex() {
 
                     <div className="space-y-3">
                         {checklists.map((check, i) => (
-                            <Card key={check.id} className={`transition-all ${check.is_completed ? 'border-green-200 bg-green-50/30' : 'hover:shadow-md'}`}>
+                            <Card key={check.id} className={`transition-all ${check.status !== 'pending' ? 'border-green-200 bg-green-50/30' : 'hover:shadow-md'}`}>
                                 <CardContent className="p-4 flex items-center gap-4">
-                                    <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${check.is_completed ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                                        {check.is_completed ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
+                                    <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${check.status !== 'pending' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                        {check.status !== 'pending' ? <CheckCircle2 className="h-5 w-5" /> : i + 1}
                                     </div>
                                     <div className="flex-1">
-                                        <p className={`font-medium ${check.is_completed ? 'line-through text-muted-foreground' : ''}`}>{check.check_name}</p>
+                                        <p className={`font-medium ${check.status !== 'pending' ? 'line-through text-muted-foreground' : ''}`}>{check.check_name}</p>
                                         {check.completed_at && <p className="text-xs text-muted-foreground mt-1">{new Date(check.completed_at).toLocaleString('pt')}</p>}
                                     </div>
-                                    {!check.is_completed && <Button size="sm" variant="outline" onClick={() => completeCheck(check.id)}><CheckCircle2 className="h-4 w-4 mr-1" /> {t('Concluir')}</Button>}
+                                    {check.status === 'pending' && <Button size="sm" variant="outline" onClick={() => completeCheck(check.id)}><CheckCircle2 className="h-4 w-4 mr-1" /> {t('Concluir')}</Button>}
                                 </CardContent>
                             </Card>
                         ))}
