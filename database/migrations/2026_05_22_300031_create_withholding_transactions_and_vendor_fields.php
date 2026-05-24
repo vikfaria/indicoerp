@@ -2,10 +2,14 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const IDX_COMPANY_PERIOD = 'wtt_company_period_idx';
+    private const IDX_COMPANY_STATUS = 'wtt_company_status_idx';
+
     public function up(): void
     {
         if (!Schema::hasTable('withholding_tax_transactions')) {
@@ -31,8 +35,18 @@ return new class extends Migration
 
                 $table->foreign('company_id')->references('id')->on('users')->onDelete('cascade');
                 $table->foreign('withholding_rule_id')->references('id')->on('withholding_tax_rules')->onDelete('cascade');
-                $table->index(['company_id', 'fiscal_year', 'fiscal_month']);
-                $table->index(['company_id', 'status']);
+                $table->index(['company_id', 'fiscal_year', 'fiscal_month'], self::IDX_COMPANY_PERIOD);
+                $table->index(['company_id', 'status'], self::IDX_COMPANY_STATUS);
+            });
+        } else {
+            Schema::table('withholding_tax_transactions', function (Blueprint $table) {
+                if (!$this->indexExists('withholding_tax_transactions', self::IDX_COMPANY_PERIOD)) {
+                    $table->index(['company_id', 'fiscal_year', 'fiscal_month'], self::IDX_COMPANY_PERIOD);
+                }
+
+                if (!$this->indexExists('withholding_tax_transactions', self::IDX_COMPANY_STATUS)) {
+                    $table->index(['company_id', 'status'], self::IDX_COMPANY_STATUS);
+                }
             });
         }
 
@@ -60,6 +74,18 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (Schema::hasTable('withholding_tax_transactions')) {
+            Schema::table('withholding_tax_transactions', function (Blueprint $table) {
+                if ($this->indexExists('withholding_tax_transactions', self::IDX_COMPANY_PERIOD)) {
+                    $table->dropIndex(self::IDX_COMPANY_PERIOD);
+                }
+
+                if ($this->indexExists('withholding_tax_transactions', self::IDX_COMPANY_STATUS)) {
+                    $table->dropIndex(self::IDX_COMPANY_STATUS);
+                }
+            });
+        }
+
         if (Schema::hasTable('vendors')) {
             Schema::table('vendors', function (Blueprint $table) {
                 $cols = ['fiscal_regime', 'fiscal_country', 'income_type', 'default_withholding_rule_id', 'is_resident'];
@@ -71,5 +97,15 @@ return new class extends Migration
             });
         }
         Schema::dropIfExists('withholding_tax_transactions');
+    }
+
+    private function indexExists(string $table, string $indexName): bool
+    {
+        $result = DB::select(
+            'SHOW INDEX FROM `'.$table.'` WHERE Key_name = ?',
+            [$indexName]
+        );
+
+        return $result !== [];
     }
 };
