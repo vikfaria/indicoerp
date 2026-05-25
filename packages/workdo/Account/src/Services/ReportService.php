@@ -15,6 +15,9 @@ use Workdo\Account\Models\MozTaxAccountMapping;
 class ReportService
 {
     private VatCalculationService $vatCalculationService;
+    private ?int $cachedCompanyId = null;
+    private ?array $cachedCompanySettings = null;
+    private array $cachedCompanySettingValues = [];
 
     public function __construct(VatCalculationService $vatCalculationService)
     {
@@ -214,24 +217,25 @@ class ReportService
     {
         $fromDate = $filters['from_date'] ?? date('Y-01-01');
         $toDate = $filters['to_date'] ?? date('Y-12-31');
+        $companyId = $this->companyId();
 
         $salesBaseQuery = DB::table('sales_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->whereIn('status', ['posted', 'partial', 'paid'])
             ->whereBetween('invoice_date', [$fromDate, $toDate]);
 
         $purchaseBaseQuery = DB::table('purchase_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->whereIn('status', ['posted', 'partial', 'paid'])
             ->whereBetween('invoice_date', [$fromDate, $toDate]);
 
         $creditNoteBaseQuery = DB::table('credit_notes')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('status', 'approved')
             ->whereBetween('credit_note_date', [$fromDate, $toDate]);
 
         $debitNoteBaseQuery = DB::table('debit_notes')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('status', 'approved')
             ->whereBetween('debit_note_date', [$fromDate, $toDate]);
 
@@ -244,7 +248,7 @@ class ReportService
         $posFiscalStatus = [];
         if (Schema::hasTable('pos') && Schema::hasTable('pos_items') && Schema::hasColumn('pos', 'pos_date')) {
             $posBaseQuery = DB::table('pos')
-                ->where('pos.created_by', creatorId())
+                ->where('pos.created_by', $companyId)
                 ->whereBetween('pos.pos_date', [$fromDate, $toDate]);
 
             if (Schema::hasColumn('pos', 'status')) {
@@ -757,7 +761,7 @@ class ReportService
 
         $fromDate = $filters['from_date'] ?? date('Y-01-01');
         $toDate = $filters['to_date'] ?? date('Y-12-31');
-        $companySettings = getCompanyAllSetting(creatorId());
+        $companySettings = $this->companySettings();
 
         $salesInvoiceColumns = array_merge([
             'id',
@@ -1375,7 +1379,7 @@ class ReportService
             );
         }
 
-        $companySettings = getCompanyAllSetting(creatorId());
+        $companySettings = $this->companySettings();
         $requiresNuit = $this->requiresMozambicanNuitFromSettings($companySettings);
         $companyTaxNumber = (string) ($companySettings['company_tax_number'] ?? $companySettings['vat_number'] ?? '');
         $companyTaxNumberValid = $this->isValidNuit($companyTaxNumber);
@@ -2209,9 +2213,9 @@ class ReportService
 
     private function getMozambiqueGoLiveAttestations(): array
     {
-        $stringSetting = static fn (string $key, string $default = ''): string => (string) (company_setting($key, creatorId()) ?? $default);
+        $stringSetting = fn (string $key, string $default = ''): string => (string) $this->companySetting($key, $default);
 
-        $intSetting = static fn (string $key, int $default = 0): int => (int) (company_setting($key, creatorId()) ?? $default);
+        $intSetting = fn (string $key, int $default = 0): int => (int) $this->companySetting($key, $default);
 
         return [
             'legal_review_status' => $stringSetting('mz_go_live_legal_review_status', 'pending'),
@@ -2660,7 +2664,7 @@ class ReportService
 
     private function resolveCompanyTaxLabel(): string
     {
-        $settings = getCompanyAllSetting(creatorId());
+        $settings = $this->companySettings();
         $taxType = strtoupper((string) ($settings['tax_type'] ?? ''));
         $country = strtolower((string) ($settings['company_country'] ?? ''));
 
@@ -2681,5 +2685,34 @@ class ReportService
         }
 
         return 'Tax Number';
+    }
+
+    private function companyId(): int
+    {
+        if ($this->cachedCompanyId === null) {
+            $this->cachedCompanyId = (int) creatorId();
+        }
+
+        return $this->cachedCompanyId;
+    }
+
+    private function companySettings(): array
+    {
+        if ($this->cachedCompanySettings === null) {
+            $this->cachedCompanySettings = getCompanyAllSetting($this->companyId());
+        }
+
+        return $this->cachedCompanySettings;
+    }
+
+    private function companySetting(string $key, $default = null)
+    {
+        if (!array_key_exists($key, $this->cachedCompanySettingValues)) {
+            $this->cachedCompanySettingValues[$key] = company_setting($key, $this->companyId());
+        }
+
+        $value = $this->cachedCompanySettingValues[$key];
+
+        return $value ?? $default;
     }
 }
