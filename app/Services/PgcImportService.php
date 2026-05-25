@@ -7,6 +7,8 @@ use App\Models\PgcAccountMapping;
 use App\Models\CompanyFiscalProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Workdo\Account\Helpers\AccountUtility;
+use Workdo\Account\Models\AccountCategory;
 use Workdo\Account\Models\AccountType;
 use Workdo\Account\Models\ChartOfAccount;
 
@@ -261,21 +263,23 @@ class PgcImportService
      */
     private function resolveAccountType(PgcAccountCatalog $catalog, int $companyId, array &$cache): int
     {
-        $typeName = match ($catalog->class_number) {
-            0 => 'Contas de Ordem',
-            1 => 'Meios Financeiros Líquidos',
-            2 => 'Contas a Receber e a Pagar',
-            3 => 'Inventários e Activos Biológicos',
-            4 => 'Investimentos',
-            5 => 'Capital, Reservas e Resultados Transitados',
-            6 => 'Gastos e Perdas',
-            7 => 'Rendimentos e Ganhos',
-            8 => 'Resultados',
-            9 => 'Contabilidade Analítica e de Gestão',
-            default => 'Outros',
+        $typeMeta = match ($catalog->class_number) {
+            0 => ['name' => 'Contas de Ordem', 'category_code' => 'LIB'],
+            1 => ['name' => 'Meios Financeiros Líquidos', 'category_code' => 'AST'],
+            2 => ['name' => 'Inventários e Activos Biológicos', 'category_code' => 'AST'],
+            3 => ['name' => 'Investimentos de Capital', 'category_code' => 'AST'],
+            4 => ['name' => 'Contas a Receber, Contas a Pagar e Empréstimos', 'category_code' => 'LIB'],
+            5 => ['name' => 'Capital Próprio', 'category_code' => 'EQT'],
+            6 => ['name' => 'Custos e Perdas', 'category_code' => 'EXP'],
+            7 => ['name' => 'Proveitos e Ganhos', 'category_code' => 'REV'],
+            8 => ['name' => 'Resultados', 'category_code' => 'EQT'],
+            9 => ['name' => 'Contabilidade Analítica e de Gestão', 'category_code' => 'EXP'],
+            default => ['name' => 'Outros', 'category_code' => 'EXP'],
         };
 
-        $cacheKey = $companyId . ':' . $typeName;
+        $typeName = $typeMeta['name'];
+        $categoryId = $this->resolveAccountCategoryId($companyId, $typeMeta['category_code'], $cache);
+        $cacheKey = 'type:' . $companyId . ':' . $typeName;
 
         if (isset($cache[$cacheKey])) {
             return $cache[$cacheKey];
@@ -284,6 +288,7 @@ class PgcImportService
         $type = AccountType::firstOrCreate(
             ['name' => $typeName, 'created_by' => $companyId],
             [
+                'category_id' => $categoryId,
                 'code' => 'C' . $catalog->class_number,
                 'normal_balance' => $catalog->normal_balance,
                 'description' => 'PGC-MZ Classe ' . $catalog->class_number,
@@ -293,8 +298,57 @@ class PgcImportService
             ]
         );
 
+        // Keep existing system types aligned with the intended category.
+        if ((int) $type->category_id !== (int) $categoryId) {
+            $type->category_id = $categoryId;
+            $type->save();
+        }
+
         $cache[$cacheKey] = $type->id;
 
         return $type->id;
+    }
+
+    /**
+     * Resolve/create the account category required by an account type.
+     */
+    private function resolveAccountCategoryId(int $companyId, string $categoryCode, array &$cache): int
+    {
+        $cacheKey = 'category:' . $companyId . ':' . $categoryCode;
+
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
+        $category = AccountCategory::where('created_by', $companyId)
+            ->where('code', $categoryCode)
+            ->first();
+
+        if (!$category) {
+            $definition = collect(AccountUtility::accountCategoryDefinitions('pt'))
+                ->firstWhere('code', $categoryCode);
+
+            $fallbackType = match ($categoryCode) {
+                'AST' => 'assets',
+                'LIB' => 'liabilities',
+                'EQT' => 'equity',
+                'REV' => 'revenue',
+                default => 'expenses',
+            };
+
+            $category = AccountCategory::create([
+                'name' => $definition['name'] ?? $categoryCode,
+                'code' => $categoryCode,
+                'type' => $definition['type'] ?? $fallbackType,
+                'description' => $definition['description'] ?? 'Categoria criada automaticamente pelo setup SCE.',
+                'is_active' => true,
+                'creator_id' => $companyId,
+                'created_by' => $companyId,
+            ]);
+        }
+
+        $cache[$cacheKey] = $category->id;
+
+        return $category->id;
     }
 }
