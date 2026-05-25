@@ -762,6 +762,7 @@ class ReportService
         $fromDate = $filters['from_date'] ?? date('Y-01-01');
         $toDate = $filters['to_date'] ?? date('Y-12-31');
         $companySettings = $this->companySettings();
+        $companyId = $this->companyId();
 
         $salesInvoiceColumns = array_merge([
             'id',
@@ -816,7 +817,7 @@ class ReportService
         ]));
 
         $salesInvoices = DB::table('sales_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->whereIn('status', ['posted', 'partial', 'paid', 'cancelled'])
             ->whereBetween('invoice_date', [$fromDate, $toDate])
             ->orderBy('invoice_date')
@@ -824,7 +825,7 @@ class ReportService
             ->get($salesInvoiceColumns);
 
         $purchaseInvoices = DB::table('purchase_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->whereIn('status', ['posted', 'partial', 'paid', 'cancelled'])
             ->whereBetween('invoice_date', [$fromDate, $toDate])
             ->orderBy('invoice_date')
@@ -892,7 +893,7 @@ class ReportService
         $customerTaxNumbers = collect();
         if (Schema::hasTable('customers')) {
             $customerTaxNumbers = DB::table('customers')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereIn('user_id', $salesInvoices->pluck('customer_id')->filter()->all())
                 ->pluck('tax_number', 'user_id');
         }
@@ -900,7 +901,7 @@ class ReportService
         $vendorTaxNumbers = collect();
         if (Schema::hasTable('vendors')) {
             $vendorTaxNumbers = DB::table('vendors')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereIn('user_id', $purchaseInvoices->pluck('vendor_id')->filter()->all())
                 ->pluck('tax_number', 'user_id');
         }
@@ -1066,8 +1067,8 @@ class ReportService
 
             $sourceIdentifier = $this->pickFirstNonEmpty([
                 (string) ($invoice->customer_id ?? ''),
-                (string) creatorId(),
-            ], (string) creatorId());
+                (string) $companyId,
+            ], (string) $companyId);
 
             $writer->startElement('Invoice');
             $writer->writeElement('InvoiceNo', (string) $invoice->invoice_number);
@@ -1139,8 +1140,8 @@ class ReportService
 
             $sourceIdentifier = $this->pickFirstNonEmpty([
                 (string) ($invoice->vendor_id ?? ''),
-                (string) creatorId(),
-            ], (string) creatorId());
+                (string) $companyId,
+            ], (string) $companyId);
 
             $writer->startElement('Invoice');
             $writer->writeElement('InvoiceNo', (string) $invoice->invoice_number);
@@ -1310,6 +1311,7 @@ class ReportService
     {
         $today = now()->toDateString();
         $thirtyDaysAgo = now()->subDays(30)->toDateString();
+        $companyId = $this->companyId();
         $checks = [];
         $summary = [
             'pass' => 0,
@@ -1405,7 +1407,7 @@ class ReportService
 
         if (Schema::hasTable('customers') && Schema::hasColumn('customers', 'tax_number')) {
             $invalidCustomerNuitCount = DB::table('customers')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereNotNull('tax_number')
                 ->where('tax_number', '!=', '')
                 ->pluck('tax_number')
@@ -1433,7 +1435,7 @@ class ReportService
 
         if (Schema::hasTable('vendors') && Schema::hasColumn('vendors', 'tax_number')) {
             $invalidVendorNuitCount = DB::table('vendors')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereNotNull('tax_number')
                 ->where('tax_number', '!=', '')
                 ->pluck('tax_number')
@@ -1461,7 +1463,7 @@ class ReportService
 
         if (Schema::hasTable('mz_tax_account_mappings')) {
             $mappingExists = DB::table('mz_tax_account_mappings')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('is_active', true)
                 ->whereDate('effective_from', '<=', $today)
                 ->where(function ($query) use ($today) {
@@ -1495,7 +1497,7 @@ class ReportService
             && Schema::hasTable('mz_minimum_wages')
         ) {
             $activeIrpsTableId = DB::table('mz_irps_tables')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('is_active', true)
                 ->whereDate('effective_from', '<=', $today)
                 ->where(function ($query) use ($today) {
@@ -1511,7 +1513,7 @@ class ReportService
                 : 0;
 
             $hasActiveInss = DB::table('mz_inss_rates')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('is_active', true)
                 ->whereDate('effective_from', '<=', $today)
                 ->where(function ($query) use ($today) {
@@ -1521,7 +1523,7 @@ class ReportService
                 ->exists();
 
             $hasActiveMinimumWage = DB::table('mz_minimum_wages')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('is_active', true)
                 ->whereDate('effective_from', '<=', $today)
                 ->where(function ($query) use ($today) {
@@ -1576,7 +1578,7 @@ class ReportService
             ];
 
             $configuredPolicyKeys = DB::table('settings')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereIn('key', $policyKeys)
                 ->pluck('key')
                 ->all();
@@ -1604,7 +1606,7 @@ class ReportService
 
         if (Schema::hasTable('mz_fiscal_closings')) {
             $closedPeriods = DB::table('mz_fiscal_closings')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('status', 'closed')
                 ->count();
 
@@ -1634,19 +1636,19 @@ class ReportService
             && Schema::hasColumn('purchase_invoices', 'fiscal_submission_status')
         ) {
             $salesBacklog = DB::table('sales_invoices')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereIn('fiscal_submission_status', ['pending', 'rejected'])
                 ->count();
 
             $purchaseBacklog = DB::table('purchase_invoices')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->whereIn('fiscal_submission_status', ['pending', 'rejected'])
                 ->count();
 
             $posBacklog = 0;
             if (Schema::hasTable('pos') && Schema::hasColumn('pos', 'fiscal_submission_status')) {
                 $posBacklogQuery = DB::table('pos')
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->whereIn('fiscal_submission_status', ['pending', 'rejected']);
 
                 if (Schema::hasColumn('pos', 'is_cancelled')) {
@@ -1719,7 +1721,7 @@ class ReportService
 
         if (Schema::hasTable('bank_transactions')) {
             $oldUnreconciled = DB::table('bank_transactions')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('reconciliation_status', 'unreconciled')
                 ->whereDate('transaction_date', '<=', $thirtyDaysAgo)
                 ->count();
@@ -1745,7 +1747,7 @@ class ReportService
 
         if (Schema::hasTable('audit_trails')) {
             $recentAuditEvents = DB::table('audit_trails')
-                ->where('company_id', creatorId())
+                ->where('company_id', $companyId)
                 ->whereDate('created_at', '>=', $thirtyDaysAgo)
                 ->count();
 
@@ -1776,7 +1778,7 @@ class ReportService
             && Schema::hasColumn('vendor_payments', 'payment_method')
         ) {
             $invalidCustomerMobileMoney = DB::table('customer_payments')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('payment_method', 'mobile_money')
                 ->where(function ($query) {
                     $query->whereNull('mobile_money_provider')
@@ -1787,7 +1789,7 @@ class ReportService
                 ->count();
 
             $invalidVendorMobileMoney = DB::table('vendor_payments')
-                ->where('created_by', creatorId())
+                ->where('created_by', $companyId)
                 ->where('payment_method', 'mobile_money')
                 ->where(function ($query) {
                     $query->whereNull('mobile_money_provider')
@@ -1864,18 +1866,18 @@ class ReportService
         if (Schema::hasTable('mz_pilot_companies')) {
             try {
                 $pilotRegistryStats['total'] = MozPilotCompany::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->count();
                 $pilotRegistryStats['active'] = MozPilotCompany::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('status', 'active')
                     ->count();
                 $pilotRegistryStats['completed'] = MozPilotCompany::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('status', 'completed')
                     ->count();
                 $pilotRegistryStats['validated_real'] = MozPilotCompany::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('status', 'completed')
                     ->where('validation_result', 'passed')
                     ->whereNotNull('validation_signed_at')
@@ -2000,11 +2002,11 @@ class ReportService
         if (Schema::hasTable('mz_pilot_validation_cases')) {
             try {
                 $validationCaseStats['payroll_total'] = MozPilotValidationCase::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('domain', 'payroll')
                     ->count();
                 $validationCaseStats['payroll_validated'] = MozPilotValidationCase::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('domain', 'payroll')
                     ->where('result', 'passed')
                     ->whereNotNull('executed_at')
@@ -2012,11 +2014,11 @@ class ReportService
                     ->where('evidence_ref', '!=', '')
                     ->count();
                 $validationCaseStats['accounting_total'] = MozPilotValidationCase::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('domain', 'accounting')
                     ->count();
                 $validationCaseStats['accounting_validated'] = MozPilotValidationCase::query()
-                    ->where('created_by', creatorId())
+                    ->where('created_by', $companyId)
                     ->where('domain', 'accounting')
                     ->where('result', 'passed')
                     ->whereNotNull('executed_at')
@@ -2421,15 +2423,16 @@ class ReportService
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
         $taxLabel = $this->resolveCompanyTaxLabel();
+        $companyId = $this->companyId();
 
         $customer = DB::table('users')
-            ->leftJoin('customers', function ($join) {
+            ->leftJoin('customers', function ($join) use ($companyId) {
                 $join->on('customers.user_id', '=', 'users.id')
-                    ->where('customers.created_by', creatorId());
+                    ->where('customers.created_by', $companyId);
             })
             ->where('users.id', $customerId)
             ->where('users.type', 'client')
-            ->where('users.created_by', creatorId())
+            ->where('users.created_by', $companyId)
             ->select('users.id', 'users.name', 'users.email', 'customers.company_name', 'customers.tax_number')
             ->first();
 
@@ -2438,7 +2441,7 @@ class ReportService
         }
 
         $invoicesQuery = DB::table('sales_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('customer_id', $customerId)
             ->whereIn('status', ['posted', 'partial', 'paid'])
             ->select('invoice_number', 'invoice_date as date', 'due_date', 'subtotal', 'tax_amount', 'total_amount', 'balance_amount', 'status');
@@ -2448,7 +2451,7 @@ class ReportService
         $invoices = $invoicesQuery->orderBy('invoice_date', 'desc')->get();
 
         $returnsQuery = DB::table('sales_invoice_returns')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('customer_id', $customerId)
             ->whereIn('status', ['approved', 'completed'])
             ->select('return_number', 'return_date as date', 'subtotal', 'tax_amount', 'total_amount', 'status');
@@ -2458,7 +2461,7 @@ class ReportService
         $returns = $returnsQuery->orderBy('return_date', 'desc')->get();
 
         $creditNotesQuery = DB::table('credit_notes')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('customer_id', $customerId)
             ->whereIn('status', ['approved', 'partial', 'applied'])
             ->select('credit_note_number', 'credit_note_date as date', 'total_amount', 'applied_amount', 'balance_amount', 'status');
@@ -2469,7 +2472,7 @@ class ReportService
 
         $paymentsQuery = DB::table('customer_payments')
             ->leftJoin('bank_accounts', 'customer_payments.bank_account_id', '=', 'bank_accounts.id')
-            ->where('customer_payments.created_by', creatorId())
+            ->where('customer_payments.created_by', $companyId)
             ->where('customer_payments.customer_id', $customerId)
             ->select('customer_payments.payment_number', 'customer_payments.payment_date as date', 'customer_payments.payment_amount as amount', 'customer_payments.reference_number', 'customer_payments.status', 'bank_accounts.account_name as bank_account');
 
@@ -2506,15 +2509,16 @@ class ReportService
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
         $taxLabel = $this->resolveCompanyTaxLabel();
+        $companyId = $this->companyId();
 
         $vendor = DB::table('users')
-            ->leftJoin('vendors', function ($join) {
+            ->leftJoin('vendors', function ($join) use ($companyId) {
                 $join->on('vendors.user_id', '=', 'users.id')
-                    ->where('vendors.created_by', creatorId());
+                    ->where('vendors.created_by', $companyId);
             })
             ->where('users.id', $vendorId)
             ->where('users.type', 'vendor')
-            ->where('users.created_by', creatorId())
+            ->where('users.created_by', $companyId)
             ->select('users.id', 'users.name', 'users.email', 'vendors.company_name', 'vendors.tax_number')
             ->first();
 
@@ -2523,7 +2527,7 @@ class ReportService
         }
 
         $invoicesQuery = DB::table('purchase_invoices')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('vendor_id', $vendorId)
             ->whereIn('status', ['posted', 'partial', 'paid'])
             ->select('invoice_number', 'invoice_date as date', 'due_date', 'subtotal', 'tax_amount', 'total_amount', 'balance_amount', 'status');
@@ -2533,7 +2537,7 @@ class ReportService
         $invoices = $invoicesQuery->orderBy('invoice_date', 'desc')->get();
 
         $returnsQuery = DB::table('purchase_returns')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('vendor_id', $vendorId)
             ->whereIn('status', ['approved', 'completed'])
             ->select('return_number', 'return_date as date', 'subtotal', 'tax_amount', 'total_amount', 'status');
@@ -2543,7 +2547,7 @@ class ReportService
         $returns = $returnsQuery->orderBy('return_date', 'desc')->get();
 
         $debitNotesQuery = DB::table('debit_notes')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('vendor_id', $vendorId)
             ->whereIn('status', ['approved', 'partial', 'applied'])
             ->select('debit_note_number', 'debit_note_date as date', 'total_amount', 'applied_amount', 'balance_amount', 'status');
@@ -2554,7 +2558,7 @@ class ReportService
 
         $paymentsQuery = DB::table('vendor_payments')
             ->leftJoin('bank_accounts', 'vendor_payments.bank_account_id', '=', 'bank_accounts.id')
-            ->where('vendor_payments.created_by', creatorId())
+            ->where('vendor_payments.created_by', $companyId)
             ->where('vendor_payments.vendor_id', $vendorId)
             ->select('vendor_payments.payment_number', 'vendor_payments.payment_date as date', 'vendor_payments.payment_amount as amount', 'vendor_payments.reference_number', 'vendor_payments.status', 'bank_accounts.account_name as bank_account');
 
