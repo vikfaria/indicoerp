@@ -19,13 +19,41 @@ use Workdo\Retainer\Models\RetainerPaymentAllocation;
 class JournalService
 {
     private ?array $mozambiqueTaxAccountCodes = null;
+    private array $chartAccountCache = [];
+    private array $bankAccountCache = [];
+
+    private function getAccountByCode(string $accountCode, ?int $companyId = null): ?ChartOfAccount
+    {
+        $ownerId = $companyId ?? creatorId();
+        $cacheKey = $ownerId . '|' . $accountCode;
+
+        if (!array_key_exists($cacheKey, $this->chartAccountCache)) {
+            $this->chartAccountCache[$cacheKey] = ChartOfAccount::where('account_code', $accountCode)
+                ->where('created_by', $ownerId)
+                ->first();
+        }
+
+        return $this->chartAccountCache[$cacheKey];
+    }
+
+    private function getBankAccountByGateway(string $paymentGateway, int $companyId): ?BankAccount
+    {
+        $cacheKey = $companyId . '|' . $paymentGateway;
+
+        if (!array_key_exists($cacheKey, $this->bankAccountCache)) {
+            $this->bankAccountCache[$cacheKey] = BankAccount::with('glAccount')
+                ->where('payment_gateway', $paymentGateway)
+                ->where('created_by', $companyId)
+                ->first();
+        }
+
+        return $this->bankAccountCache[$cacheKey];
+    }
 
     private function validateAccounts(array $accountCodes , $userID = null)
     {
         foreach ($accountCodes as $code) {
-            $account = ChartOfAccount::where('account_code', $code)
-                ->where('created_by', $userID ?? creatorId())
-                ->first();
+            $account = $this->getAccountByCode($code, $userID ? (int) $userID : null);
             if (!$account) {
                 throw new \Exception("Account with code {$code} not found");
             }
@@ -117,9 +145,9 @@ class JournalService
         $totalCredit = $salesInvoice->subtotal - $salesInvoice->discount_amount + ($salesInvoice->tax_amount ?? 0);
         $this->validateBalance($totalDebit, $totalCredit);
 
-        $arAccount = ChartOfAccount::where('account_code', '1100')->where('created_by', creatorId())->first();
-        $salesAccount = ChartOfAccount::where('account_code', '4100')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatOutputTaxCode)->where('created_by', creatorId())->first();
+        $arAccount = $this->getAccountByCode('1100');
+        $salesAccount = $this->getAccountByCode('4100');
+        $taxAccount = $this->getAccountByCode($vatOutputTaxCode);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $salesInvoice->invoice_date ?? now(),
@@ -191,8 +219,8 @@ class JournalService
         $this->validateAccounts(['2350', '1100']);
         $this->validateBalance($totalAmount, $totalAmount);
 
-        $customerDepositsAccount = ChartOfAccount::where('account_code', '2350')->where('created_by', creatorId())->first();
-        $arAccount = ChartOfAccount::where('account_code', '1100')->where('created_by', creatorId())->first();
+        $customerDepositsAccount = $this->getAccountByCode('2350');
+        $arAccount = $this->getAccountByCode('1100');
 
         $journalEntry = JournalEntry::create([
             'journal_date' => now(),
@@ -248,9 +276,9 @@ class JournalService
         $totalCredit = $salesInvoice->subtotal - $salesInvoice->discount_amount + ($salesInvoice->tax_amount ?? 0);
         $this->validateBalance($totalDebit, $totalCredit);
 
-        $arAccount = ChartOfAccount::where('account_code', '1100')->where('created_by', creatorId())->first();
-        $serviceRevenueAccount = ChartOfAccount::where('account_code', '4200')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatOutputTaxCode)->where('created_by', creatorId())->first();
+        $arAccount = $this->getAccountByCode('1100');
+        $serviceRevenueAccount = $this->getAccountByCode('4200');
+        $taxAccount = $this->getAccountByCode($vatOutputTaxCode);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $salesInvoice->invoice_date ?? now(),
@@ -320,9 +348,9 @@ class JournalService
         $totalCredit = $purchaseInvoice->total_amount;
         $this->validateBalance($totalDebit, $totalCredit);
 
-        $apAccount = ChartOfAccount::where('account_code', '2000')->where('created_by', creatorId())->first();
-        $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatInputTaxCode)->where('created_by', creatorId())->first();
+        $apAccount = $this->getAccountByCode('2000');
+        $inventoryAccount = $this->getAccountByCode('1200');
+        $taxAccount = $this->getAccountByCode($vatInputTaxCode);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $purchaseInvoice->invoice_date ?? now(),
@@ -387,7 +415,7 @@ class JournalService
 
         // Validate A/R account exists
         $this->validateAccounts(['1100']);
-        $arAccount = ChartOfAccount::where('account_code', '1100')->where('created_by', creatorId())->first();
+        $arAccount = $this->getAccountByCode('1100');
 
         // Validate amounts balance
         $this->validateBalance($customerPayment->payment_amount, $customerPayment->payment_amount);
@@ -451,7 +479,7 @@ class JournalService
 
         // Validate A/P account exists
         $this->validateAccounts(['2000']);
-        $apAccount = ChartOfAccount::where('account_code', '2000')->where('created_by', creatorId())->first();
+        $apAccount = $this->getAccountByCode('2000');
         // Validate amounts balance
         $this->validateBalance($vendorPayment->payment_amount, $vendorPayment->payment_amount);
 
@@ -646,7 +674,7 @@ class JournalService
         // Validate amounts balance
         $this->validateBalance($transferValue, $transferValue);
 
-        $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
+        $inventoryAccount = $this->getAccountByCode('1200');
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $stockTransfer->date ?? now(),
@@ -767,9 +795,9 @@ class JournalService
         $totalCredit = $debitNote->subtotal  - $debitNote->discount_amount + ($debitNote->tax_amount ?? 0);
         $this->validateBalance($totalDebit, $totalCredit);
 
-        $apAccount = ChartOfAccount::where('account_code', '2000')->where('created_by', creatorId())->first();
-        $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatInputTaxCode)->where('created_by', creatorId())->first();
+        $apAccount = $this->getAccountByCode('2000');
+        $inventoryAccount = $this->getAccountByCode('1200');
+        $taxAccount = $this->getAccountByCode($vatInputTaxCode);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $debitNote->debit_note_date ?? now(),
@@ -840,9 +868,9 @@ class JournalService
         $totalCredit = $creditNote->total_amount;
         $this->validateBalance($totalDebit, $totalCredit);
 
-        $arAccount = ChartOfAccount::where('account_code', '1100')->where('created_by', creatorId())->first();
-        $salesAccount = ChartOfAccount::where('account_code', '4100')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatOutputTaxCode)->where('created_by', creatorId())->first();
+        $arAccount = $this->getAccountByCode('1100');
+        $salesAccount = $this->getAccountByCode('4100');
+        $taxAccount = $this->getAccountByCode($vatOutputTaxCode);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $creditNote->credit_note_date ?? now(),
@@ -913,7 +941,7 @@ class JournalService
             throw new \Exception( __("Destination bank account must have a GL account assigned"));
         }
 
-        $bankChargesAccount = ChartOfAccount::where('account_code', '5510')->where('created_by', creatorId())->first();
+        $bankChargesAccount = $this->getAccountByCode('5510');
 
         $totalDebit = $bankTransfer->transfer_amount + $bankTransfer->transfer_charges;
         $totalCredit = $bankTransfer->transfer_amount + $bankTransfer->transfer_charges;
@@ -981,7 +1009,7 @@ class JournalService
 
         // Validate Customer Deposits exists (2350)
         $this->validateAccounts(['2350']);
-        $unearnedRevenueAccount = ChartOfAccount::where('account_code', '2350')->where('created_by', creatorId())->first();
+        $unearnedRevenueAccount = $this->getAccountByCode('2350');
 
         // Validate amounts balance
         $this->validateBalance($retainerPayment->payment_amount, $retainerPayment->payment_amount);
@@ -1040,7 +1068,7 @@ class JournalService
 
         // Validate Commission Expense account exists (5220)
         $this->validateAccounts(['5220']);
-        $commissionExpenseAccount = ChartOfAccount::where('account_code', '5220')->where('created_by', creatorId())->first();
+        $commissionExpenseAccount = $this->getAccountByCode('5220');
 
         // Validate amounts balance
         $this->validateBalance($commissionPayment->payment_amount, $commissionPayment->payment_amount);
@@ -1102,7 +1130,7 @@ class JournalService
         }
 
         $this->validateAccounts(['5200']);
-        $salaryExpenseAccount = ChartOfAccount::where('account_code', '5200')->where('created_by', creatorId())->first();
+        $salaryExpenseAccount = $this->getAccountByCode('5200');
         $this->validateBalance($payrollEntry->net_pay, $payrollEntry->net_pay);
 
         $journalEntry = JournalEntry::create([
@@ -1170,8 +1198,8 @@ class JournalService
         }
         $this->validateAccounts($requiredAccounts);
 
-        $salesAccount = ChartOfAccount::where('account_code', '4100')->where('created_by', creatorId())->first();
-        $taxAccount = ChartOfAccount::where('account_code', $vatOutputTaxCode)->where('created_by', creatorId())->first();
+        $salesAccount = $this->getAccountByCode('4100');
+        $taxAccount = $this->getAccountByCode($vatOutputTaxCode);
 
         $totalAmount = $posSale->payment->discount_amount ?? 0;
         $subtotal = $posSale->items->sum('subtotal');
@@ -1257,8 +1285,8 @@ class JournalService
 
         $this->validateAccounts(['5100', '1200']);
 
-        $cogsAccount = ChartOfAccount::where('account_code', '5100')->where('created_by', creatorId())->first();
-        $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
+        $cogsAccount = $this->getAccountByCode('5100');
+        $inventoryAccount = $this->getAccountByCode('1200');
 
         $this->validateBalance($totalCost, $totalCost);
 
@@ -1323,8 +1351,8 @@ class JournalService
 
             $this->validateAccounts(['5100', '1200']);
 
-            $cogsAccount = ChartOfAccount::where('account_code', '5100')->where('created_by', creatorId())->first();
-            $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
+            $cogsAccount = $this->getAccountByCode('5100');
+            $inventoryAccount = $this->getAccountByCode('1200');
 
             $this->validateBalance($totalCost, $totalCost);
 
@@ -1392,8 +1420,8 @@ class JournalService
 
             $this->validateAccounts(['5100', '1200']);
 
-            $cogsAccount = ChartOfAccount::where('account_code', '5100')->where('created_by', creatorId())->first();
-            $inventoryAccount = ChartOfAccount::where('account_code', '1200')->where('created_by', creatorId())->first();
+            $cogsAccount = $this->getAccountByCode('5100');
+            $inventoryAccount = $this->getAccountByCode('1200');
 
             $this->validateBalance($totalCost, $totalCost);
 
@@ -1455,7 +1483,7 @@ class JournalService
         // Validate amounts balance
         $this->validateBalance($payment->payment_amount, $payment->payment_amount);
 
-        $mobileServiceRevenueAccount = ChartOfAccount::where('account_code', '4200')->where('created_by', creatorId())->first();
+        $mobileServiceRevenueAccount = $this->getAccountByCode('4200');
         $journalEntry = JournalEntry::create([
             'journal_date' => $payment->payment_date ?? now(),
             'entry_type' => 'automatic',
@@ -1518,7 +1546,7 @@ class JournalService
         // Validate amounts balance
         $this->validateBalance($payment->payment_amount, $payment->payment_amount);
 
-        $fleetServiceRevenueAccount = ChartOfAccount::where('account_code', '4300')->where('created_by', creatorId())->first();
+        $fleetServiceRevenueAccount = $this->getAccountByCode('4300');
         $journalEntry = JournalEntry::create([
             'journal_date' => $payment->payment_date ?? now(),
             'entry_type' => 'automatic',
@@ -1570,8 +1598,7 @@ class JournalService
     public function createBeautyBookingPaymentJournal($booking)
     {
         // Get bank account by payment gateway
-        $bankAccount = BankAccount::where('payment_gateway', $booking->payment_option)->where('created_by', $booking->created_by)
-            ->first();
+        $bankAccount = $this->getBankAccountByGateway($booking->payment_option, (int) $booking->created_by);
 
         if (!$bankAccount || !$bankAccount->glAccount) {
             throw new \Exception("Bank account with GL account not found for payment gateway: " . $booking->payment_option);
@@ -1582,7 +1609,7 @@ class JournalService
         // Validate amounts balance
         $this->validateBalance($booking->price, $booking->price);
 
-        $beautyServiceRevenueAccount = ChartOfAccount::where('account_code', '4200')->where('created_by', $booking->created_by)->first();
+        $beautyServiceRevenueAccount = $this->getAccountByCode('4200', (int) $booking->created_by);
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $booking->date ?? now(),
@@ -1637,7 +1664,7 @@ class JournalService
         $this->validateAccounts(['4200']);
         $this->validateBalance($dairyCattlePayment->payment_amount, $dairyCattlePayment->payment_amount);
 
-        $dairyCattleRevenueAccount = ChartOfAccount::where('account_code', '4200')->where('created_by', creatorId())->first();
+        $dairyCattleRevenueAccount = $this->getAccountByCode('4200');
         $journalEntry = JournalEntry::create([
             'journal_date' => $dairyCattlePayment->payment_date ?? now(),
             'entry_type' => 'automatic',
@@ -1690,7 +1717,7 @@ class JournalService
         $this->validateAccounts(['4200']);
         $this->validateBalance($payment->amount, $payment->amount);
 
-        $cateringServiceRevenueAccount = ChartOfAccount::where('account_code', '4200')->where('created_by', creatorId())->first();
+        $cateringServiceRevenueAccount = $this->getAccountByCode('4200');
         $journalEntry = JournalEntry::create([
             'journal_date' => $payment->payment_date ?? now(),
             'entry_type' => 'automatic',
@@ -1745,7 +1772,7 @@ class JournalService
         $this->validateAccounts(['5220']);
         $this->validateBalance($payment->payment_amount, $payment->payment_amount);
 
-        $commissionExpenseAccount = ChartOfAccount::where('account_code', '5220')->where('created_by', creatorId())->first();
+        $commissionExpenseAccount = $this->getAccountByCode('5220');
         $journalEntry = JournalEntry::create([
             'journal_date' => $payment->payment_date ?? now(),
             'entry_type' => 'automatic',
@@ -1798,9 +1825,9 @@ class JournalService
         $this->validateAccounts(['5220', '2400', '4300']);
         $this->validateBalance($adjustment->adjustment_amount, $adjustment->adjustment_amount);
 
-        $commissionExpenseAccount = ChartOfAccount::where('account_code', '5220')->where('created_by', creatorId())->first();
-        $commissionPayableAccount = ChartOfAccount::where('account_code', '2400')->where('created_by', creatorId())->first();
-        $otherIncomeAccount = ChartOfAccount::where('account_code', '4300')->where('created_by', creatorId())->first();
+        $commissionExpenseAccount = $this->getAccountByCode('5220');
+        $commissionPayableAccount = $this->getAccountByCode('2400');
+        $otherIncomeAccount = $this->getAccountByCode('4300');
 
         $journalEntry = JournalEntry::create([
             'journal_date' => $adjustment->adjustment_date ?? now(),
