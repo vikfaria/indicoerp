@@ -77,7 +77,7 @@ class AppServiceProvider extends ServiceProvider
                 'connection' => $query->connectionName,
                 'duration_ms' => round($query->time, 2),
                 'threshold_ms' => $threshold,
-                'sql' => mb_substr($query->sql, 0, 600),
+                'sql' => substr((string) $query->sql, 0, 600),
                 'bindings_count' => count($query->bindings),
             ]);
         });
@@ -88,7 +88,7 @@ class AppServiceProvider extends ServiceProvider
                 'connection' => $connection->getName(),
                 'threshold_ms' => $totalThreshold,
                 'last_query_ms' => round($event->time, 2),
-                'last_sql' => mb_substr($event->sql, 0, 400),
+                'last_sql' => substr((string) $event->sql, 0, 400),
                 'last_bindings_count' => count($event->bindings),
             ]);
         });

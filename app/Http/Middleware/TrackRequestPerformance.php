@@ -49,7 +49,7 @@ class TrackRequestPerformance
             'user_id' => $user?->id,
             'created_by' => $user?->created_by,
             'memory_peak_mb' => round(memory_get_peak_usage(true) / 1024 / 1024, 2),
-            'user_agent' => mb_substr((string) $request->userAgent(), 0, 180),
+            'user_agent' => substr((string) $request->userAgent(), 0, 180),
         ]);
 
         return $response;
@@ -69,4 +69,3 @@ class TrackRequestPerformance
         return false;
     }
 }
-
