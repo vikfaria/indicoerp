@@ -1,6 +1,7 @@
 import { Head, usePage, useForm, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,8 +43,9 @@ export default function FiscalProfileIndex() {
     const exportSaft = (e: React.FormEvent) => { e.preventDefault(); window.location.href = route('sce.fiscal.saft-export') + `?start_date=${saftForm.data.start_date}&end_date=${saftForm.data.end_date}`; };
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Fiscal') }, { label: t('Perfil Fiscal') }]} pageTitle={t('Perfil Fiscal & Períodos')}>
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Fiscal') }, { label: t('Perfil Fiscal') }]} pageTitle={t('Perfil Fiscal & Períodos')}>
             <Head title={t('Perfil Fiscal')} />
+            <AccountingSuiteNavigation section="fiscal" className="mb-4" />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Profile */}
                 <Card>

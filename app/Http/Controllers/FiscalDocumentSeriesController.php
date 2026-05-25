@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScePermissionChecks;
 use App\Models\FiscalDocumentSeries;
 use App\Models\FiscalDocumentType;
 use App\Services\FiscalHashService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class FiscalDocumentSeriesController extends Controller
 {
+    use ScePermissionChecks;
+
     public function __construct(
         private readonly FiscalHashService $hashService,
     ) {}
@@ -20,6 +22,10 @@ class FiscalDocumentSeriesController extends Controller
      */
     public function index()
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $companyId = creatorId();
 
         $series = FiscalDocumentSeries::with('fiscalDocumentType')
@@ -56,6 +62,10 @@ class FiscalDocumentSeriesController extends Controller
      */
     public function store(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'fiscal_document_type_id' => 'required|exists:fiscal_document_types,id',
             'series_code' => 'required|string|max:5|regex:/^[A-Z0-9]+$/',
@@ -95,6 +105,10 @@ class FiscalDocumentSeriesController extends Controller
      */
     public function toggleActive(FiscalDocumentSeries $series)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         if ($series->company_id !== creatorId()) {
             return back()->with('error', __('Permission denied'));
         }
@@ -111,6 +125,10 @@ class FiscalDocumentSeriesController extends Controller
      */
     public function verifyChain(FiscalDocumentSeries $series)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         if ($series->company_id !== creatorId()) {
             return back()->with('error', __('Permission denied'));
         }

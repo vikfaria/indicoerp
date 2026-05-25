@@ -1,6 +1,7 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -33,8 +34,9 @@ export default function BalanceSheet() {
     const totalPassivo = totalPNC + totalPC;
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Activos & Relatórios') }, { label: t('Balanço') }]} pageTitle={t('Balanço — PGC-MZ')}>
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Relatórios') }, { label: t('Balanço') }]} pageTitle={t('Balanço — PGC-MZ')}>
             <Head title={t('Balanço')} />
+            <AccountingSuiteNavigation section="reports" className="mb-4" />
             <div className="flex items-center gap-3 mb-6">
                 <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-44" />
                 <Button size="sm" onClick={refresh}>{t('Actualizar')}</Button>

@@ -291,6 +291,8 @@ class SaftExportService
 
         // Sales Invoices
         $this->writeSalesInvoices($xml);
+        // Purchase Invoices
+        $this->writePurchaseInvoices($xml);
 
         $xml->endElement();
     }

@@ -1,6 +1,7 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,8 +29,9 @@ export default function IncomeStatement() {
     );
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Activos & Relatórios') }, { label: t('Demonstração Resultados') }]} pageTitle={t('Demonstração de Resultados por Natureza')}>
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Relatórios') }, { label: t('Demonstração Resultados') }]} pageTitle={t('Demonstração de Resultados por Natureza')}>
             <Head title={t('Demonstração de Resultados')} />
+            <AccountingSuiteNavigation section="reports" className="mb-4" />
             <div className="flex items-center gap-3 mb-6">
                 <Input type="date" value={sd} onChange={e => setSd(e.target.value)} className="w-40" />
                 <span className="text-muted-foreground">{t('a')}</span>

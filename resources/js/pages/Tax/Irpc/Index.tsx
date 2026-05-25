@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import TaxNavigation from '@/components/tax/tax-navigation';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Calculator, Plus, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
 import { useState } from 'react';
 
@@ -39,13 +39,13 @@ export default function IrpcIndex() {
     const deductions = adjustments.filter(a => a.type === 'deduction');
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Impostos') }, { label: 'IRPC' }]} pageTitle={`IRPC — ${t('Exercício')} ${year}`}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: 'IRPC' }]} pageTitle={`IRPC — ${t('Exercício')} ${year}`}
             pageActions={<div className="flex gap-2">
                 {canManageTax && <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Correcção')}</Button>}
                 <Button size="sm" onClick={calculate}><Calculator className="h-4 w-4 mr-1" /> {t('Calcular')}</Button>
             </div>}>
             <Head title="IRPC" />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 {/* Add-backs */}

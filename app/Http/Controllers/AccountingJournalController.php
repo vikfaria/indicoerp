@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScePermissionChecks;
 use App\Models\AccountingJournal;
 use App\Models\AccountingPeriod;
 use App\Models\MonthlyClosingChecklist;
@@ -15,8 +16,14 @@ use Workdo\Account\Models\ChartOfAccount;
 
 class AccountingJournalController extends Controller
 {
+    use ScePermissionChecks;
+
     public function index(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $journals = AccountingJournal::where('company_id', creatorId())
             ->with(['defaultDebitAccount:id,account_code', 'defaultCreditAccount:id,account_code'])
             ->withCount('journalEntries')
@@ -49,6 +56,10 @@ class AccountingJournalController extends Controller
 
     public function store(Request $request)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:100',
             'prefix' => 'required|string|max:5|alpha_num',
@@ -85,6 +96,10 @@ class AccountingJournalController extends Controller
 
     public function update(Request $request, AccountingJournal $journal)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         if ($journal->company_id !== creatorId()) {
             abort(403);
         }
@@ -112,6 +127,10 @@ class AccountingJournalController extends Controller
 
     public function destroy(AccountingJournal $journal)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         if ($journal->company_id !== creatorId()) {
             abort(403);
         }
@@ -123,6 +142,10 @@ class AccountingJournalController extends Controller
     // Monthly Closing
     public function monthlyClosing(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $year = $request->get('year', date('Y'));
         $month = $request->get('month', (int) date('m'));
 
@@ -149,6 +172,10 @@ class AccountingJournalController extends Controller
 
     public function startClosing(Request $request)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'year' => 'required|string|size:4',
             'month' => 'required|integer|min:1|max:13',
@@ -172,6 +199,10 @@ class AccountingJournalController extends Controller
 
     public function completeCheck(Request $request, MonthlyClosingChecklist $check)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         if ($check->company_id !== creatorId()) {
             abort(403);
         }
@@ -184,6 +215,10 @@ class AccountingJournalController extends Controller
 
     public function finalizeClosing(Request $request)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'year' => 'required|string|size:4',
             'month' => 'required|integer|min:1|max:13',

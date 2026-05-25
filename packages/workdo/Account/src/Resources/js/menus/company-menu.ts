@@ -9,14 +9,15 @@ export const accountCompanyMenu = (t: (key: string) => string) => [
         title: t('Account Dashboard'),
         href: route('account.index'),
         permission: 'manage-account-dashboard',
-        parent: 'dashboard',
-        order: 20,
+        parent: 'contabilidade',
+        order: 1,
     },
     {
-        title: t('Accounting'),
+        title: t('Contabilidade Geral'),
         icon: Calculator,
         permission: 'manage-account',
-        order: 400,
+        parent: 'contabilidade',
+        order: 5,
         children: [
             {
                 title: t('Customers'),

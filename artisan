@@ -5,6 +5,14 @@ use Symfony\Component\Console\Input\ArgvInput;
 
 define('LARAVEL_START', microtime(true));
 
+if (
+    PHP_SAPI === 'cli'
+    && isset($argv[1])
+    && $argv[1] === 'test'
+) {
+    error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+}
+
 // Register the Composer autoloader...
 require __DIR__.'/vendor/autoload.php';
 

@@ -1,6 +1,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,9 +21,10 @@ export default function CreateFixedAsset() {
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); form.post(route('sce.fixed-assets.store')); };
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Activos & Relatórios') }, { label: t('Activos Fixos'), url: route('sce.fixed-assets.index') }, { label: t('Novo') }]}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Activos') }, { label: t('Activos Fixos'), url: route('sce.fixed-assets.index') }, { label: t('Novo') }]}
             pageTitle={t('Registar Activo Fixo')} backUrl={route('sce.fixed-assets.index')}>
             <Head title={t('Novo Activo Fixo')} />
+            <AccountingSuiteNavigation section="assets" className="mb-4" />
             <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <Card>

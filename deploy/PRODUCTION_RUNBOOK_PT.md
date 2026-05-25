@@ -2,6 +2,22 @@
 
 Este documento define os passos mínimos para publicar com segurança em produção usando os scripts de `deploy/scripts`.
 
+## Servidor actual
+
+Para o servidor actual `srv1512291`, usar preferencialmente:
+
+```bash
+DB_PASS='COLOCAR_A_PASSWORD' bash deploy/scripts/05_pull_deploy_indicoerp.sh
+```
+
+Este script já está alinhado com:
+
+- `APP_DIR=/var/www/indicoerp/repo`
+- `php8.2-fpm`
+- `indicoerp-queue`
+- `indicoerp-scheduler`
+- `mysqldump --no-tablespaces`
+
 ## 1) Critérios de Go/No-Go
 
 Só avançar para produção se todos os pontos abaixo estiverem `OK`:
@@ -65,11 +81,19 @@ bash /var/www/hrm-saas/current/deploy/scripts/03_deploy_release.sh /tmp/hrm-rele
 
 ## 5) Pós-deploy (validação imediata)
 
+Para o servidor actual (`/var/www/indicoerp/repo`), usar primeiro o health-check automatizado:
+
+```bash
+LOG_SINCE='30 min ago' bash deploy/scripts/06_post_deploy_healthcheck_indicoerp.sh
+```
+
+Validação manual complementar:
+
 ```bash
 sudo systemctl status nginx --no-pager
-sudo systemctl status php8.3-fpm --no-pager
-sudo systemctl status hrm-queue --no-pager
-sudo systemctl status hrm-scheduler --no-pager
+sudo systemctl status php8.2-fpm --no-pager
+sudo systemctl status indicoerp-queue --no-pager
+sudo systemctl status indicoerp-scheduler --no-pager
 ```
 
 ```bash
@@ -84,14 +108,14 @@ docker logs --tail=100 hrm_mysql
 ## 6) Logs em tempo real (produção)
 
 ```bash
-tail -f /var/www/hrm-saas/shared/storage/logs/laravel.log
+tail -f /var/www/indicoerp/repo/storage/logs/laravel.log
 ```
 
 ```bash
 sudo journalctl -u nginx -f
-sudo journalctl -u php8.3-fpm -f
-sudo journalctl -u hrm-queue -f
-sudo journalctl -u hrm-scheduler -f
+sudo journalctl -u php8.2-fpm -f
+sudo journalctl -u indicoerp-queue -f
+sudo journalctl -u indicoerp-scheduler -f
 ```
 
 ## 7) Rollback rápido
@@ -107,7 +131,7 @@ Apontar `current` para release anterior:
 ```bash
 sudo ln -sfn /var/www/hrm-saas/releases/AAAAmmddHHMMSS /var/www/hrm-saas/current
 sudo chown -h www-data:www-data /var/www/hrm-saas/current
-sudo systemctl restart php8.3-fpm nginx hrm-queue hrm-scheduler
+sudo systemctl restart php8.2-fpm nginx indicoerp-queue indicoerp-scheduler
 ```
 
 Se houve migração destrutiva, restaurar backup da base.

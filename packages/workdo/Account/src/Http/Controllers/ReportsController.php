@@ -3,6 +3,7 @@
 namespace Workdo\Account\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\SaftExportService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
@@ -15,10 +16,15 @@ use Workdo\Account\Services\ReportService;
 class ReportsController extends Controller
 {
     protected $reportService;
+    private SaftExportService $saftExportService;
 
-    public function __construct(ReportService $reportService)
+    public function __construct(
+        ReportService $reportService,
+        SaftExportService $saftExportService
+    )
     {
         $this->reportService = $reportService;
+        $this->saftExportService = $saftExportService;
     }
 
     public function index()
@@ -61,13 +67,9 @@ class ReportsController extends Controller
 
     public function taxSummary(Request $request)
     {
-        $currentYear = date('Y');
-        $filters = [
-            'from_date' => $request->from_date ?: "$currentYear-01-01",
-            'to_date' => $request->to_date ?: "$currentYear-12-31",
-        ];
-
+        $filters = $this->resolveDateFilters($request);
         $data = $this->reportService->getTaxSummary($filters);
+
         return response()->json($data);
     }
 
@@ -84,7 +86,10 @@ class ReportsController extends Controller
         ];
 
         $data = $this->reportService->getMozambiqueFiscalMap($filters);
-        return response()->json($data);
+
+        return response()
+            ->json($data)
+            ->header('X-SCE-Canonical-Route', route('sce.tax.vat-map'));
     }
 
     public function exportMozambiqueFiscalMap(Request $request)
@@ -158,6 +163,7 @@ class ReportsController extends Controller
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'X-SCE-Canonical-Route' => route('sce.tax.vat-map'),
         ]);
     }
 
@@ -167,14 +173,12 @@ class ReportsController extends Controller
             return response()->json(['message' => __('Permission denied')], 403);
         }
 
-        $currentYear = date('Y');
-        $filters = [
-            'from_date' => $request->from_date ?: "$currentYear-01-01",
-            'to_date' => $request->to_date ?: "$currentYear-12-31",
-        ];
-
+        $filters = $this->resolveDateFilters($request);
         $data = $this->reportService->getMozambiqueVatDeclaration($filters);
-        return response()->json($data);
+
+        return response()
+            ->json($data)
+            ->header('X-SCE-Canonical-Route', route('sce.tax.vat-map'));
     }
 
     public function exportMozambiqueVatDeclaration(Request $request)
@@ -183,12 +187,7 @@ class ReportsController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
-        $currentYear = date('Y');
-        $filters = [
-            'from_date' => $request->from_date ?: "$currentYear-01-01",
-            'to_date' => $request->to_date ?: "$currentYear-12-31",
-        ];
-
+        $filters = $this->resolveDateFilters($request);
         $data = $this->reportService->getMozambiqueVatDeclaration($filters);
 
         $rows = [
@@ -244,6 +243,7 @@ class ReportsController extends Controller
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'X-SCE-Canonical-Route' => route('sce.tax.vat-map'),
         ]);
     }
 
@@ -319,14 +319,14 @@ class ReportsController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
-        $currentYear = date('Y');
-        $filters = [
-            'from_date' => $request->from_date ?: "$currentYear-01-01",
-            'to_date' => $request->to_date ?: "$currentYear-12-31",
-        ];
+        $filters = $this->resolveDateFilters($request);
 
         try {
-            $xml = $this->reportService->buildMozambiqueSaftXml($filters);
+            $xml = $this->saftExportService->generate(
+                creatorId(),
+                $filters['from_date'],
+                $filters['to_date']
+            );
         } catch (\Throwable $exception) {
             return back()->with('error', $exception->getMessage());
         }
@@ -826,12 +826,9 @@ class ReportsController extends Controller
     public function printTaxSummary(Request $request)
     {
         if(Auth::user()->can('print-tax-summary')){
-             $currentYear = date('Y');
-            $filters = [
-                'from_date' => $request->from_date ?: "$currentYear-01-01",
-                'to_date' => $request->to_date ?: "$currentYear-12-31",
-            ];
+            $filters = $this->resolveDateFilters($request);
             $data = $this->reportService->getTaxSummary($filters);
+
             return Inertia::render('Account/Reports/Print/TaxSummary', ['data' => $data, 'filters' => $filters]);
         }
         else
@@ -963,4 +960,15 @@ class ReportsController extends Controller
             return back()->with('error', __('Permission denied'));
         }
     }
+
+    private function resolveDateFilters(Request $request): array
+    {
+        $currentYear = date('Y');
+
+        return [
+            'from_date' => $request->from_date ?: "$currentYear-01-01",
+            'to_date' => $request->to_date ?: "$currentYear-12-31",
+        ];
+    }
+
 }

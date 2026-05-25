@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { Pagination } from '@/components/ui/pagination';
-import TaxNavigation from '@/components/tax/tax-navigation';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Plus, Receipt } from 'lucide-react';
 import { useState } from 'react';
 
@@ -45,10 +45,10 @@ export default function WithholdingIndex() {
     ];
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Impostos') }, { label: t('Retenções na Fonte') }]} pageTitle={t('Retenções na Fonte')}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Retenções na Fonte') }]} pageTitle={t('Retenções na Fonte')}
             pageActions={canManageTax ? <Button size="sm" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Nova Retenção')}</Button> : undefined}>
             <Head title={t('Retenções na Fonte')} />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
 
             {/* Rules summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">

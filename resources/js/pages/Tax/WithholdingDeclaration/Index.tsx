@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import TaxNavigation from '@/components/tax/tax-navigation';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Download, RefreshCw } from 'lucide-react';
 
 interface DeclarationSummaryLine {
@@ -62,7 +62,7 @@ export default function WithholdingDeclarationPage() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{ label: t('Impostos') }, { label: t('Declaração de Retenções') }]}
+            breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Declaração de Retenções') }]}
             pageTitle={t('Declaração Mensal de Retenções na Fonte')}
             pageActions={
                 <div className="flex gap-2">
@@ -76,7 +76,7 @@ export default function WithholdingDeclarationPage() {
             }
         >
             <Head title={t('Declaração de Retenções')} />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
 
             <Card className="mb-6">
                 <CardContent className="p-4 flex flex-wrap items-center gap-3">

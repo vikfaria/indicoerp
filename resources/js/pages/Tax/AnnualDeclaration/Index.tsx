@@ -5,7 +5,7 @@ import AuthenticatedLayout from '@/layouts/authenticated-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import TaxNavigation from '@/components/tax/tax-navigation';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { RefreshCw } from 'lucide-react';
 
 interface AnnualDeclaration {
@@ -64,7 +64,7 @@ export default function AnnualDeclarationPage() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{ label: t('Impostos') }, { label: t('Declaração Anual') }]}
+            breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Declaração Anual') }]}
             pageTitle={t('Declaração Anual Fiscal')}
             pageActions={
                 <Button size="sm" onClick={refresh}>
@@ -73,7 +73,7 @@ export default function AnnualDeclarationPage() {
             }
         >
             <Head title={t('Declaração Anual')} />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
 
             <Card className="mb-6">
                 <CardContent className="p-4 flex flex-wrap items-center gap-3">

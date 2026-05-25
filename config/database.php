@@ -4,10 +4,11 @@ use Illuminate\Support\Str;
 
 $mysqlSslCaAttribute = null;
 
-if (defined('Pdo\\Mysql::ATTR_SSL_CA')) {
+if (class_exists(\Pdo\Mysql::class) && defined('Pdo\\Mysql::ATTR_SSL_CA')) {
     $mysqlSslCaAttribute = constant('Pdo\\Mysql::ATTR_SSL_CA');
-} elseif (defined('PDO::MYSQL_ATTR_SSL_CA')) {
-    $mysqlSslCaAttribute = constant('PDO::MYSQL_ATTR_SSL_CA');
+} elseif (class_exists(\PDO::class)) {
+    $pdoConstants = (new ReflectionClass(\PDO::class))->getConstants();
+    $mysqlSslCaAttribute = $pdoConstants['MYSQL_ATTR_SSL_CA'] ?? null;
 }
 
 return [

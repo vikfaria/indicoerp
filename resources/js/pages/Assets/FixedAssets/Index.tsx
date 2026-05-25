@@ -1,6 +1,7 @@
 import { Head, usePage, router, useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,12 +49,13 @@ export default function FixedAssetsIndex() {
     ];
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Activos & Relatórios') }, { label: t('Activos Fixos') }]} pageTitle={t('Registo de Activos Fixos')}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Activos') }, { label: t('Activos Fixos') }]} pageTitle={t('Registo de Activos Fixos')}
             pageActions={<div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => setShowDepreciation(true)}><Play className="h-4 w-4 mr-1" /> {t('Depreciar')}</Button>
                 <Button size="sm" onClick={() => router.visit(route('sce.fixed-assets.create'))}><Plus className="h-4 w-4 mr-1" /> {t('Novo Activo')}</Button>
             </div>}>
             <Head title={t('Activos Fixos')} />
+            <AccountingSuiteNavigation section="assets" className="mb-4" />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">

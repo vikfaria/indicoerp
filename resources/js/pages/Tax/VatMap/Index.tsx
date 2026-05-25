@@ -1,11 +1,11 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import TaxNavigation from '@/components/tax/tax-navigation';
 import { Calculator, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 
@@ -23,9 +23,9 @@ export default function VatMapIndex() {
     const fmt = (n: number) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(n);
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Impostos') }, { label: t('Mapa IVA') }]} pageTitle={t('Mapa IVA Mensal')}>
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Mapa IVA') }]} pageTitle={t('Mapa IVA Mensal')}>
             <Head title={t('Mapa IVA')} />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
             <Card className="mb-6">
                 <CardContent className="p-4 flex items-center gap-4">
                     <Select value={String(selMonth)} onValueChange={v => setSelMonth(Number(v))}>

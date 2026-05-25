@@ -1,6 +1,7 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +42,7 @@ export default function PgcImportIndex() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{ label: t('Fiscal') }, { label: t('Plano de Contas PGC') }]}
+            breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Fiscal') }, { label: t('Plano de Contas PGC') }]}
             pageTitle={t('Importação do Plano de Contas PGC-MZ')}
             pageActions={
                 <div className="flex gap-2">
@@ -55,6 +56,7 @@ export default function PgcImportIndex() {
             }
         >
             <Head title={t('Plano de Contas PGC')} />
+            <AccountingSuiteNavigation section="fiscal" className="mb-4" />
 
             {/* Summary cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

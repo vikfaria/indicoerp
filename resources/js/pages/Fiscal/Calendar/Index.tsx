@@ -1,6 +1,7 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,9 +30,10 @@ export default function FiscalCalendarIndex() {
     }, {} as Record<string, FiscalEvent[]>);
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Fiscal') }, { label: t('Calendário Fiscal') }]} pageTitle={`${t('Calendário Fiscal')} ${year}`}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Fiscal') }, { label: t('Calendário Fiscal') }]} pageTitle={`${t('Calendário Fiscal')} ${year}`}
             pageActions={<Button size="sm" variant="outline" onClick={generateCalendar}><RefreshCw className="h-4 w-4 mr-1" /> {t('Gerar Calendário')}</Button>}>
             <Head title={t('Calendário Fiscal')} />
+            <AccountingSuiteNavigation section="fiscal" className="mb-4" />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">

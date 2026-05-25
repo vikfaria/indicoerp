@@ -1,6 +1,7 @@
 import { Head, usePage, router, useForm } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,7 +51,7 @@ export default function DocumentSeriesIndex() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{ label: t('Fiscal') }, { label: t('Séries Documentais') }]}
+            breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Fiscal') }, { label: t('Séries Documentais') }]}
             pageTitle={t('Gestão de Séries Documentais')}
             pageActions={
                 <Dialog open={open} onOpenChange={setOpen}>
@@ -118,6 +119,7 @@ export default function DocumentSeriesIndex() {
             }
         >
             <Head title={t('Séries Documentais')} />
+            <AccountingSuiteNavigation section="fiscal" className="mb-4" />
 
             {series.length === 0 ? (
                 <Card className="bg-gradient-to-br from-gray-50 to-gray-100">

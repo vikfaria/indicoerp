@@ -5,7 +5,7 @@ import AuthenticatedLayout from '@/layouts/authenticated-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import TaxNavigation from '@/components/tax/tax-navigation';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Download, RefreshCw } from 'lucide-react';
 
 interface Model20Line {
@@ -57,7 +57,7 @@ export default function Modelo20SupportPage() {
 
     return (
         <AuthenticatedLayout
-            breadcrumbs={[{ label: t('Impostos') }, { label: t('Modelo 20') }]}
+            breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Modelo 20') }]}
             pageTitle={t('Mapa de Apoio ao Modelo 20')}
             pageActions={
                 <div className="flex gap-2">
@@ -71,7 +71,7 @@ export default function Modelo20SupportPage() {
             }
         >
             <Head title={t('Modelo 20')} />
-            <TaxNavigation className="mb-4" />
+            <AccountingSuiteNavigation section="tax" className="mb-4" />
 
             <Card className="mb-6">
                 <CardContent className="p-4 flex items-center gap-3">

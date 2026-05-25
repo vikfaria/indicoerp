@@ -105,6 +105,7 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
         $response = $this->actingAs($company)->get(route('account.reports.mozambique-fiscal-map'));
 
         $response->assertOk();
+        $response->assertHeader('X-SCE-Canonical-Route');
         $response->assertJsonPath('sales.documents', 1);
         $response->assertJsonPath('purchases.documents', 1);
         $response->assertJsonPath('vat.output_vat', 144);
@@ -123,6 +124,7 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $response->assertHeader('X-SCE-Canonical-Route');
         $response->assertSee('net_vat_payable', false);
         $response->assertSee('section', false);
     }
@@ -241,6 +243,7 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
         ]));
 
         $response->assertOk();
+        $response->assertHeader('X-SCE-Canonical-Route');
         $response->assertJsonPath('monthly.0.period', '2026-01');
         $response->assertJsonPath('monthly.0.output_vat', 160);
         $response->assertJsonPath('monthly.0.input_vat', 64);
@@ -263,6 +266,7 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $response->assertHeader('X-SCE-Canonical-Route');
         $response->assertSee('net_vat_payable', false);
         $response->assertSee('monthly', false);
     }

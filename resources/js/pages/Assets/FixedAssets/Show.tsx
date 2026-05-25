@@ -1,6 +1,7 @@
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingDown } from 'lucide-react';
@@ -16,9 +17,10 @@ export default function ShowFixedAsset() {
     const depPercent = asset.acquisition_cost > 0 ? Math.round((asset.accumulated_depreciation / asset.acquisition_cost) * 100) : 0;
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Activos & Relatórios') }, { label: t('Activos Fixos'), url: route('sce.fixed-assets.index') }, { label: asset.asset_code }]}
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Activos') }, { label: t('Activos Fixos'), url: route('sce.fixed-assets.index') }, { label: asset.asset_code }]}
             pageTitle={`${asset.asset_code} — ${asset.name}`} backUrl={route('sce.fixed-assets.index')}>
             <Head title={asset.name} />
+            <AccountingSuiteNavigation section="assets" className="mb-4" />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                 <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">

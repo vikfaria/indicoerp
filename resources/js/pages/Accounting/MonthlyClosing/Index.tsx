@@ -1,6 +1,7 @@
 import { Head, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
+import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,8 +30,9 @@ export default function MonthlyClosingIndex() {
     const months = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i).toLocaleString('pt', { month: 'long' }) }));
 
     return (
-        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade SCE') }, { label: t('Fecho Mensal') }]} pageTitle={t('Fecho Mensal')}>
+        <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Contabilidade SCE') }, { label: t('Fecho Mensal') }]} pageTitle={t('Fecho Mensal')}>
             <Head title={t('Fecho Mensal')} />
+            <AccountingSuiteNavigation section="accounting" className="mb-4" />
             <div className="flex items-center gap-4 mb-6">
                 <Select value={String(month)} onValueChange={v => handlePeriodChange(Number(v))}>
                     <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>

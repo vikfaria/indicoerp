@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScePermissionChecks;
 use App\Models\CompanyFiscalProfile;
 use App\Models\AccountingPeriod;
 use App\Models\FiscalCalendarEvent;
@@ -12,8 +13,14 @@ use Inertia\Inertia;
 
 class FiscalProfileController extends Controller
 {
+    use ScePermissionChecks;
+
     public function index(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $profile = CompanyFiscalProfile::firstOrNew(['company_id' => creatorId()]);
 
         $periods = AccountingPeriod::where('company_id', creatorId())
@@ -29,6 +36,10 @@ class FiscalProfileController extends Controller
 
     public function updateProfile(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'nuit' => 'required|string|size:9',
             'fiscal_regime' => 'nullable|string|in:normal,simplified,exempt',
@@ -68,6 +79,10 @@ class FiscalProfileController extends Controller
 
     public function generatePeriods(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $year = $request->input('year', date('Y'));
         AccountingPeriod::generateForYear(creatorId(), (int) $year);
         return back()->with('success', __('Períodos gerados para o exercício :year.', ['year' => $year]));
@@ -76,6 +91,10 @@ class FiscalProfileController extends Controller
     // Fiscal Calendar
     public function calendar(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $year = $request->get('year', date('Y'));
 
         $events = FiscalCalendarEvent::where('company_id', creatorId())
@@ -91,6 +110,10 @@ class FiscalProfileController extends Controller
 
     public function generateCalendar(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $year = $request->input('year', date('Y'));
         FiscalCalendarEvent::generateForYear(creatorId(), (int) $year);
         return back()->with('success', __('Calendário fiscal gerado para :year.', ['year' => $year]));
@@ -98,6 +121,10 @@ class FiscalProfileController extends Controller
 
     public function completeCalendarEvent(FiscalCalendarEvent $event)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $event->update([
             'status' => 'completed',
             'completed_date' => now()->toDateString(),
@@ -109,6 +136,10 @@ class FiscalProfileController extends Controller
     // SAF-T Export
     public function exportSaft(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',

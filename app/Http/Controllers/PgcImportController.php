@@ -2,17 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\FiscalDocumentSeries;
-use App\Models\FiscalDocumentType;
+use App\Http\Controllers\Concerns\ScePermissionChecks;
 use App\Models\PgcAccountCatalog;
-use App\Services\FiscalHashService;
 use App\Services\PgcImportService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class PgcImportController extends Controller
 {
+    use ScePermissionChecks;
+
     public function __construct(
         private readonly PgcImportService $pgcImportService,
     ) {}
@@ -22,6 +21,10 @@ class PgcImportController extends Controller
      */
     public function index()
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $companyId = creatorId();
         $framework = 'pgc_nirf';
 
@@ -68,6 +71,10 @@ class PgcImportController extends Controller
      */
     public function import(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $request->validate([
             'framework' => 'sometimes|string|in:pgc_nirf,pgc_pe',
         ]);
@@ -92,6 +99,10 @@ class PgcImportController extends Controller
      */
     public function validate(Request $request)
     {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $companyId = creatorId();
         $issues = $this->pgcImportService->validateStructure($companyId);
 

@@ -2,6 +2,7 @@
 
 namespace Workdo\Account\Services;
 
+use App\Services\VatCalculationService;
 use App\Support\MozambiqueTaxNumber;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -13,6 +14,13 @@ use Workdo\Account\Models\MozTaxAccountMapping;
 
 class ReportService
 {
+    private VatCalculationService $vatCalculationService;
+
+    public function __construct(VatCalculationService $vatCalculationService)
+    {
+        $this->vatCalculationService = $vatCalculationService;
+    }
+
     public function getInvoiceAging($filters = [])
     {
         $asOfDate = $filters['as_of_date'] ?? date('Y-m-d');
@@ -174,57 +182,31 @@ class ReportService
         $fromDate = $filters['from_date'] ?? date('Y-01-01');
         $toDate = $filters['to_date'] ?? date('Y-12-31');
 
-        // Get tax collected from sales invoices
-        $taxCollected = DB::table('sales_invoice_item_taxes')
-            ->join('sales_invoice_items', 'sales_invoice_item_taxes.item_id', '=', 'sales_invoice_items.id')
-            ->join('sales_invoices', 'sales_invoice_items.invoice_id', '=', 'sales_invoices.id')
-            ->where('sales_invoices.created_by', creatorId())
-            ->whereIn('sales_invoices.status', ['posted', 'partial', 'paid'])
-            ->whereBetween('sales_invoices.invoice_date', [$fromDate, $toDate])
-            ->select(
-                'sales_invoice_item_taxes.tax_name',
-                'sales_invoice_item_taxes.tax_rate',
-                DB::raw('SUM((sales_invoice_items.unit_price * sales_invoice_items.quantity - sales_invoice_items.discount_amount) * sales_invoice_item_taxes.tax_rate / 100) as tax_amount')
-            )
-            ->groupBy('sales_invoice_item_taxes.tax_name', 'sales_invoice_item_taxes.tax_rate')
-            ->get();
-
-        // Get tax paid on purchases
-        $taxPaid = DB::table('purchase_invoice_item_taxes')
-            ->join('purchase_invoice_items', 'purchase_invoice_item_taxes.item_id', '=', 'purchase_invoice_items.id')
-            ->join('purchase_invoices', 'purchase_invoice_items.invoice_id', '=', 'purchase_invoices.id')
-            ->where('purchase_invoices.created_by', creatorId())
-            ->whereIn('purchase_invoices.status', ['posted', 'partial', 'paid'])
-            ->whereBetween('purchase_invoices.invoice_date', [$fromDate, $toDate])
-            ->select(
-                'purchase_invoice_item_taxes.tax_name',
-                'purchase_invoice_item_taxes.tax_rate',
-                DB::raw('SUM((purchase_invoice_items.unit_price * purchase_invoice_items.quantity - purchase_invoice_items.discount_amount) * purchase_invoice_item_taxes.tax_rate / 100) as tax_amount')
-            )
-            ->groupBy('purchase_invoice_item_taxes.tax_name', 'purchase_invoice_item_taxes.tax_rate')
-            ->get();
-
-        $totalCollected = $taxCollected->sum('tax_amount');
-        $totalPaid = $taxPaid->sum('tax_amount');
+        $vatResolution = $this->resolveEffectiveVatTotals($fromDate, $toDate);
+        $effectiveVat = $vatResolution['effective'];
+        $totalCollected = (float) ($effectiveVat['output_vat'] ?? 0);
+        $totalPaid = (float) ($effectiveVat['deductible_input_vat'] ?? 0);
 
         return [
             'tax_collected' => [
-                'items' => $taxCollected->map(fn($t) => [
-                    'tax_name' => $t->tax_name . ' (' . $t->tax_rate . '%)',
-                    'amount' => $t->tax_amount
-                ]),
+                'items' => [[
+                    'tax_name' => 'IVA (Liquidado)',
+                    'amount' => $totalCollected,
+                ]],
                 'total' => $totalCollected
             ],
             'tax_paid' => [
-                'items' => $taxPaid->map(fn($t) => [
-                    'tax_name' => $t->tax_name . ' (' . $t->tax_rate . '%)',
-                    'amount' => $t->tax_amount
-                ]),
+                'items' => [[
+                    'tax_name' => 'IVA (Dedutível)',
+                    'amount' => $totalPaid,
+                ]],
                 'total' => $totalPaid
             ],
-            'net_tax_liability' => $totalCollected - $totalPaid,
+            'net_tax_liability' => (float) ($effectiveVat['net_vat_payable'] ?? 0),
             'from_date' => $fromDate,
-            'to_date' => $toDate
+            'to_date' => $toDate,
+            'source' => $vatResolution['source'],
+            'vat_reconciliation' => $vatResolution['reconciliation'],
         ];
     }
 
@@ -321,14 +303,14 @@ class ReportService
                 ->toArray();
         }
 
-        $outputVat = max(
-            ((float) $salesSummary->tax_amount + (float) ($posSummary->tax_amount ?? 0))
-                - (float) $creditNoteSummary->tax_amount,
-            0.0
-        );
-        $inputVat = max((float) $purchaseSummary->tax_amount - (float) $debitNoteSummary->tax_amount, 0.0);
-        $nonDeductibleInputVat = $this->getNonDeductibleInputVatTotal($fromDate, $toDate);
-        $deductibleInputVat = max($inputVat - $nonDeductibleInputVat, 0.0);
+        $vatResolution = $this->resolveEffectiveVatTotals($fromDate, $toDate, [
+            'sales_vat' => (float) $salesSummary->tax_amount,
+            'pos_vat' => (float) ($posSummary->tax_amount ?? 0),
+            'purchase_vat' => (float) $purchaseSummary->tax_amount,
+            'credit_notes_vat' => (float) $creditNoteSummary->tax_amount,
+            'debit_notes_vat' => (float) $debitNoteSummary->tax_amount,
+        ]);
+        $effectiveVat = $vatResolution['effective'];
 
         return [
             'from_date' => $fromDate,
@@ -364,11 +346,11 @@ class ReportService
                 'total_amount' => (float) $debitNoteSummary->total_amount,
             ],
             'vat' => [
-                'output_vat' => $outputVat,
-                'input_vat' => $inputVat,
-                'input_vat_deductible' => $deductibleInputVat,
-                'input_vat_non_deductible' => $nonDeductibleInputVat,
-                'net_vat_payable' => $outputVat - $inputVat,
+                'output_vat' => (float) ($effectiveVat['output_vat'] ?? 0),
+                'input_vat' => (float) ($effectiveVat['input_vat'] ?? 0),
+                'input_vat_deductible' => (float) ($effectiveVat['deductible_input_vat'] ?? 0),
+                'input_vat_non_deductible' => (float) ($effectiveVat['non_deductible_input_vat'] ?? 0),
+                'net_vat_payable' => (float) ($effectiveVat['net_vat_payable'] ?? 0),
             ],
             'fiscal_status' => [
                 'sales' => $salesFiscalStatus,
@@ -376,6 +358,8 @@ class ReportService
                 'purchases' => $purchaseFiscalStatus,
             ],
             'tax_account_mapping' => $this->getActiveMozambiqueTaxAccountMapping($toDate),
+            'source' => $vatResolution['source'],
+            'vat_reconciliation' => $vatResolution['reconciliation'],
         ];
     }
 
@@ -519,7 +503,105 @@ class ReportService
             'to_date' => $toDate,
             'totals' => $totals,
             'monthly' => $monthlyRows,
+            'source' => 'documents',
+            'vat_reconciliation' => [
+                'ledger' => $this->buildLedgerVatPeriodTotals($fromDate, $toDate),
+                'documents' => [
+                    'output_vat' => (float) $totals['output_vat'],
+                    'input_vat' => (float) $totals['input_vat'],
+                    'deductible_input_vat' => (float) $totals['deductible_input_vat'],
+                    'non_deductible_input_vat' => (float) $totals['non_deductible_input_vat'],
+                    'net_vat_payable' => (float) $totals['net_vat_payable'],
+                ],
+            ],
         ];
+    }
+
+    private function resolveEffectiveVatTotals(
+        string $fromDate,
+        string $toDate,
+        array $documentBuckets = []
+    ): array {
+        $ledger = $this->buildLedgerVatPeriodTotals($fromDate, $toDate);
+
+        $documentOutputVat = max(
+            ((float) ($documentBuckets['sales_vat'] ?? 0) + (float) ($documentBuckets['pos_vat'] ?? 0))
+            - (float) ($documentBuckets['credit_notes_vat'] ?? 0),
+            0.0
+        );
+        $documentInputVat = max(
+            (float) ($documentBuckets['purchase_vat'] ?? 0) - (float) ($documentBuckets['debit_notes_vat'] ?? 0),
+            0.0
+        );
+
+        $documentNonDeductible = min(
+            $documentInputVat,
+            $this->getNonDeductibleInputVatTotal($fromDate, $toDate)
+        );
+        $documentDeductible = max($documentInputVat - $documentNonDeductible, 0.0);
+
+        $documents = [
+            'output_vat' => $documentOutputVat,
+            'input_vat' => $documentInputVat,
+            'deductible_input_vat' => $documentDeductible,
+            'non_deductible_input_vat' => $documentNonDeductible,
+            'net_vat_payable' => $documentOutputVat - $documentInputVat,
+        ];
+
+        $useLedger = $this->hasLedgerVatMovements($ledger);
+        $effective = $useLedger ? $ledger : $documents;
+
+        return [
+            'source' => $useLedger ? 'ledger_sce' : 'document_fallback',
+            'effective' => $effective,
+            'reconciliation' => [
+                'ledger' => $ledger,
+                'documents' => $documents,
+                'delta' => [
+                    'output_vat' => (float) $ledger['output_vat'] - (float) $documents['output_vat'],
+                    'input_vat' => (float) $ledger['input_vat'] - (float) $documents['input_vat'],
+                    'deductible_input_vat' => (float) $ledger['deductible_input_vat'] - (float) $documents['deductible_input_vat'],
+                    'non_deductible_input_vat' => (float) $ledger['non_deductible_input_vat'] - (float) $documents['non_deductible_input_vat'],
+                    'net_vat_payable' => (float) $ledger['net_vat_payable'] - (float) $documents['net_vat_payable'],
+                ],
+            ],
+        ];
+    }
+
+    private function buildLedgerVatPeriodTotals(string $fromDate, string $toDate): array
+    {
+        $vat = $this->vatCalculationService->calculatePeriodVat(
+            creatorId(),
+            $fromDate,
+            $toDate
+        );
+
+        return [
+            'output_vat' => (float) ($vat['output_vat'] ?? 0),
+            'input_vat' => (float) ($vat['supported_vat'] ?? 0),
+            'deductible_input_vat' => (float) ($vat['deductible_vat'] ?? 0),
+            'non_deductible_input_vat' => (float) ($vat['non_deductible_vat'] ?? 0),
+            'net_vat_payable' => (float) ($vat['net_position'] ?? 0),
+        ];
+    }
+
+    private function hasLedgerVatMovements(array $ledger): bool
+    {
+        $trackedKeys = [
+            'output_vat',
+            'input_vat',
+            'deductible_input_vat',
+            'non_deductible_input_vat',
+            'net_vat_payable',
+        ];
+
+        foreach ($trackedKeys as $key) {
+            if (abs((float) ($ledger[$key] ?? 0)) > 0.00001) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function getMozambiqueFiscalSubmissionRegister($filters = []): array

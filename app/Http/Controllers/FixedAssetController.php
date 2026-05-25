@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScePermissionChecks;
 use App\Models\FixedAsset;
 use App\Models\DepreciationEntry;
 use App\Services\DepreciationService;
@@ -11,8 +12,14 @@ use Inertia\Inertia;
 
 class FixedAssetController extends Controller
 {
+    use ScePermissionChecks;
+
     public function index(Request $request)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
         $query = FixedAsset::where('company_id', creatorId());
 
         if ($request->status) {
@@ -42,11 +49,19 @@ class FixedAssetController extends Controller
 
     public function create()
     {
+        if (!$this->canManageSceAccounting()) {
+            abort(403, __('Permission denied'));
+        }
+
         return Inertia::render('Assets/FixedAssets/Create');
     }
 
     public function store(Request $request)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'asset_code' => 'required|string|max:30',
             'name' => 'required|string|max:255',
@@ -86,6 +101,14 @@ class FixedAssetController extends Controller
 
     public function show(FixedAsset $fixedAsset)
     {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
+        if ($fixedAsset->company_id !== creatorId()) {
+            abort(403, __('Permission denied'));
+        }
+
         $depreciations = DepreciationEntry::where('fixed_asset_id', $fixedAsset->id)
             ->orderByDesc('depreciation_date')
             ->get();
@@ -102,6 +125,10 @@ class FixedAssetController extends Controller
 
     public function runDepreciation(Request $request)
     {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
         $validated = $request->validate([
             'year' => 'required|string|size:4',
             'month' => 'required|integer|min:1|max:12',
