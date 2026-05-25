@@ -131,6 +131,34 @@ Interpretacao:
 
 ## 4. Achados Tecnicos no Codigo
 
+## 4.0 Implementacoes Ja Aplicadas (2026-05-25)
+
+Para reduzir latencia real sem alterar comportamento funcional, as seguintes melhorias ja foram implementadas no codigo:
+
+- Login:
+  - Geolocalizacao de login movida para `terminating` e cache por IP.
+  - Timeout externo reduzido e payload da API de geo minimizado.
+  - Verificacao de updater para superadmin com cache.
+- Inertia / Shared Data:
+  - Cache para permissoes, roles, idiomas e modulos.
+  - Reducao de carga para utilizador guest.
+- Modulos:
+  - Cache de descoberta/lista de modulos e listas habilitadas.
+- Dashboard:
+  - Cache de resolucao de rota inicial por utilizador/permissoes.
+- Frontend:
+  - Reducao de custo de `import.meta.glob` repetido em hooks/utilitarios.
+  - Ajuste de chunking no Vite.
+- Middlewares publicos (SupportTicket, FormBuilder, Recruitment):
+  - Cache de lookup por slug/code.
+  - Cache de settings usados em paginas publicas.
+- Observabilidade de performance:
+  - Novo middleware `TrackRequestPerformance` para requests lentos.
+  - Log dedicado `performance` com thresholds configuraveis.
+  - Instrumentacao de queries lentas e tempo cumulativo de DB.
+- Hardening de runtime:
+  - Debugbar deixa de ser carregado globalmente; passa a registo condicional para local/debug.
+
 ### 4.1 Login com chamada externa sincronica
 
 Ficheiro:
