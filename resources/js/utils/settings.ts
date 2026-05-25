@@ -4,6 +4,16 @@ import { getCompanySettings } from './menus/company-setting';
 import { usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 
+const superadminSettingModules = import.meta.glob(
+    '../../../packages/workdo/*/src/Resources/js/settings/superadmin-setting.ts',
+    { eager: true }
+);
+
+const companySettingModules = import.meta.glob(
+    '../../../packages/workdo/*/src/Resources/js/settings/company-setting.ts',
+    { eager: true }
+);
+
 // Get role-based core settings items
 const getCoreSettingsItems = (userRoles: string[], t: (key: string) => string): SettingMenuItem[] => {
     if (userRoles.includes('superadmin')) {
@@ -18,8 +28,8 @@ const getPackageSettingsItems = (userRoles: string[], activatedPackages: string[
     const settingType = userRoles.includes('superadmin') ? 'superadmin-setting' : 'company-setting';
 
     const allModules = userRoles.includes('superadmin')
-        ? import.meta.glob('../../../packages/workdo/*/src/Resources/js/settings/superadmin-setting.ts', { eager: true })
-        : import.meta.glob('../../../packages/workdo/*/src/Resources/js/settings/company-setting.ts', { eager: true });
+        ? superadminSettingModules
+        : companySettingModules;
 
     (Array.isArray(activatedPackages) ? activatedPackages : []).forEach(packageName => {
         const settingPath = `../../../packages/workdo/${packageName}/src/Resources/js/settings/${settingType}.ts`;

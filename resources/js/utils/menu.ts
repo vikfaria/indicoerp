@@ -5,6 +5,11 @@ import { getSuperAdminMenu } from './menus/superadmin-menu';
 import { getCompanyMenu } from './menus/company-menu';
 import * as LucideIcons from 'lucide-react';
 
+const packageMenuModules = import.meta.glob(
+    '../../../packages/workdo/*/src/Resources/js/menus/*.ts',
+    { eager: true }
+);
+
 // Get role-based core menu items
 const getCoreMenuItems = (userRoles: string[], t: (key: string) => string): NavItem[] => {
     if (userRoles.includes('superadmin')) {
@@ -18,16 +23,14 @@ const getPackageMenuItems = (userRoles: string[], activatedPackages: string[], t
     const menuItems: NavItem[] = [];
     const menuType = userRoles.includes('superadmin') ? 'superadmin-menu' : 'company-menu';
 
-    const allModules = import.meta.glob('../../../packages/workdo/*/src/Resources/js/menus/*.ts', { eager: true });
-
     // Ensure activatedPackages is an array before iterating
-    if (!Array.isArray(activatedPackages)) {
+    if (!Array.isArray(activatedPackages) || activatedPackages.length === 0) {
         return menuItems;
     }
 
     activatedPackages.forEach(packageName => {
         const menuPath = `../../../packages/workdo/${packageName}/src/Resources/js/menus/${menuType}.ts`;
-        const module = allModules[menuPath] as any;
+        const module = packageMenuModules[menuPath] as any;
 
         if (module) {
             Object.values(module).forEach((item: any) => {

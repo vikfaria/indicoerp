@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\File;
 
 class Module
 {
+    private const CACHE_META_PREFIX = 'module:meta:';
+    private const CACHE_ENABLED_KEY = 'module:enabled:list';
+    private const CACHE_ENABLED_ADMIN_KEY = 'module:enabled_admin:list';
+    private const CACHE_DIRECTORIES_KEY = 'module:directories:list';
+    private const CACHE_ALL_MODULES_KEY = 'module:all:list';
+
     protected $addon;
     public $name;
     public $alias;
@@ -38,9 +44,8 @@ class Module
 
     public function find($name)
     {
-
         return Cache::rememberForever(
-            $name,
+            self::CACHE_META_PREFIX . $name,
             function () use ($name) {
                 if ($name === 'general') {
                     $this->name =  $name;
@@ -101,14 +106,16 @@ class Module
 
     public function allEnabled(): array
     {
-
-        return AddOn::where('is_enable', 1)->orderBy('priority')->pluck('module')->toArray() ?? [];
-
+        return Cache::remember(self::CACHE_ENABLED_KEY, now()->addMinutes(10), function () {
+            return AddOn::where('is_enable', 1)->orderBy('priority')->pluck('module')->toArray() ?? [];
+        });
     }
 
     public function allEnabledAdmin(): array
     {
-        return AddOn::where('for_admin', 1)->where('is_enable', 1)->orderBy('priority')->pluck('module')->toArray() ?? [];
+        return Cache::remember(self::CACHE_ENABLED_ADMIN_KEY, now()->addMinutes(10), function () {
+            return AddOn::where('for_admin', 1)->where('is_enable', 1)->orderBy('priority')->pluck('module')->toArray() ?? [];
+        });
     }
 
     public function getOrdered()
@@ -168,8 +175,10 @@ class Module
 
     public function getDirectories()
     {
-        $path = base_path('packages/workdo');
-        return File::directories($path);
+        return Cache::remember(self::CACHE_DIRECTORIES_KEY, now()->addMinutes(10), function () {
+            $path = base_path('packages/workdo');
+            return File::directories($path);
+        });
     }
 
     public function getPath()
@@ -191,22 +200,31 @@ class Module
 
     public function allModules()
     {
-         $directories = array_map(function ($dir) {
-            return basename($dir);
-        }, $this->getDirectories());
+        return Cache::remember(self::CACHE_ALL_MODULES_KEY, now()->addMinutes(10), function () {
+            $directories = array_map(function ($dir) {
+                return basename($dir);
+            }, $this->getDirectories());
 
-        return $this->moduleArr($directories);
+            return $this->moduleArr($directories);
+        });
     }
 
     public function moduleCacheForget($module = null)
     {
         try {
+            Cache::forget(self::CACHE_ENABLED_KEY);
+            Cache::forget(self::CACHE_ENABLED_ADMIN_KEY);
+            Cache::forget(self::CACHE_DIRECTORIES_KEY);
+            Cache::forget(self::CACHE_ALL_MODULES_KEY);
+
             if(is_null($module)){
-                Cache::forget($this->addon->module);
-                Cache::forget($this->addon->package_name);
+                if ($this->addon) {
+                    Cache::forget(self::CACHE_META_PREFIX . $this->addon->module);
+                    Cache::forget(self::CACHE_META_PREFIX . $this->addon->package_name);
+                }
             }
             else{
-                Cache::forget($module);
+                Cache::forget(self::CACHE_META_PREFIX . $module);
             }
         } catch (\Exception $e) {
             \Log::error($module . $e->getMessage());

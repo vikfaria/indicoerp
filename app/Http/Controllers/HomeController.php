@@ -7,6 +7,8 @@ use App\Models\Plan;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 class HomeController extends Controller
@@ -62,24 +64,81 @@ class HomeController extends Controller
 
     private function regularDashboard()
     {
-        $packagesPath = base_path('packages/workdo');
+        $user = Auth::user();
+        if (!$user) {
+            return Inertia::render('dashboard');
+        }
 
-        // find dashboard menu from all  active package and redirect if found
-        if (is_dir($packagesPath)) {
-            foreach (glob($packagesPath . '/*/src/Resources/js/menus/company-menu.ts') as $menuFile) {
-                preg_match('/packages\/workdo\/([^\/]+)\//', $menuFile, $moduleMatch);
-                $moduleName = $moduleMatch[1] ?? null;
-                    $content = file_get_contents($menuFile);
-                    if (preg_match("/parent:\s*['\"]dashboard['\"]/", $content)) {
-                        preg_match("/href:\s*route\(['\"]([^'\"]+)['\"]/", $content, $routeMatch);
-                        preg_match("/permission:\s*['\"]([^'\"]+)['\"]/", $content, $permMatch);
-                        if (!empty($routeMatch[1]) && !empty($permMatch[1]) &&  Module_is_active($moduleName) && Auth::user()->can($permMatch[1])) {
-                            return redirect()->route($routeMatch[1]);
-                        }
-                }
+        $activatedModules = ActivatedModule($user->id);
+        sort($activatedModules);
+
+        $permissions = method_exists($user, 'getAllPermissions')
+            ? Cache::remember('dashboard:user_permissions:' . $user->id, now()->addMinutes(10), function () use ($user) {
+                return $user->getAllPermissions()->pluck('name')->sort()->values()->implode('|');
+            })
+            : '';
+
+        $userRouteKey = 'dashboard:default_route:' . md5(
+            $user->id . '|' . implode(',', $activatedModules) . '|' . $permissions
+        );
+
+        $cachedRoute = Cache::get($userRouteKey);
+        if ($cachedRoute && Route::has($cachedRoute)) {
+            return redirect()->route($cachedRoute);
+        }
+
+        foreach ($this->getDashboardMenuCandidates() as $candidate) {
+            $moduleName = $candidate['module'] ?? null;
+            $routeName = $candidate['route'] ?? null;
+            $permission = $candidate['permission'] ?? null;
+
+            if (!$routeName || !$permission || !Route::has($routeName)) {
+                continue;
+            }
+
+            $moduleAllowed = !$moduleName || in_array($moduleName, $activatedModules, true);
+            if ($moduleAllowed && $user->can($permission)) {
+                Cache::put($userRouteKey, $routeName, now()->addMinutes(10));
+                return redirect()->route($routeName);
             }
         }
 
         return Inertia::render('dashboard');
+    }
+
+    /**
+     * Parse package menus once and cache dashboard route candidates.
+     */
+    private function getDashboardMenuCandidates(): array
+    {
+        return Cache::remember('dashboard:menu_candidates', now()->addMinutes(15), function () {
+            $packagesPath = base_path('packages/workdo');
+            if (!is_dir($packagesPath)) {
+                return [];
+            }
+
+            $candidates = [];
+            foreach (glob($packagesPath . '/*/src/Resources/js/menus/company-menu.ts') as $menuFile) {
+                preg_match('/packages\/workdo\/([^\/]+)\//', $menuFile, $moduleMatch);
+                $moduleName = $moduleMatch[1] ?? null;
+
+                $content = @file_get_contents($menuFile);
+                if ($content === false || !preg_match("/parent:\s*['\"]dashboard['\"]/", $content)) {
+                    continue;
+                }
+
+                preg_match("/href:\s*route\(['\"]([^'\"]+)['\"]/", $content, $routeMatch);
+                preg_match("/permission:\s*['\"]([^'\"]+)['\"]/", $content, $permMatch);
+                if (!empty($routeMatch[1]) && !empty($permMatch[1])) {
+                    $candidates[] = [
+                        'module' => $moduleName,
+                        'route' => $routeMatch[1],
+                        'permission' => $permMatch[1],
+                    ];
+                }
+            }
+
+            return $candidates;
+        });
     }
 }

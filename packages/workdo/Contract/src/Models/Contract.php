@@ -42,9 +42,9 @@ class Contract extends Model
             }
 
             if ($contract->source_type === 'template' && empty($contract->template_number)) {
-                $contract->template_number = self::generateNumber('template', $contract->created_by);
+                $contract->template_number = self::generateNumber($contract->created_by, 'template');
             } elseif ($contract->source_type === 'contract' && empty($contract->contract_number)) {
-                $contract->contract_number = self::generateNumber('contract', $contract->created_by);
+                $contract->contract_number = self::generateNumber($contract->created_by, 'contract');
             }
         });
     }
@@ -98,7 +98,7 @@ class Contract extends Model
 
 
 
-    public static function generateNumber($type = 'contract', $created_by): string
+    public static function generateNumber($created_by, $type = 'contract'): string
     {
         $prefix = company_setting('contract_prefix', $created_by)   ?? ($type === 'template' ? 'CT' : 'CON');
         $numberField = ($type === 'template') ? 'template_number' : 'contract_number';

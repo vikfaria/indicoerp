@@ -216,9 +216,6 @@ if (!function_exists('getImageUrlPrefix')) {
 if (!function_exists('ActivatedModule')) {
     function ActivatedModule($user_id = null)
     {
-        $activated_module = user::$superadmin_activated_module;
-        $user_active_module = [];
-
         if ($user_id != null) {
             $user = User::find($user_id);
         } elseif (Auth::check()) {
@@ -227,28 +224,34 @@ if (!function_exists('ActivatedModule')) {
             $user = null;
         }
 
-        if (!empty($user)) {
-            $available_modules = array_values((new Module())->allEnabled());
+        $cacheSuffix = $user ? ('user:' . $user->id) : 'guest:admin';
+        $cacheKey = 'user:activated_modules:' . $cacheSuffix;
 
-            if ($user->type == 'superadmin') {
-                $user_active_module = $available_modules;
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+            $activated_module = User::$superadmin_activated_module;
+            $user_active_module = [];
+
+            if (!empty($user)) {
+                $available_modules = array_values((new Module())->allEnabled());
+
+                if ($user->type == 'superadmin') {
+                    $user_active_module = $available_modules;
+                } else {
+                    $active_module = [];
+                    $companyUser = $user->type == 'company' ? $user : User::find($user->created_by);
+
+                    if ($companyUser) {
+                        $active_module = UserActiveModule::where('user_id', $companyUser->id)->pluck('module')->toArray();
+                        $user_active_module = array_values(array_intersect($available_modules, $active_module));
+                        $user_active_module = array_values(array_unique(array_merge($activated_module, $user_active_module)));
+                    }
+                }
             } else {
-                $active_module = [];
-                if ($user->type != 'company') {
-                    $user = User::find($user->created_by);
-                }
-
-                if ($user) {
-                    $active_module = UserActiveModule::where('user_id', $user->id)->pluck('module')->toArray();
-                    $user_active_module = array_values(array_intersect($available_modules, $active_module));
-                    $user_active_module = array_values(array_unique(array_merge($activated_module,$user_active_module)));
-                }
+                $user_active_module = array_values((new Module())->allEnabledAdmin());
             }
-        } else {
-            $active_module = array_values((new Module())->allEnabledAdmin());
-            $user_active_module = $active_module;
-        }
-        return $user_active_module;
+
+            return $user_active_module;
+        });
     }
 }
 
@@ -361,6 +364,8 @@ if (!function_exists('assignPlan')) {
                     GivePermissionToRole::dispatch($staff_role->id, 'staff', $modules);
                 }
             }
+
+            Cache::forget('user:activated_modules:user:' . $user->id);
             
             // Set user limits from plan (don't modify the plan itself)
             $user->total_user = $plan->number_of_users;
@@ -791,6 +796,4 @@ if (!function_exists('parseBrowserData')) {
         ];
     }
 }
-
-
 

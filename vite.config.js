@@ -47,10 +47,48 @@ export default defineConfig({
     build: {
         rollupOptions: {
             output: {
-                manualChunks: {
-                    vendor: ['react', 'react-dom'],
-                    ui: ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
-                    utils: ['date-fns', 'clsx']
+                manualChunks(id) {
+                    if (!id.includes('node_modules')) {
+                        return;
+                    }
+
+                    if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/scheduler/')) {
+                        return 'vendor-react';
+                    }
+
+                    if (id.includes('/node_modules/lucide-react/')) {
+                        return 'vendor-icons';
+                    }
+
+                    if (id.includes('/node_modules/html2pdf.js/')) {
+                        return 'vendor-pdf';
+                    }
+
+                    if (id.includes('/node_modules/recharts/')) {
+                        return 'vendor-charts';
+                    }
+
+                    if (id.includes('/node_modules/@fullcalendar/')) {
+                        return 'vendor-calendar';
+                    }
+
+                    if (id.includes('/node_modules/@tiptap/')) {
+                        return 'vendor-editor';
+                    }
+
+                    if (id.includes('/node_modules/react-datepicker/')) {
+                        return 'vendor-datepicker';
+                    }
+
+                    if (id.includes('/node_modules/@radix-ui/')) {
+                        return 'vendor-radix';
+                    }
+
+                    if (id.includes('/node_modules/date-fns/') || id.includes('/node_modules/clsx/')) {
+                        return 'vendor-utils';
+                    }
+
+                    return;
                 }
             },
         },

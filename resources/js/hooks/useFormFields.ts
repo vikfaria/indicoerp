@@ -7,17 +7,25 @@ interface FormField {
     order?: number;
 }
 
+const packageFieldModules = import.meta.glob(
+    '../../../packages/workdo/*/src/Resources/js/fields/fields.tsx',
+    { eager: true }
+);
+
 export const useFormFields = (hookName: string, data: any, setData: any, errors: any, mode: string = 'create', ...additionalParams: any[]): FormField[] => {
     try {
         const { auth } = usePage().props as any;
         const activatedPackages = auth?.user?.activatedPackages || [];
-        const allModules = import.meta.glob('../../../packages/workdo/*/src/Resources/js/fields/fields.tsx', { eager: true });
+
+        if (!Array.isArray(activatedPackages) || activatedPackages.length === 0) {
+            return [];
+        }
 
         const fields: FormField[] = [];
 
         activatedPackages.forEach((packageName: string) => {
             const fieldPath = `../../../packages/workdo/${packageName}/src/Resources/js/fields/fields.tsx`;
-            const module = allModules[fieldPath] as any;
+            const module = packageFieldModules[fieldPath] as any;
             
             if (module && module[hookName]) {
                 const fieldExport = module[hookName];

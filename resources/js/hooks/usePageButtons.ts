@@ -9,6 +9,11 @@ interface PageButton {
     route?: string;
 }
 
+const packageButtonModules = import.meta.glob(
+    '../../../packages/workdo/*/src/Resources/js/buttons/buttons.tsx',
+    { eager: true }
+);
+
 export const usePageButtons = (hookName: string, data?: any, admin: boolean = false): PageButton[] => {
     try {
         const { auth } = usePage().props as any;
@@ -17,15 +22,16 @@ export const usePageButtons = (hookName: string, data?: any, admin: boolean = fa
         const activatedPackages = admin
             ? adminPackages()
             : auth?.user?.activatedPackages || [];
-
-        const allModules = import.meta.glob('../../../packages/workdo/*/src/Resources/js/buttons/buttons.tsx', { eager: true });
+        if (!Array.isArray(activatedPackages) || activatedPackages.length === 0) {
+            return [];
+        }
 
         const buttons: PageButton[] = [];
 
         activatedPackages.forEach((packageName: string) => {
             const buttonPath = `../../../packages/workdo/${packageName}/src/Resources/js/buttons/buttons.tsx`;
 
-            const module = allModules[buttonPath] as any;
+            const module = packageButtonModules[buttonPath] as any;
 
             if (module && module[hookName]) {
                 const buttonExport = module[hookName];

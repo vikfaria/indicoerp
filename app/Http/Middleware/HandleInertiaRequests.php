@@ -7,6 +7,7 @@ use Inertia\Middleware;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Cache;
 use App\Classes\Module;
 
 class HandleInertiaRequests extends Middleware
@@ -36,7 +37,9 @@ class HandleInertiaRequests extends Middleware
         if (!$this->isInstalled()) {
             return [];
         }
-        $locale = $request->user()->lang ?? $this->getSuperAdminLang();
+
+        $user = $request->user();
+        $locale = $user?->lang ?? $this->getSuperAdminLang();
 
         if (config('app.is_demo') && Cookie::get('language')) {
             $locale = Cookie::get('language');
@@ -44,26 +47,21 @@ class HandleInertiaRequests extends Middleware
 
         app()->setLocale($locale);
 
-        $languageFile = resource_path('lang/language.json');
-        $defaultLanguages = [];
-        if (file_exists($languageFile)) {
-            $languages = json_decode(file_get_contents($languageFile), true) ?? [];
-            $defaultLanguages = array_values($languages);
-        }
+        $activatedPackages = $user ? ActivatedModule($user->id) : [];
 
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user()
+                'user' => $user
                     ? array_merge(
-                        $request->user()->toArray(),
+                        $user->toArray(),
                         [
-                            'permissions' => $this->getUserPermissions($request->user()),
-                            'roles' => $this->getUserRoles($request->user()),
-                            'activatedPackages' => ActivatedModule(),
+                            'permissions' => $this->getUserPermissions($user),
+                            'roles' => $this->getUserRoles($user),
+                            'activatedPackages' => $activatedPackages,
                         ]
                     )
-                    : ['activatedPackages' => ActivatedModule()],
+                    : ['activatedPackages' => []],
                 'impersonating' => $request->session()->has('impersonator_id'),
                 'lang' => $locale,
             ],
@@ -71,13 +69,13 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
             ],
-            'packages' => (new Module())->allModules(),
-            'adminAllSetting' =>   $request->user() ?  getAdminAllSetting() : getAdminAllSetting(true),
-            'companyAllSetting' => $request->user() ? getCompanyAllSetting($request->user()->id) : [],
+            'packages' => $user ? (new Module())->allModules() : [],
+            'adminAllSetting' => $user ? getAdminAllSetting() : getAdminAllSetting(true),
+            'companyAllSetting' => $user ? getCompanyAllSetting($user->id) : [],
             'imageUrlPrefix' =>  getImageUrlPrefix(),
             'baseUrl' => url('/'),
             'currencies' => config('default_currency.currencies', []),
-            'defaultLanguages' => $defaultLanguages,
+            'defaultLanguages' => $this->getDefaultLanguages(),
             'is_demo' => config('app.is_demo', false),
         ];
     }
@@ -97,7 +95,10 @@ class HandleInertiaRequests extends Middleware
     private function getUserPermissions($user): array
     {
         if (method_exists($user, 'getAllPermissions')) {
-            return $user->getAllPermissions()->pluck('name')->toArray();
+            $cacheKey = 'user:permissions:' . $user->id;
+            return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+                return $user->getAllPermissions()->pluck('name')->toArray();
+            });
         }
         return [];
     }
@@ -105,9 +106,28 @@ class HandleInertiaRequests extends Middleware
     private function getUserRoles($user): array
     {
         if (method_exists($user, 'getRoleNames')) {
-            return $user->getRoleNames()->toArray();
+            $cacheKey = 'user:roles:' . $user->id;
+            return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+                return $user->getRoleNames()->toArray();
+            });
         }
         return [];
+    }
+
+    private function getDefaultLanguages(): array
+    {
+        $languageFile = resource_path('lang/language.json');
+        if (!file_exists($languageFile)) {
+            return [];
+        }
+
+        $mtime = (string) filemtime($languageFile);
+        $cacheKey = 'default_languages:' . $mtime;
+
+        return Cache::rememberForever($cacheKey, function () use ($languageFile) {
+            $languages = json_decode(file_get_contents($languageFile), true) ?? [];
+            return array_values($languages);
+        });
     }
 
     /**
