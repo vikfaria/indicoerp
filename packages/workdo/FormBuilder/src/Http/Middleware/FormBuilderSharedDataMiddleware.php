@@ -5,9 +5,9 @@ namespace Workdo\FormBuilder\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use App\Models\User;
 use App\Classes\Module;
 use Workdo\FormBuilder\Models\Form;
+use Illuminate\Support\Facades\Cache;
 
 class FormBuilderSharedDataMiddleware
 {
@@ -15,18 +15,16 @@ class FormBuilderSharedDataMiddleware
     {
         if (str_starts_with($request->route()?->getName() ?? '', 'formbuilder.public.')) {
             $userId = $this->getUserIdFromRequest($request);
-            
-            $user = User::find($userId);
             $code = $request->route('code');
-            
+
             Inertia::share([
-                'companyAllSetting' => getCompanyAllSetting($userId),
+                'companyAllSetting' => Cache::remember("formbuilder:company_settings:{$userId}", now()->addMinutes(10), fn () => getCompanyAllSetting($userId)),
                 'formCode' => $code,
                 'auth' => [
                     'user' => ['activatedPackages' => ActivatedModule($userId ?? null)],
                 ],
                 'packages' => (new Module())->allModules(),
-                'imageUrlPrefix' => $user ? getImageUrlPrefix() : url('/'),
+                'imageUrlPrefix' => getImageUrlPrefix(),
             ]);
         }
 
@@ -38,13 +36,16 @@ class FormBuilderSharedDataMiddleware
         $code = $request->route('code');
         if ($code) {
             try {
-                $form = Form::where('code', $code)->firstOrFail();
-                return $form->created_by;
+                return Cache::remember(
+                    "formbuilder:user_id_by_code:{$code}",
+                    now()->addMinutes(15),
+                    fn () => (int) Form::where('code', $code)->firstOrFail()->created_by
+                );
             } catch (\Exception $e) {
                 abort(404, 'Form not found');
             }
         }
-        
+
         abort(404, 'Form not found');
     }
 }

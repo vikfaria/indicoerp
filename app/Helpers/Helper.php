@@ -108,18 +108,34 @@ if (!function_exists('getAdminAllSetting')) {
 if (!function_exists('getCompanyAllSetting')) {
     function getCompanyAllSetting($user_id = null, $publicOnly = false)
     {
-        $user = $user_id ? User::find($user_id) : auth()->user();
+        $ownerId = null;
+        $authUser = auth()->user();
 
-        if (!$user) return [];
+        if ($user_id !== null) {
+            $ownerId = Cache::remember(
+                'company_settings_owner:' . $user_id,
+                now()->addMinutes(30),
+                function () use ($user_id) {
+                    $user = User::query()->select(['id', 'type', 'created_by'])->find($user_id);
+                    if (! $user) {
+                        return null;
+                    }
 
-        if (!in_array($user->type, ['company', 'superadmin'])) {
-            $user = User::find($user->created_by);
+                    return in_array($user->type, ['company', 'superadmin'], true)
+                        ? (int) $user->id
+                        : (int) $user->created_by;
+                }
+            );
+        } elseif ($authUser) {
+            $ownerId = in_array($authUser->type, ['company', 'superadmin'], true)
+                ? (int) $authUser->id
+                : (int) $authUser->created_by;
         }
 
-        if ($user) {
-            $key = $publicOnly ? 'company_settings_' . $user->id . '_public' : 'company_settings_' . $user->id;
-            $settings = Cache::rememberForever($key, function () use ($user, $publicOnly) {
-                $query = Setting::where('created_by', $user->id);
+        if ($ownerId) {
+            $key = $publicOnly ? 'company_settings_' . $ownerId . '_public' : 'company_settings_' . $ownerId;
+            $settings = Cache::rememberForever($key, function () use ($ownerId, $publicOnly) {
+                $query = Setting::where('created_by', $ownerId);
                 if ($publicOnly) {
                     $query->where('is_public', 1);
                 }
@@ -136,7 +152,7 @@ if (!function_exists('getCompanyAllSetting')) {
                     'custom_color' => 'customColor'
                 ];
                 
-                $cookieName = 'theme_settings_' . creatorId();
+                $cookieName = 'theme_settings_' . $ownerId;
                 if (\Cookie::get($cookieName)) {
                     $cookieData = json_decode(\Cookie::get($cookieName), true);
                     if (is_array($cookieData)) {
@@ -796,4 +812,3 @@ if (!function_exists('parseBrowserData')) {
         ];
     }
 }
-
