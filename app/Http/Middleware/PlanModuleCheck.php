@@ -58,17 +58,15 @@ class PlanModuleCheck
 
         if($moduleName != null)
         {
-            $moduleName =  explode('-',$moduleName);
-            $status = false;
-            foreach($moduleName as $m)
-            {
-                $status = module_is_active($m);
-                if($status == true)
-                {
-                    $response = $next($request);
-                    return $response;
+            $requestedModules = array_filter(explode('-', $moduleName));
+            $activeModules = array_flip(ActivatedModule($user->id));
+
+            foreach ($requestedModules as $module) {
+                if (isset($activeModules[$module]) && module_is_active($module)) {
+                    return $next($request);
                 }
             }
+
             return redirect()->route('dashboard')->with('error', __('Permission denied '));
         }
 

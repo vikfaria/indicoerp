@@ -69,13 +69,13 @@ class HandleInertiaRequests extends Middleware
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
             ],
-            'packages' => $user ? (new Module())->allModules() : [],
-            'adminAllSetting' => $user ? getAdminAllSetting() : getAdminAllSetting(true),
-            'companyAllSetting' => $user ? getCompanyAllSetting($user->id) : [],
+            'packages' => fn () => $user ? (new Module())->allModules() : [],
+            'adminAllSetting' => fn () => $user ? getAdminAllSetting() : getAdminAllSetting(true),
+            'companyAllSetting' => fn () => $user ? getCompanyAllSetting($user->id) : [],
             'imageUrlPrefix' =>  getImageUrlPrefix(),
             'baseUrl' => url('/'),
             'currencies' => config('default_currency.currencies', []),
-            'defaultLanguages' => $this->getDefaultLanguages(),
+            'defaultLanguages' => fn () => $this->getDefaultLanguages(),
             'is_demo' => config('app.is_demo', false),
         ];
     }
@@ -135,7 +135,8 @@ class HandleInertiaRequests extends Middleware
      */
     private function getSuperAdminLang(): string
     {
-        return admin_setting('defaultLanguage') ? admin_setting('defaultLanguage') : 'en';
+        $defaultLanguage = admin_setting('defaultLanguage');
+        return $defaultLanguage ?: 'en';
     }
 
     private function isInstalled(): bool

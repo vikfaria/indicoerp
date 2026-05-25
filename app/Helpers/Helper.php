@@ -232,42 +232,50 @@ if (!function_exists('getImageUrlPrefix')) {
 if (!function_exists('ActivatedModule')) {
     function ActivatedModule($user_id = null)
     {
+        static $runtimeCache = [];
+
+        $user = null;
         if ($user_id != null) {
-            $user = User::find($user_id);
+            $user = User::query()->select(['id', 'type', 'created_by'])->find($user_id);
         } elseif (Auth::check()) {
             $user = Auth::user();
-        } else {
-            $user = null;
         }
 
         $cacheSuffix = $user ? ('user:' . $user->id) : 'guest:admin';
+        if (array_key_exists($cacheSuffix, $runtimeCache)) {
+            return $runtimeCache[$cacheSuffix];
+        }
+
         $cacheKey = 'user:activated_modules:' . $cacheSuffix;
 
-        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+        $modules = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
             $activated_module = User::$superadmin_activated_module;
             $user_active_module = [];
+            $moduleService = new Module();
+            $available_modules = array_values($moduleService->allEnabled());
 
             if (!empty($user)) {
-                $available_modules = array_values((new Module())->allEnabled());
-
                 if ($user->type == 'superadmin') {
                     $user_active_module = $available_modules;
                 } else {
                     $active_module = [];
-                    $companyUser = $user->type == 'company' ? $user : User::find($user->created_by);
+                    $companyUserId = $user->type == 'company' ? $user->id : $user->created_by;
 
-                    if ($companyUser) {
-                        $active_module = UserActiveModule::where('user_id', $companyUser->id)->pluck('module')->toArray();
+                    if ($companyUserId) {
+                        $active_module = UserActiveModule::where('user_id', $companyUserId)->pluck('module')->toArray();
                         $user_active_module = array_values(array_intersect($available_modules, $active_module));
                         $user_active_module = array_values(array_unique(array_merge($activated_module, $user_active_module)));
                     }
                 }
             } else {
-                $user_active_module = array_values((new Module())->allEnabledAdmin());
+                $user_active_module = array_values($moduleService->allEnabledAdmin());
             }
 
             return $user_active_module;
         });
+
+        $runtimeCache[$cacheSuffix] = $modules;
+        return $modules;
     }
 }
 
@@ -275,32 +283,63 @@ if (!function_exists('ActivatedModule')) {
 if (!function_exists('Module_is_active')) {
     function Module_is_active($module, $user_id = null)
     {
-        if ((new Module())->has($module)) {
+        static $runtimeResultCache = [];
+        static $runtimeUserCache = [];
+        static $runtimeActiveMapCache = [];
+        static $moduleExistenceCache = [];
+        static $moduleEnabledCache = [];
+        static $moduleService = null;
 
-            $isModuleActive = (new Module())->isEnabled($module);
-            if ($isModuleActive == false) {
-                return false;
-            }
+        $moduleService = $moduleService ?: new Module();
 
-            if (!empty($user_id)) {
-                $user = User::find($user_id);
-            } else {
-                $user = Auth::user();
-            }
-            if (!empty($user)) {
-                if ($user->type == 'superadmin') {
-                    return true;
-                } else {
-                    $active_module = ActivatedModule($user->id);
-                    if ((count($active_module) > 0 && in_array($module, $active_module))) {
-                        return true;
-                    }
-                    return false;
-                }
-            }
+        $cacheUserKey = $user_id !== null ? 'u:' . (int) $user_id : 'auth';
+        $cacheKey = strtolower($module) . '|' . $cacheUserKey;
+        if (array_key_exists($cacheKey, $runtimeResultCache)) {
+            return $runtimeResultCache[$cacheKey];
+        }
+
+        if (!array_key_exists($module, $moduleExistenceCache)) {
+            $moduleExistenceCache[$module] = $moduleService->has($module);
+        }
+        if (! $moduleExistenceCache[$module]) {
+            $runtimeResultCache[$cacheKey] = false;
             return false;
         }
-        return false;
+
+        if (!array_key_exists($module, $moduleEnabledCache)) {
+            $moduleEnabledCache[$module] = $moduleService->isEnabled($module);
+        }
+        if (! $moduleEnabledCache[$module]) {
+            $runtimeResultCache[$cacheKey] = false;
+            return false;
+        }
+
+        if (!array_key_exists($cacheUserKey, $runtimeUserCache)) {
+            $runtimeUserCache[$cacheUserKey] = !empty($user_id)
+                ? User::query()->select(['id', 'type', 'created_by'])->find($user_id)
+                : Auth::user();
+        }
+        $user = $runtimeUserCache[$cacheUserKey];
+
+        if (empty($user)) {
+            $runtimeResultCache[$cacheKey] = false;
+            return false;
+        }
+
+        if ($user->type == 'superadmin') {
+            $runtimeResultCache[$cacheKey] = true;
+            return true;
+        }
+
+        $activeKey = 'user:' . $user->id;
+        if (!array_key_exists($activeKey, $runtimeActiveMapCache)) {
+            $runtimeActiveMapCache[$activeKey] = array_flip(ActivatedModule($user->id));
+        }
+
+        $isActive = isset($runtimeActiveMapCache[$activeKey][$module]);
+        $runtimeResultCache[$cacheKey] = $isActive;
+
+        return $isActive;
     }
 }
 
