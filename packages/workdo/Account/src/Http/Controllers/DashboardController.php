@@ -16,6 +16,7 @@ use Workdo\Account\Models\Expense;
 use Workdo\Account\Models\Revenue;
 use Workdo\Account\Models\Vendor;
 use Workdo\Account\Models\VendorPayment;
+use Workdo\Account\Services\AccountCacheService;
 
 class DashboardController extends Controller
 {
@@ -45,7 +46,7 @@ class DashboardController extends Controller
     private function companyDashboard()
     {
         $creatorId = (int) creatorId();
-        $payload = $this->rememberDashboardPayload("company:{$creatorId}", function () use ($creatorId) {
+        $payload = $this->rememberDashboardPayload($creatorId, "company:{$creatorId}", function () use ($creatorId) {
             $totalClients = Customer::where('created_by', $creatorId)->count();
             $totalVendors = Vendor::where('created_by', $creatorId)->count();
             $totalRevenue = (float) Revenue::where('created_by', $creatorId)->sum('amount');
@@ -153,7 +154,7 @@ class DashboardController extends Controller
         $user = Auth::user();
         $vendorId = (int) $user->id;
         $companyId = (int) $user->created_by;
-        $payload = $this->rememberDashboardPayload("vendor:{$vendorId}:{$companyId}", function () use ($vendorId, $companyId, $user) {
+        $payload = $this->rememberDashboardPayload($companyId, "vendor:{$vendorId}:{$companyId}", function () use ($vendorId, $companyId, $user) {
             $totalPayments = (float) VendorPayment::where('vendor_id', $vendorId)->sum('payment_amount');
             $totalExpenses = (float) Expense::where('created_by', $companyId)->sum('amount');
             $paymentCount = VendorPayment::where('vendor_id', $vendorId)->count();
@@ -235,7 +236,7 @@ class DashboardController extends Controller
         $user = Auth::user();
         $customerId = (int) $user->id;
         $companyId = (int) $user->created_by;
-        $payload = $this->rememberDashboardPayload("client:{$customerId}:{$companyId}", function () use ($customerId, $companyId, $user) {
+        $payload = $this->rememberDashboardPayload($companyId, "client:{$customerId}:{$companyId}", function () use ($customerId, $companyId, $user) {
             $totalPayments = (float) CustomerPayment::where('customer_id', $customerId)->sum('payment_amount');
             $totalRevenues = (float) Revenue::where('created_by', $companyId)->sum('amount');
             $paymentCount = CustomerPayment::where('customer_id', $customerId)->count();
@@ -316,7 +317,7 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         $creatorId = (int) $user->created_by;
-        $payload = $this->rememberDashboardPayload("staff:{$creatorId}", function () use ($creatorId) {
+        $payload = $this->rememberDashboardPayload($creatorId, "staff:{$creatorId}", function () use ($creatorId) {
             $totalClients = Customer::where('created_by', $creatorId)->count();
             $totalVendors = Vendor::where('created_by', $creatorId)->count();
             $monthlyRevenue = (float) Revenue::where('created_by', $creatorId)
@@ -362,11 +363,13 @@ class DashboardController extends Controller
         return Inertia::render('Account/Dashboard/StaffDashboard', $payload);
     }
 
-    private function rememberDashboardPayload(string $scope, callable $resolver): array
+    private function rememberDashboardPayload(int $companyId, string $scope, callable $resolver): array
     {
+        $cacheVersion = AccountCacheService::currentVersion($companyId);
         $cacheKey = sprintf(
-            'account:dashboard:%s:%s',
+            'account:dashboard:%s:cv%d:%s',
             self::DASHBOARD_CACHE_VERSION,
+            $cacheVersion,
             $scope
         );
 

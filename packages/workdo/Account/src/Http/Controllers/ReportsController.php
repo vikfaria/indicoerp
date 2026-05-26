@@ -13,6 +13,7 @@ use Workdo\Account\Models\MozFiscalClosing;
 use Workdo\Account\Models\MozPilotCompany;
 use Workdo\Account\Models\MozPilotValidationCase;
 use Workdo\Account\Services\ReportService;
+use Workdo\Account\Services\AccountCacheService;
 
 class ReportsController extends Controller
 {
@@ -467,6 +468,7 @@ class ReportsController extends Controller
                 setSetting($settingKey, $validated[$payloadKey] ?? '', creatorId());
             }
         }
+        AccountCacheService::bumpForCompany((int) creatorId());
 
         return response()->json([
             'message' => __('Go-live attestation updated successfully.'),
@@ -1082,9 +1084,13 @@ class ReportsController extends Controller
 
     private function buildReportCacheKey(string $scope, array $filters): string
     {
+        $companyId = (int) creatorId();
+        $cacheVersion = AccountCacheService::currentVersion($companyId);
+
         return sprintf(
-            'account:report:v1:%d:%s:%s',
-            (int) creatorId(),
+            'account:report:v1:cv%d:%d:%s:%s',
+            $cacheVersion,
+            $companyId,
             $scope,
             md5(json_encode($filters))
         );
