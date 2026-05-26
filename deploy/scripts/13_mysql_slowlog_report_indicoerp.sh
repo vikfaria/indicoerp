@@ -27,6 +27,24 @@ mysql_query() {
   mysql_exec -e "$sql"
 }
 
+print_digest_report() {
+  echo "== Top query digests (performance_schema) =="
+  mysql_exec -e "
+SELECT
+  ROUND(SUM_TIMER_WAIT / 1000000000000, 2) AS total_sec,
+  COUNT_STAR AS exec_count,
+  ROUND((SUM_TIMER_WAIT / 1000000000000) / NULLIF(COUNT_STAR, 0), 4) AS avg_sec,
+  ROUND(MAX_TIMER_WAIT / 1000000000000, 4) AS max_sec,
+  DIGEST_TEXT
+FROM performance_schema.events_statements_summary_by_digest
+WHERE SCHEMA_NAME = DATABASE()
+  AND DIGEST_TEXT IS NOT NULL
+ORDER BY SUM_TIMER_WAIT DESC
+LIMIT 20;
+" 2>/dev/null || echo "AVISO: performance_schema digest indisponivel para este utilizador/servidor."
+  echo
+}
+
 if ! mysql_exec -e "SELECT 1;" >/dev/null 2>&1; then
   echo "ERRO: falha a ligar ao MySQL em ${DB_HOST}:${DB_PORT} com utilizador ${DB_USER}."
   exit 1
@@ -41,6 +59,8 @@ mysql_query "SHOW VARIABLES WHERE Variable_name IN ('slow_query_log','long_query
 mysql_query "SHOW GLOBAL STATUS LIKE 'Slow_queries';"
 echo
 
+print_digest_report
+
 slowlog_path="$(mysql_exec -N -B -e "SHOW VARIABLES LIKE 'slow_query_log_file';" | awk '{print $2}' | tail -n 1)"
 
 if [ -z "$slowlog_path" ]; then
@@ -50,6 +70,12 @@ fi
 
 echo "Slow log file: $slowlog_path"
 echo
+
+slow_enabled="$(mysql_exec -N -B -e "SHOW VARIABLES LIKE 'slow_query_log';" | awk '{print $2}' | tail -n 1)"
+if [ "${slow_enabled,,}" != "on" ]; then
+  echo "AVISO: slow_query_log esta OFF neste momento; o ficheiro pode nao estar a receber entradas."
+  exit 0
+fi
 
 print_host_slowlog() {
   echo "== Tail slow log (host) =="

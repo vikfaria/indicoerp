@@ -258,6 +258,11 @@ export DB_PASS='COLOCAR_PASSWORD_DB'
 bash deploy/scripts/12_mysql_slowlog_control_indicoerp.sh enable
 ```
 
+Nota operacional:
+
+- Se o utilizador da aplicação não tiver `SYSTEM_VARIABLES_ADMIN`, o script tenta fallback para `root` dentro do container `indicoerp_mysql`.
+- Se o fallback não for possível, o script falha com mensagem explícita.
+
 Ver status sem alterar:
 
 ```bash
@@ -269,6 +274,8 @@ Relatório rápido das queries lentas:
 ```bash
 bash deploy/scripts/13_mysql_slowlog_report_indicoerp.sh
 ```
+
+O relatório também inclui top digests via `performance_schema`, mesmo quando o slow log estiver `OFF`.
 
 Desativar após coleta:
 
