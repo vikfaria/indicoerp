@@ -144,3 +144,48 @@ Produção só é considerada pronta quando:
 - Login e módulo fiscal carregam sem erro.
 - Export SAF-T de teste gera XML válido.
 - Não há erro crítico no `laravel.log` durante 15–30 minutos após deploy.
+
+## 9) Auditoria de performance do servidor
+
+Para validar tuning de runtime no próprio VPS:
+
+```bash
+bash deploy/scripts/07_server_performance_audit.sh
+```
+
+O script recolhe:
+
+- memória, disco e swap;
+- RSS médio/máximo dos workers PHP-FPM;
+- recomendação inicial para `pm.max_children`;
+- processos MySQL/MariaDB e possível duplicação;
+- maiores consumidores de memória.
+
+## 10) Smoke test de carga
+
+Para um teste básico com `k6`:
+
+```bash
+K6_BASE_URL=https://indicoerp.com \
+K6_VUS=10 \
+K6_DURATION=2m \
+bash deploy/scripts/08_run_k6_indicoerp_smoke.sh
+```
+
+Para incluir login e páginas autenticadas:
+
+```bash
+K6_BASE_URL=https://indicoerp.com \
+K6_LOGIN_EMAIL='seu-utilizador@dominio.com' \
+K6_LOGIN_PASSWORD='sua-password' \
+K6_AUTH_PATHS='/dashboard,/sales,/accounting' \
+K6_VUS=10 \
+K6_DURATION=2m \
+bash deploy/scripts/08_run_k6_indicoerp_smoke.sh
+```
+
+Recomendação operacional:
+
+- correr carga a partir de uma máquina externa ao VPS;
+- começar em `10` utilizadores, depois `25`, e só depois `50`;
+- comparar `p95`, taxa de erro e tempo de login antes de decidir upgrade do servidor.
