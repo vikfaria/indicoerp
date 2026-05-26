@@ -6,6 +6,7 @@ APP_URL="${APP_URL:-https://indicoerp.com}"
 LOG_SINCE="${LOG_SINCE:-30 min ago}"
 LARAVEL_LOG_PATH="${LARAVEL_LOG_PATH:-storage/logs/laravel.log}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php8.2-fpm.service}"
+NGINX_SERVICE="${NGINX_SERVICE:-nginx.service}"
 QUEUE_SERVICE="${QUEUE_SERVICE:-indicoerp-queue.service}"
 SCHEDULER_SERVICE="${SCHEDULER_SERVICE:-indicoerp-scheduler.service}"
 REQUIRE_QUEUE="${REQUIRE_QUEUE:-1}"
@@ -29,7 +30,13 @@ list_service_units() {
 unit_exists() {
   local unit="$1"
   [ -n "$unit" ] || return 1
-  list_service_units | grep -Fxq "$unit"
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local load_state
+  load_state="$(systemctl show -p LoadState --value "$unit" 2>/dev/null || true)"
+  [ -n "$load_state" ] && [ "$load_state" != "not-found" ]
 }
 
 first_matching_unit() {
@@ -96,6 +103,7 @@ assert_unit_active() {
   return 0
 }
 
+NGINX_SERVICE="$(resolve_service_unit "$NGINX_SERVICE" '^(nginx|openresty)(@.*)?\.service$' 'openresty.service')"
 PHP_FPM_SERVICE="$(resolve_service_unit "$PHP_FPM_SERVICE" '^php[0-9]+\.[0-9]+-fpm\.service$')"
 QUEUE_SERVICE="$(resolve_service_unit "$QUEUE_SERVICE" '(^|-)queue\.service$' 'indicoerp-queue.service' 'hrm-queue.service')"
 SCHEDULER_SERVICE="$(resolve_service_unit "$SCHEDULER_SERVICE" '(^|-)scheduler\.service$' 'indicoerp-scheduler.service' 'hrm-scheduler.service')"
@@ -104,6 +112,7 @@ echo "==> Healthcheck start: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "APP_DIR: $APP_DIR"
 echo "APP_URL: $APP_URL"
 echo "LOG_SINCE: $LOG_SINCE"
+echo "NGINX_SERVICE: ${NGINX_SERVICE:-n/a}"
 echo "PHP_FPM_SERVICE: ${PHP_FPM_SERVICE:-n/a}"
 echo "QUEUE_SERVICE: ${QUEUE_SERVICE:-n/a}"
 echo "SCHEDULER_SERVICE: ${SCHEDULER_SERVICE:-n/a}"
@@ -146,7 +155,7 @@ else
 fi
 echo
 
-if ! assert_unit_active "nginx.service" 1; then
+if ! assert_unit_active "$NGINX_SERVICE" 1; then
   FAILURES=$((FAILURES + 1))
 fi
 if ! assert_unit_active "$PHP_FPM_SERVICE" 1; then
@@ -189,7 +198,8 @@ echo
 
 if command -v journalctl >/dev/null 2>&1; then
   echo "==> Systemd errors desde: $LOG_SINCE"
-  journalctl --since "$LOG_SINCE" -u nginx.service \
+  journalctl --since "$LOG_SINCE" \
+    ${NGINX_SERVICE:+-u "$NGINX_SERVICE"} \
     ${PHP_FPM_SERVICE:+-u "$PHP_FPM_SERVICE"} \
     ${QUEUE_SERVICE:+-u "$QUEUE_SERVICE"} \
     ${SCHEDULER_SERVICE:+-u "$SCHEDULER_SERVICE"} \
