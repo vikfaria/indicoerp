@@ -3,7 +3,7 @@ import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import { saveElementAsPdf } from '@/utils/pdf';
 import { getImagePath } from '@/utils/helpers';
 
 interface Candidate {
@@ -84,7 +84,7 @@ export default function OfferLetterPdf() {
             jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
         };
 
-        html2pdf().set(opt).from(element).save().then(() => {
+        saveElementAsPdf(element, opt).then(() => {
             setIsDownloading(false);
         });
     };

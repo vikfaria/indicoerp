@@ -8,7 +8,7 @@ import { Download, Printer } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Contract } from './types';
 import { formatCurrency, formatDate } from '@/utils/helpers';
-import html2pdf from 'html2pdf.js';
+import { saveElementAsPdf } from '@/utils/pdf';
 
 interface ContractPreviewProps {
     contract: Contract & {
@@ -47,7 +47,7 @@ export default function Preview() {
             jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
         };
 
-        html2pdf().set(opt).from(element).save().then(() => {
+        saveElementAsPdf(element, opt).then(() => {
             setIsDownloading(false);
         });
     };

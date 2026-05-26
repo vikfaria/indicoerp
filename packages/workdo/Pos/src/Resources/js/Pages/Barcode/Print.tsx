@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import html2pdf from 'html2pdf.js';
+import { saveElementAsPdf } from '@/utils/pdf';
 import { formatCurrency } from '@/utils/helpers';
 import JsBarcode from 'jsbarcode';
 
@@ -29,7 +29,7 @@ export default function Print() {
                     html2canvas: { scale: 3, useCORS: true, letterRendering: true },
                     jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
                 };
-                await html2pdf().set(opt).from(document.querySelector('.barcode-container')).save();
+                await saveElementAsPdf(document.querySelector('.barcode-container') as HTMLElement, opt);
                 if (window.opener) {
                     window.opener.location.reload();
                 }

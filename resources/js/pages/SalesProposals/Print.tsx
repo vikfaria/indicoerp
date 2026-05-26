@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
-import html2pdf from 'html2pdf.js';
 import { formatCurrency, formatDate, getCompanyTaxLabel, resolveDocumentIssuer, resolveSalesDocumentCounterparty } from '@/utils/helpers';
+import { saveElementAsPdf } from '@/utils/pdf';
 
 interface Address {
     name: string;
@@ -93,7 +93,7 @@ export default function Print() {
             };
 
             try {
-                await html2pdf().set(opt).from(printContent as HTMLElement).save();
+                await saveElementAsPdf(printContent as HTMLElement, opt);
                 setTimeout(() => window.close(), 1000);
             } catch (error) {
                 console.error('PDF generation failed:', error);

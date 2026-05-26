@@ -1,4 +1,4 @@
-import html2pdf from 'html2pdf.js';
+import { saveElementAsPdf } from '@/utils/pdf';
 import { formatCurrency, formatDate, formatTime, resolveCompanyTaxLabel, resolveCompanyTaxNumber } from '@/utils/helpers';
 
 export const downloadReceiptPDF = async (completedSale: any, globalSettings: any) => {
@@ -125,7 +125,7 @@ export const downloadReceiptPDF = async (completedSale: any, globalSettings: any
     };
     
     try {
-        await html2pdf().set(opt).from(tempDiv).save();
+        await saveElementAsPdf(tempDiv, opt);
     } catch (error) {
         console.error('PDF generation failed:', error);
     } finally {
