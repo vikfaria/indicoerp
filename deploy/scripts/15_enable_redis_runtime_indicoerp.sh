@@ -71,6 +71,7 @@ restore_runtime_backup() {
 
   echo "AVISO: falha detectada. A repor .env anterior a partir de $LAST_BACKUP_FILE"
   cp "$LAST_BACKUP_FILE" "$ENV_FILE"
+  "$PHP_BIN" artisan config:clear >/dev/null 2>&1 || true
   "$PHP_BIN" artisan optimize:clear >/dev/null 2>&1 || true
   "$PHP_BIN" artisan config:cache >/dev/null 2>&1 || true
   restart_if_exists "$PHP_FPM_SERVICE" || true
@@ -92,6 +93,10 @@ redis_cli_available() {
   command -v redis-cli >/dev/null 2>&1
 }
 
+docker_available() {
+  command -v docker >/dev/null 2>&1
+}
+
 normalize_redis_password_value() {
   local value="${1:-}"
 
@@ -107,20 +112,80 @@ normalize_redis_password_value() {
 
 redis_ping() {
   local password="${1:-}"
-  local output
+  local output=""
 
-  if ! redis_cli_available; then
-    echo "ERRO: redis-cli nao encontrado no servidor."
-    return 1
+  if [ "$REDIS_CLIENT_VALUE" = "phpredis" ] && "$PHP_BIN" -m | grep -qi '^redis$'; then
+    output="$(REDIS_HOST="$REDIS_HOST_VALUE" REDIS_PORT="$REDIS_PORT_VALUE" REDIS_PASSWORD="$password" "$PHP_BIN" -r '
+      $host = getenv("REDIS_HOST") ?: "127.0.0.1";
+      $port = (int)(getenv("REDIS_PORT") ?: "6379");
+      $password = getenv("REDIS_PASSWORD");
+      try {
+        $redis = new Redis();
+        $redis->connect($host, $port, 2.0);
+        if ($password !== false && $password !== "") {
+          $redis->auth($password);
+        }
+        $pong = $redis->ping();
+        if ($pong === true) {
+          echo "PONG";
+        } else {
+          echo strtoupper((string)$pong);
+        }
+      } catch (Throwable $e) {
+        echo $e->getMessage();
+      }
+    ' 2>&1 || true)"
   fi
 
-  if [ -n "$password" ]; then
-    output="$(redis-cli --no-auth-warning -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" -a "$password" ping 2>&1 || true)"
-  else
-    output="$(redis-cli -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" ping 2>&1 || true)"
+  if [ -z "$output" ] && redis_cli_available; then
+    if [ -n "$password" ]; then
+      output="$(redis-cli --no-auth-warning -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" -a "$password" ping 2>&1 || true)"
+    else
+      output="$(redis-cli -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" ping 2>&1 || true)"
+    fi
+  fi
+
+  if [ -z "$output" ]; then
+    output="ERRO: nao foi possivel validar Redis (phpredis/redis-cli indisponiveis)."
   fi
 
   echo "$output"
+}
+
+discover_redis_password_from_docker_env() {
+  local cid image name password
+
+  docker_available || return 1
+
+  while read -r cid image name; do
+    [ -n "$cid" ] || continue
+
+    if ! echo "$image $name" | grep -Eqi '(redis|valkey|keydb)'; then
+      continue
+    fi
+
+    password="$(
+      docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$cid" 2>/dev/null \
+      | sed -nE 's/^(REDIS_PASSWORD|REDISCLI_AUTH)=(.+)$/\2/p' \
+      | head -n 1 || true
+    )"
+    if [ -n "$password" ]; then
+      echo "$password"
+      return 0
+    fi
+
+    password="$(
+      docker inspect --format '{{.Path}} {{range .Args}}{{printf "%s " .}}{{end}}' "$cid" 2>/dev/null \
+      | sed -nE 's/.*--requirepass[[:space:]]+([^[:space:]]+).*/\1/p' \
+      | head -n 1 || true
+    )"
+    if [ -n "$password" ]; then
+      echo "$password"
+      return 0
+    fi
+  done < <(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' 2>/dev/null || true)
+
+  return 1
 }
 
 discover_redis_password_from_aclfile() {
@@ -169,9 +234,9 @@ resolve_redis_password() {
   local normalized_password ping_output discovered_password
 
   normalized_password="$(normalize_redis_password_value "$REDIS_PASSWORD_VALUE")"
-  ping_output="$(redis_ping "$normalized_password")"
+  ping_output="$(redis_ping "$normalized_password" || true)"
 
-  if echo "$ping_output" | grep -q '^PONG'; then
+  if echo "$ping_output" | grep -Eiq '^\+?PONG$'; then
     REDIS_PASSWORD_VALUE="${normalized_password:-null}"
     return 0
   fi
@@ -184,10 +249,20 @@ resolve_redis_password() {
 
   discovered_password="$(discover_redis_password_from_configs || true)"
   if [ -n "$discovered_password" ]; then
-    ping_output="$(redis_ping "$discovered_password")"
-    if echo "$ping_output" | grep -q '^PONG'; then
+    ping_output="$(redis_ping "$discovered_password" || true)"
+    if echo "$ping_output" | grep -Eiq '^\+?PONG$'; then
       REDIS_PASSWORD_VALUE="$discovered_password"
       echo "INFO: password Redis descoberta automaticamente a partir da configuracao local."
+      return 0
+    fi
+  fi
+
+  discovered_password="$(discover_redis_password_from_docker_env || true)"
+  if [ -n "$discovered_password" ]; then
+    ping_output="$(redis_ping "$discovered_password" || true)"
+    if echo "$ping_output" | grep -Eiq '^\+?PONG$'; then
+      REDIS_PASSWORD_VALUE="$discovered_password"
+      echo "INFO: password Redis descoberta automaticamente via Docker."
       return 0
     fi
   fi
@@ -262,7 +337,11 @@ disable_runtime() {
   set_env_value "SESSION_CONNECTION" ""
   set_env_value "SESSION_STORE" ""
 
-  "$PHP_BIN" artisan optimize:clear
+  # Clear config first to avoid stale cached settings forcing Redis on rollback.
+  "$PHP_BIN" artisan config:clear || true
+  if ! "$PHP_BIN" artisan optimize:clear; then
+    echo "WARN: optimize:clear falhou durante rollback para file; a continuar."
+  fi
   "$PHP_BIN" artisan config:cache
   restart_if_exists "$PHP_FPM_SERVICE"
   restart_if_exists "$QUEUE_SERVICE"
@@ -289,12 +368,10 @@ echo 'redis.default.host=' . config('database.redis.default.host') . PHP_EOL;
 echo 'redis.cache.db=' . config('database.redis.cache.database') . PHP_EOL;
 " 
 
-  if redis_cli_available; then
-    local ping_output
-    configured_password="$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
-    ping_output="$(redis_ping "$(normalize_redis_password_value "$configured_password")")"
-    echo "redis.ping=${ping_output}"
-  fi
+  local ping_output
+  configured_password="$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+  ping_output="$(redis_ping "$(normalize_redis_password_value "$configured_password")" || true)"
+  echo "redis.ping=${ping_output}"
 }
 
 case "$ACTION" in
