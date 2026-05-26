@@ -12,6 +12,12 @@ return [
     // Log when the cumulative query time in a request crosses this value (milliseconds).
     'slow_query_total_ms' => (int) env('PERF_SLOW_QUERY_TOTAL_MS', 1500),
 
+    // Cache TTL for account dashboards (seconds).
+    'dashboard_cache_ttl_seconds' => (int) env('PERF_DASHBOARD_CACHE_TTL_SECONDS', 120),
+
+    // Cache TTL for account report payloads (seconds).
+    'report_cache_ttl_seconds' => (int) env('PERF_REPORT_CACHE_TTL_SECONDS', 120),
+
     // Paths ignored by request performance logging.
     'request_ignore_prefixes' => [
         'up',
@@ -19,4 +25,3 @@ return [
         'telescope',
     ],
 ];
-

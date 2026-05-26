@@ -4,6 +4,7 @@ namespace Workdo\Account\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Services\SaftExportService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
@@ -51,7 +52,12 @@ class ReportsController extends Controller
             'as_of_date' => $request->as_of_date ?: date('Y-m-d'),
         ];
 
-        $data = $this->reportService->getInvoiceAging($filters);
+        $data = $this->rememberReportPayload(
+            'invoice-aging',
+            $filters,
+            fn () => $this->reportService->getInvoiceAging($filters),
+            $request
+        );
         return response()->json($data);
     }
 
@@ -61,14 +67,24 @@ class ReportsController extends Controller
             'as_of_date' => $request->as_of_date ?: date('Y-m-d'),
         ];
 
-        $data = $this->reportService->getBillAging($filters);
+        $data = $this->rememberReportPayload(
+            'bill-aging',
+            $filters,
+            fn () => $this->reportService->getBillAging($filters),
+            $request
+        );
         return response()->json($data);
     }
 
     public function taxSummary(Request $request)
     {
         $filters = $this->resolveDateFilters($request);
-        $data = $this->reportService->getTaxSummary($filters);
+        $data = $this->rememberReportPayload(
+            'tax-summary',
+            $filters,
+            fn () => $this->reportService->getTaxSummary($filters),
+            $request
+        );
 
         return response()->json($data);
     }
@@ -85,7 +101,12 @@ class ReportsController extends Controller
             'to_date' => $request->to_date ?: "$currentYear-12-31",
         ];
 
-        $data = $this->reportService->getMozambiqueFiscalMap($filters);
+        $data = $this->rememberReportPayload(
+            'mz-fiscal-map',
+            $filters,
+            fn () => $this->reportService->getMozambiqueFiscalMap($filters),
+            $request
+        );
 
         return response()
             ->json($data)
@@ -104,7 +125,12 @@ class ReportsController extends Controller
             'to_date' => $request->to_date ?: "$currentYear-12-31",
         ];
 
-        $data = $this->reportService->getMozambiqueFiscalMap($filters);
+        $data = $this->rememberReportPayload(
+            'mz-fiscal-map',
+            $filters,
+            fn () => $this->reportService->getMozambiqueFiscalMap($filters),
+            $request
+        );
 
         $rows = [
             ['section', 'metric', 'value'],
@@ -174,7 +200,12 @@ class ReportsController extends Controller
         }
 
         $filters = $this->resolveDateFilters($request);
-        $data = $this->reportService->getMozambiqueVatDeclaration($filters);
+        $data = $this->rememberReportPayload(
+            'mz-vat-declaration',
+            $filters,
+            fn () => $this->reportService->getMozambiqueVatDeclaration($filters),
+            $request
+        );
 
         return response()
             ->json($data)
@@ -188,7 +219,12 @@ class ReportsController extends Controller
         }
 
         $filters = $this->resolveDateFilters($request);
-        $data = $this->reportService->getMozambiqueVatDeclaration($filters);
+        $data = $this->rememberReportPayload(
+            'mz-vat-declaration',
+            $filters,
+            fn () => $this->reportService->getMozambiqueVatDeclaration($filters),
+            $request
+        );
 
         $rows = [
             ['section', 'metric', 'value'],
@@ -259,7 +295,12 @@ class ReportsController extends Controller
             'to_date' => $request->to_date ?: "$currentYear-12-31",
         ];
 
-        $data = $this->reportService->getMozambiqueFiscalSubmissionRegister($filters);
+        $data = $this->rememberReportPayload(
+            'mz-fiscal-submission-register',
+            $filters,
+            fn () => $this->reportService->getMozambiqueFiscalSubmissionRegister($filters),
+            $request
+        );
         return response()->json($data);
     }
 
@@ -275,7 +316,12 @@ class ReportsController extends Controller
             'to_date' => $request->to_date ?: "$currentYear-12-31",
         ];
 
-        $data = $this->reportService->getMozambiqueFiscalSubmissionRegister($filters);
+        $data = $this->rememberReportPayload(
+            'mz-fiscal-submission-register',
+            $filters,
+            fn () => $this->reportService->getMozambiqueFiscalSubmissionRegister($filters),
+            $request
+        );
 
         $rows = [
             ['from_date', $data['from_date']],
@@ -782,7 +828,12 @@ class ReportsController extends Controller
             'show_zero_balances' => $request->show_zero_balances === 'true',
         ];
 
-        $data = $this->reportService->getCustomerBalanceSummary($filters);
+        $data = $this->rememberReportPayload(
+            'customer-balance',
+            $filters,
+            fn () => $this->reportService->getCustomerBalanceSummary($filters),
+            $request
+        );
         return response()->json($data);
     }
 
@@ -793,7 +844,12 @@ class ReportsController extends Controller
             'show_zero_balances' => $request->show_zero_balances === 'true',
         ];
 
-        $data = $this->reportService->getVendorBalanceSummary($filters);
+        $data = $this->rememberReportPayload(
+            'vendor-balance',
+            $filters,
+            fn () => $this->reportService->getVendorBalanceSummary($filters),
+            $request
+        );
         return response()->json($data);
     }
 
@@ -801,7 +857,12 @@ class ReportsController extends Controller
     {
         if(Auth::user()->can('print-invoice-aging')){
             $filters = ['as_of_date' => $request->as_of_date ?: date('Y-m-d')];
-            $data = $this->reportService->getInvoiceAging($filters);
+            $data = $this->rememberReportPayload(
+                'invoice-aging',
+                $filters,
+                fn () => $this->reportService->getInvoiceAging($filters),
+                $request
+            );
             return Inertia::render('Account/Reports/Print/InvoiceAging', ['data' => $data, 'filters' => $filters]);
         }
         else
@@ -814,7 +875,12 @@ class ReportsController extends Controller
     {
         if(Auth::user()->can('print-bill-aging')){
             $filters = ['as_of_date' => $request->as_of_date ?: date('Y-m-d')];
-            $data = $this->reportService->getBillAging($filters);
+            $data = $this->rememberReportPayload(
+                'bill-aging',
+                $filters,
+                fn () => $this->reportService->getBillAging($filters),
+                $request
+            );
             return Inertia::render('Account/Reports/Print/BillAging', ['data' => $data, 'filters' => $filters]);
         }
         else
@@ -827,7 +893,12 @@ class ReportsController extends Controller
     {
         if(Auth::user()->can('print-tax-summary')){
             $filters = $this->resolveDateFilters($request);
-            $data = $this->reportService->getTaxSummary($filters);
+            $data = $this->rememberReportPayload(
+                'tax-summary',
+                $filters,
+                fn () => $this->reportService->getTaxSummary($filters),
+                $request
+            );
 
             return Inertia::render('Account/Reports/Print/TaxSummary', ['data' => $data, 'filters' => $filters]);
         }
@@ -844,7 +915,12 @@ class ReportsController extends Controller
                 'as_of_date' => $request->as_of_date ?: date('Y-m-d'),
                 'show_zero_balances' => $request->show_zero_balances === 'true',
                 ];
-            $data = $this->reportService->getCustomerBalanceSummary($filters);
+            $data = $this->rememberReportPayload(
+                'customer-balance',
+                $filters,
+                fn () => $this->reportService->getCustomerBalanceSummary($filters),
+                $request
+            );
             return Inertia::render('Account/Reports/Print/CustomerBalance', ['data' => $data, 'filters' => $filters]);
         }
         else{
@@ -859,7 +935,12 @@ class ReportsController extends Controller
                 'as_of_date' => $request->as_of_date ?: date('Y-m-d'),
                 'show_zero_balances' => $request->show_zero_balances === 'true',
             ];
-            $data = $this->reportService->getVendorBalanceSummary($filters);
+            $data = $this->rememberReportPayload(
+                'vendor-balance',
+                $filters,
+                fn () => $this->reportService->getVendorBalanceSummary($filters),
+                $request
+            );
             return Inertia::render('Account/Reports/Print/VendorBalance', ['data' => $data, 'filters' => $filters]);
         }
         else{
@@ -875,7 +956,12 @@ class ReportsController extends Controller
                 'end_date' => $request->end_date,
             ];
 
-            $data = $this->reportService->getCustomerDetail($customerId, $filters);
+            $data = $this->rememberReportPayload(
+                "customer-detail:{$customerId}",
+                $filters,
+                fn () => $this->reportService->getCustomerDetail($customerId, $filters),
+                $request
+            );
 
             if (!$data) {
                 return back()->with('error', __('Customer not found'));
@@ -898,7 +984,12 @@ class ReportsController extends Controller
                 'end_date' => $request->end_date,
             ];
 
-            $data = $this->reportService->getVendorDetail($vendorId, $filters);
+            $data = $this->rememberReportPayload(
+                "vendor-detail:{$vendorId}",
+                $filters,
+                fn () => $this->reportService->getVendorDetail($vendorId, $filters),
+                $request
+            );
 
             if (!$data) {
                 return back()->with('error', __('Vendor not found'));
@@ -921,7 +1012,12 @@ class ReportsController extends Controller
                 'end_date' => $request->end_date,
             ];
 
-            $data = $this->reportService->getCustomerDetail($customerId, $filters);
+            $data = $this->rememberReportPayload(
+                "customer-detail:{$customerId}",
+                $filters,
+                fn () => $this->reportService->getCustomerDetail($customerId, $filters),
+                $request
+            );
 
             if (!$data) {
                 return back()->with('error', __('Customer not found'));
@@ -945,7 +1041,12 @@ class ReportsController extends Controller
                 'end_date' => $request->end_date,
             ];
 
-            $data = $this->reportService->getVendorDetail($vendorId, $filters);
+            $data = $this->rememberReportPayload(
+                "vendor-detail:{$vendorId}",
+                $filters,
+                fn () => $this->reportService->getVendorDetail($vendorId, $filters),
+                $request
+            );
 
             if (!$data) {
                 return back()->with('error', __('Vendor not found'));
@@ -959,6 +1060,44 @@ class ReportsController extends Controller
         else{
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function rememberReportPayload(
+        string $scope,
+        array $filters,
+        callable $resolver,
+        ?Request $request = null
+    ) {
+        if ($this->shouldBypassReportCache($request)) {
+            return $resolver();
+        }
+
+        $cacheKey = $this->buildReportCacheKey($scope, $filters);
+        return Cache::remember(
+            $cacheKey,
+            now()->addSeconds($this->reportCacheTtlSeconds()),
+            static fn () => $resolver()
+        );
+    }
+
+    private function buildReportCacheKey(string $scope, array $filters): string
+    {
+        return sprintf(
+            'account:report:v1:%d:%s:%s',
+            (int) creatorId(),
+            $scope,
+            md5(json_encode($filters))
+        );
+    }
+
+    private function reportCacheTtlSeconds(): int
+    {
+        return max(30, (int) config('performance.report_cache_ttl_seconds', 120));
+    }
+
+    private function shouldBypassReportCache(?Request $request): bool
+    {
+        return $request?->boolean('refresh', false) ?? false;
     }
 
     private function resolveDateFilters(Request $request): array

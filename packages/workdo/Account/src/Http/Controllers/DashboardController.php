@@ -3,21 +3,24 @@
 namespace Workdo\Account\Http\Controllers;
 
 use App\Models\SalesInvoiceReturn;
-use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Workdo\Account\Models\Customer;
-use Workdo\Account\Models\Vendor;
 use Workdo\Account\Models\CustomerPayment;
-use Workdo\Account\Models\VendorPayment;
-use Workdo\Account\Models\Revenue;
 use Workdo\Account\Models\Expense;
-use Carbon\Carbon;
+use Workdo\Account\Models\Revenue;
+use Workdo\Account\Models\Vendor;
+use Workdo\Account\Models\VendorPayment;
 
 class DashboardController extends Controller
 {
+    private const DASHBOARD_CACHE_VERSION = 'v1';
+
     public function index(Request $request)
     {
         if(Auth::user()->can('manage-account-dashboard')){
@@ -41,292 +44,391 @@ class DashboardController extends Controller
 
     private function companyDashboard()
     {
-        $creatorId = creatorId();
+        $creatorId = (int) creatorId();
+        $payload = $this->rememberDashboardPayload("company:{$creatorId}", function () use ($creatorId) {
+            $totalClients = Customer::where('created_by', $creatorId)->count();
+            $totalVendors = Vendor::where('created_by', $creatorId)->count();
+            $totalRevenue = (float) Revenue::where('created_by', $creatorId)->sum('amount');
+            $totalExpense = (float) Expense::where('created_by', $creatorId)->sum('amount');
+            $totalCustomerPayments = (float) CustomerPayment::where('created_by', $creatorId)->sum('payment_amount');
+            $totalVendorPayments = (float) VendorPayment::where('created_by', $creatorId)->sum('payment_amount');
+            $netProfit = $totalRevenue - $totalExpense;
 
-        $totalClients = Customer::where('created_by', $creatorId)->count();
-        $totalVendors = Vendor::where('created_by', $creatorId)->count();
-        $totalRevenue = Revenue::where('created_by', $creatorId)->sum('amount');
-        $totalExpense = Expense::where('created_by', $creatorId)->sum('amount');
-        $totalCustomerPayments = CustomerPayment::whereHas('customer', function($q) use ($creatorId) {
-            $q->where('created_by', $creatorId);
-        })->sum('payment_amount');
-        $totalVendorPayments = VendorPayment::whereHas('vendor', function($q) use ($creatorId) {
-            $q->where('created_by', $creatorId);
-        })->sum('payment_amount');
-        
-        $netProfit = $totalRevenue - $totalExpense;
+            $recentRevenues = Revenue::where('created_by', $creatorId)
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'title' => $item->revenue_number,
+                        'description' => $item->description ?? 'Revenue transaction',
+                        'amount' => (float) $item->amount,
+                        'date' => optional($item->created_at)->toDateTimeString(),
+                    ];
+                })
+                ->values()
+                ->all();
 
-        $recentRevenues = Revenue::where('created_by', $creatorId)
-            ->latest()
-            ->limit(5)
-            ->get()
-            ->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->revenue_number,
-                    'description' => $item->description ?? 'Revenue transaction',
-                    'amount' => $item->amount,
-                    'date' => $item->created_at
-                ];
-            });
+            $recentExpenses = Expense::where('created_by', $creatorId)
+                ->latest()
+                ->limit(5)
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'title' => $item->expense_number,
+                        'description' => $item->description ?? 'Expense transaction',
+                        'amount' => (float) $item->amount,
+                        'date' => optional($item->created_at)->toDateTimeString(),
+                    ];
+                })
+                ->values()
+                ->all();
 
-        $recentExpenses = Expense::where('created_by', $creatorId)
-            ->latest()
-            ->limit(5)
-            ->get()
-            ->map(function($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->expense_number,
-                    'description' => $item->description ?? 'Expense transaction',
-                    'amount' => $item->amount,
-                    'date' => $item->created_at
-                ];
-            });
+            $months = $this->recentMonthDescriptors();
+            if (config('app.is_demo')) {
+                $monthlyCustomerPayments = collect($months)->map(function (array $month) {
+                    return [
+                        'month' => $month['label'],
+                        'customer_payments' => rand(15000, 45000) + rand(0, 99) / 100,
+                    ];
+                })->values()->all();
 
-        $isDemo = config('app.is_demo');
-        $monthlyCustomerPayments = [];
-        $monthlyVendorPayments = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $date = Carbon::now()->subMonths($i);
-            $monthName = $date->format('M');
-            
-            if ($isDemo) {
-                $customerPayments = rand(15000, 45000) + rand(0, 99) / 100;
-                $vendorPayments = rand(5000, 25000) + rand(0, 99) / 100;
+                $monthlyVendorPayments = collect($months)->map(function (array $month) {
+                    return [
+                        'month' => $month['label'],
+                        'vendor_payments' => rand(5000, 25000) + rand(0, 99) / 100,
+                    ];
+                })->values()->all();
             } else {
-                $customerPayments = CustomerPayment::whereHas('customer', function($q) use ($creatorId) {
-                    $q->where('created_by', $creatorId);
-                })
-                ->whereMonth('created_at', $date->month)
-                ->whereYear('created_at', $date->year)
-                ->sum('payment_amount');
-                
-                $vendorPayments = VendorPayment::whereHas('vendor', function($q) use ($creatorId) {
-                    $q->where('created_by', $creatorId);
-                })
-                ->whereMonth('created_at', $date->month)
-                ->whereYear('created_at', $date->year)
-                ->sum('payment_amount');
-            }
-            
-            $monthlyCustomerPayments[] = [
-                'month' => $monthName,
-                'customer_payments' => $customerPayments
-            ];
-            
-            $monthlyVendorPayments[] = [
-                'month' => $monthName,
-                'vendor_payments' => $vendorPayments
-            ];
-        }
+                $customerTotalsByPeriod = $this->resolveMonthlyTotals(
+                    'customer_payments',
+                    'payment_amount',
+                    $months,
+                    ['created_by' => $creatorId]
+                );
 
-        return Inertia::render('Account/Dashboard/CompanyDashboard', [
-            'stats' => [
-                'total_clients' => $totalClients,
-                'total_vendors' => $totalVendors,
-                'total_revenue' => $totalRevenue,
-                'total_expense' => $totalExpense,
-                'total_customer_payment' => $totalCustomerPayments,
-                'total_vendor_payment' => $totalVendorPayments,
-                'net_profit' => $netProfit
-            ],
-            'monthlyCustomerPayments' => $monthlyCustomerPayments,
-            'monthlyVendorPayments' => $monthlyVendorPayments,
-            'recentRevenues' => $recentRevenues,
-            'recentExpenses' => $recentExpenses
-        ]);
+                $vendorTotalsByPeriod = $this->resolveMonthlyTotals(
+                    'vendor_payments',
+                    'payment_amount',
+                    $months,
+                    ['created_by' => $creatorId]
+                );
+
+                $monthlyCustomerPayments = $this->buildMonthlySeries(
+                    $months,
+                    $customerTotalsByPeriod,
+                    'customer_payments'
+                );
+                $monthlyVendorPayments = $this->buildMonthlySeries(
+                    $months,
+                    $vendorTotalsByPeriod,
+                    'vendor_payments'
+                );
+            }
+
+            return [
+                'stats' => [
+                    'total_clients' => $totalClients,
+                    'total_vendors' => $totalVendors,
+                    'total_revenue' => $totalRevenue,
+                    'total_expense' => $totalExpense,
+                    'total_customer_payment' => $totalCustomerPayments,
+                    'total_vendor_payment' => $totalVendorPayments,
+                    'net_profit' => $netProfit,
+                ],
+                'monthlyCustomerPayments' => $monthlyCustomerPayments,
+                'monthlyVendorPayments' => $monthlyVendorPayments,
+                'recentRevenues' => $recentRevenues,
+                'recentExpenses' => $recentExpenses,
+            ];
+        });
+
+        return Inertia::render('Account/Dashboard/CompanyDashboard', $payload);
     }
 
     private function vendorDashboard()
     {
         $user = Auth::user();
+        $vendorId = (int) $user->id;
+        $companyId = (int) $user->created_by;
+        $payload = $this->rememberDashboardPayload("vendor:{$vendorId}:{$companyId}", function () use ($vendorId, $companyId, $user) {
+            $totalPayments = (float) VendorPayment::where('vendor_id', $vendorId)->sum('payment_amount');
+            $totalExpenses = (float) Expense::where('created_by', $companyId)->sum('amount');
+            $paymentCount = VendorPayment::where('vendor_id', $vendorId)->count();
 
-        $totalPayments = VendorPayment::where('vendor_id', $user->id)->sum('payment_amount');
-        $totalExpenses = Expense::where('created_by', $user->created_by)->sum('amount');
-        $paymentCount = VendorPayment::where('vendor_id', $user->id)->count();
-
-        $isDemo = config('app.is_demo');
-        $monthlyPayments = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $date = Carbon::now()->subMonths($i);
-            $monthName = $date->format('M');
-
-            if ($isDemo) {
-                $monthPayments = rand(1000, 10000) + rand(0, 99) / 100;
+            $months = $this->recentMonthDescriptors();
+            if (config('app.is_demo')) {
+                $monthlyPayments = collect($months)->map(function (array $month) {
+                    return [
+                        'month' => $month['label'],
+                        'payments' => rand(1000, 10000) + rand(0, 99) / 100,
+                    ];
+                })->values()->all();
             } else {
-                $monthPayments = VendorPayment::where('vendor_id', $user->id)
-                    ->whereMonth('created_at', $date->month)
-                    ->whereYear('created_at', $date->year)
-                    ->sum('payment_amount');
+                $totalsByPeriod = $this->resolveMonthlyTotals(
+                    'vendor_payments',
+                    'payment_amount',
+                    $months,
+                    ['vendor_id' => $vendorId]
+                );
+                $monthlyPayments = $this->buildMonthlySeries($months, $totalsByPeriod, 'payments');
             }
 
-            $monthlyPayments[] = [
-                'month' => $monthName,
-                'payments' => $monthPayments
+            $recentReturnInvoices = [];
+            if (class_exists('\\App\\Models\\PurchaseReturn')) {
+                $recentReturnInvoices = \App\Models\PurchaseReturn::where('vendor_id', $vendorId)
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($return) {
+                        return [
+                            'id' => $return->id,
+                            'invoice_number' => $return->return_number ?? 'PUR-RET-' . $return->id,
+                            'amount' => (float) ($return->total_amount ?? 0),
+                            'date' => optional($return->created_at)->format('M d, Y'),
+                            'status' => $return->status ?? 'Pending',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            }
+
+            $recentDebitNotes = [];
+            if (class_exists('\\Workdo\\Account\\Models\\DebitNote')) {
+                $recentDebitNotes = \Workdo\Account\Models\DebitNote::where('vendor_id', $vendorId)
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($note) {
+                        return [
+                            'id' => $note->id,
+                            'debit_note_number' => $note->debit_note_number ?? 'DN-' . $note->id,
+                            'amount' => (float) ($note->total_amount ?? 0),
+                            'date' => optional($note->created_at)->format('M d, Y'),
+                            'status' => $note->status ?? 'Pending',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            }
+
+            return [
+                'stats' => [
+                    'total_payments' => $totalPayments,
+                    'total_expenses' => $totalExpenses,
+                    'payment_count' => $paymentCount,
+                ],
+                'monthlyPayments' => $monthlyPayments,
+                'recentReturnInvoices' => $recentReturnInvoices,
+                'recentDebitNotes' => $recentDebitNotes,
+                'vendor' => ['name' => $user->name],
             ];
-        }
+        });
 
-        // Dynamic return purchase invoices
-        $recentReturnInvoices = collect();
-        if (class_exists('\\App\Models\\PurchaseReturn')) {
-            $recentReturnInvoices = \App\Models\PurchaseReturn::where('vendor_id', $user->id)
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(function($return) {
-                    return [
-                        'id' => $return->id,
-                        'invoice_number' => $return->return_number ?? 'PUR-RET-' . $return->id,
-                        'amount' => $return->total_amount ?? 0,
-                        'date' => $return->created_at->format('M d, Y'),
-                        'status' => $return->status ?? 'Pending'
-                    ];
-                });
-        }
-
-        // Dynamic debit notes
-        $recentDebitNotes = collect();
-        if (class_exists('\\Workdo\\Account\\Models\\DebitNote')) {
-            $recentDebitNotes = \Workdo\Account\Models\DebitNote::where('vendor_id', $user->id)
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(function($note) {
-                    return [
-                        'id' => $note->id,
-                        'debit_note_number' => $note->debit_note_number ?? 'DN-' . $note->id,
-                        'amount' => $note->total_amount ?? 0,
-                        'date' => $note->created_at->format('M d, Y'),
-                        'status' => $note->status ?? 'Pending'
-                    ];
-                });
-        }
-
-        return Inertia::render('Account/Dashboard/VendorDashboard', [
-            'stats' => [
-                'total_payments' => $totalPayments,
-                'total_expenses' => $totalExpenses,
-                'payment_count' => $paymentCount
-            ],
-            'monthlyPayments' => $monthlyPayments,
-            'recentReturnInvoices' => $recentReturnInvoices,
-            'recentDebitNotes' => $recentDebitNotes,
-            'vendor' => ['name' => $user->name]
-        ]);
+        return Inertia::render('Account/Dashboard/VendorDashboard', $payload);
     }
 
     private function clientDashboard()
     {
         $user = Auth::user();
+        $customerId = (int) $user->id;
+        $companyId = (int) $user->created_by;
+        $payload = $this->rememberDashboardPayload("client:{$customerId}:{$companyId}", function () use ($customerId, $companyId, $user) {
+            $totalPayments = (float) CustomerPayment::where('customer_id', $customerId)->sum('payment_amount');
+            $totalRevenues = (float) Revenue::where('created_by', $companyId)->sum('amount');
+            $paymentCount = CustomerPayment::where('customer_id', $customerId)->count();
 
-        $totalPayments = CustomerPayment::where('customer_id', $user->id)->sum('payment_amount');
-        $totalRevenues = Revenue::where('created_by', $user->created_by)->sum('amount');
-        $paymentCount = CustomerPayment::where('customer_id', $user->id)->count();
-
-        $isDemo = config('app.is_demo');
-        $monthlyPayments = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $date = Carbon::now()->subMonths($i);
-            $monthName = $date->format('M');
-
-            if ($isDemo) {
-                $monthPayments = rand(2000, 15000) + rand(0, 99) / 100;
+            $months = $this->recentMonthDescriptors();
+            if (config('app.is_demo')) {
+                $monthlyPayments = collect($months)->map(function (array $month) {
+                    return [
+                        'month' => $month['label'],
+                        'payments' => rand(2000, 15000) + rand(0, 99) / 100,
+                    ];
+                })->values()->all();
             } else {
-                $monthPayments = CustomerPayment::where('customer_id', $user->id)
-                    ->whereMonth('created_at', $date->month)
-                    ->whereYear('created_at', $date->year)
-                    ->sum('payment_amount');
+                $totalsByPeriod = $this->resolveMonthlyTotals(
+                    'customer_payments',
+                    'payment_amount',
+                    $months,
+                    ['customer_id' => $customerId]
+                );
+                $monthlyPayments = $this->buildMonthlySeries($months, $totalsByPeriod, 'payments');
             }
 
-            $monthlyPayments[] = [
-                'month' => $monthName,
-                'payments' => $monthPayments
+            $recentReturnInvoices = [];
+            if (class_exists('\\App\\Models\\SalesInvoiceReturn')) {
+                $recentReturnInvoices = SalesInvoiceReturn::where('customer_id', $customerId)
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($return) {
+                        return [
+                            'id' => $return->id,
+                            'invoice_number' => $return->return_number ?? 'RET-' . $return->id,
+                            'amount' => (float) ($return->total_amount ?? 0),
+                            'date' => optional($return->created_at)->format('M d, Y'),
+                            'status' => $return->status ?? 'Pending',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            }
+
+            $recentCreditNotes = [];
+            if (class_exists('\\Workdo\\Account\\Models\\CreditNote')) {
+                $recentCreditNotes = \Workdo\Account\Models\CreditNote::where('customer_id', $customerId)
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($note) {
+                        return [
+                            'id' => $note->id,
+                            'credit_note_number' => $note->credit_note_number ?? 'CN-' . $note->id,
+                            'amount' => (float) ($note->total_amount ?? 0),
+                            'date' => optional($note->created_at)->format('M d, Y'),
+                            'status' => $note->status ?? 'Pending',
+                        ];
+                    })
+                    ->values()
+                    ->all();
+            }
+
+            return [
+                'stats' => [
+                    'total_payments' => $totalPayments,
+                    'total_revenues' => $totalRevenues,
+                    'payment_count' => $paymentCount,
+                ],
+                'monthlyPayments' => $monthlyPayments,
+                'recentReturnInvoices' => $recentReturnInvoices,
+                'recentCreditNotes' => $recentCreditNotes,
+                'customer' => ['name' => $user->name],
             ];
-        }
+        });
 
-        // Dynamic return invoices from SalesReturns
-        $recentReturnInvoices = collect();
-        if (class_exists('\\App\Models\\SalesInvoiceReturn')) {
-            $recentReturnInvoices = SalesInvoiceReturn::where('customer_id', $user->id)
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(function($return) {
-                    return [
-                        'id' => $return->id,
-                        'invoice_number' => $return->return_number ?? 'RET-' . $return->id,
-                        'amount' => $return->total_amount ?? 0,
-                        'date' => $return->created_at->format('M d, Y'),
-                        'status' => $return->status ?? 'Pending'
-                    ];
-                });
-        }
-
-        // Dynamic credit notes
-        $recentCreditNotes = collect();
-        if (class_exists('\\Workdo\\Account\\Models\\CreditNote')) {
-            $recentCreditNotes = \Workdo\Account\Models\CreditNote::where('customer_id', $user->id)
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(function($note) {
-                    return [
-                        'id' => $note->id,
-                        'credit_note_number' => $note->credit_note_number ?? 'CN-' . $note->id,
-                        'amount' => $note->total_amount ?? 0,
-                        'date' => $note->created_at->format('M d, Y'),
-                        'status' => $note->status ?? 'Pending'
-                    ];
-                });
-        }
-
-        return Inertia::render('Account/Dashboard/ClientDashboard', [
-            'stats' => [
-                'total_payments' => $totalPayments,
-                'total_revenues' => $totalRevenues,
-                'payment_count' => $paymentCount
-            ],
-            'monthlyPayments' => $monthlyPayments,
-            'recentReturnInvoices' => $recentReturnInvoices,
-            'recentCreditNotes' => $recentCreditNotes,
-            'customer' => ['name' => $user->name]
-        ]);
+        return Inertia::render('Account/Dashboard/ClientDashboard', $payload);
     }
 
     private function staffDashboard()
     {
         $user = Auth::user();
-        $creatorId = $user->created_by;
+        $creatorId = (int) $user->created_by;
+        $payload = $this->rememberDashboardPayload("staff:{$creatorId}", function () use ($creatorId) {
+            $totalClients = Customer::where('created_by', $creatorId)->count();
+            $totalVendors = Vendor::where('created_by', $creatorId)->count();
+            $monthlyRevenue = (float) Revenue::where('created_by', $creatorId)
+                ->whereMonth('created_at', Carbon::now()->month)
+                ->sum('amount');
+            $monthlyExpense = (float) Expense::where('created_by', $creatorId)
+                ->whereMonth('created_at', Carbon::now()->month)
+                ->sum('amount');
 
-        $totalClients = Customer::where('created_by', $creatorId)->count();
-        $totalVendors = Vendor::where('created_by', $creatorId)->count();
-        $monthlyRevenue = Revenue::where('created_by', $creatorId)
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->sum('amount');
-        $monthlyExpense = Expense::where('created_by', $creatorId)
-            ->whereMonth('created_at', Carbon::now()->month)
-            ->sum('amount');
+            $recentActivities = collect()
+                ->merge(Revenue::where('created_by', $creatorId)->latest()->limit(3)->get()->map(function ($item) {
+                    return [
+                        'type' => 'Revenue',
+                        'title' => $item->revenue_number,
+                        'amount' => (float) $item->amount,
+                        'date' => optional($item->created_at)->toDateTimeString(),
+                    ];
+                }))
+                ->merge(Expense::where('created_by', $creatorId)->latest()->limit(3)->get()->map(function ($item) {
+                    return [
+                        'type' => 'Expense',
+                        'title' => $item->expense_number,
+                        'amount' => (float) $item->amount,
+                        'date' => optional($item->created_at)->toDateTimeString(),
+                    ];
+                }))
+                ->sortByDesc('date')
+                ->take(6)
+                ->values()
+                ->all();
 
-        $recentActivities = collect()
-            ->merge(Revenue::where('created_by', $creatorId)->latest()->limit(3)->get()->map(function($item) {
-                return ['type' => 'Revenue', 'title' => $item->revenue_number, 'amount' => $item->amount, 'date' => $item->created_at];
-            }))
-            ->merge(Expense::where('created_by', $creatorId)->latest()->limit(3)->get()->map(function($item) {
-                return ['type' => 'Expense', 'title' => $item->expense_number, 'amount' => $item->amount, 'date' => $item->created_at];
-            }))
-            ->sortByDesc('date')
-            ->take(6)
-            ->values();
+            return [
+                'stats' => [
+                    'total_clients' => $totalClients,
+                    'total_vendors' => $totalVendors,
+                    'monthly_revenue' => $monthlyRevenue,
+                    'monthly_expense' => $monthlyExpense,
+                ],
+                'recentActivities' => $recentActivities,
+            ];
+        });
 
-        return Inertia::render('Account/Dashboard/StaffDashboard', [
-            'stats' => [
-                'total_clients' => $totalClients,
-                'total_vendors' => $totalVendors,
-                'monthly_revenue' => $monthlyRevenue,
-                'monthly_expense' => $monthlyExpense
-            ],
-            'recentActivities' => $recentActivities
-        ]);
+        return Inertia::render('Account/Dashboard/StaffDashboard', $payload);
+    }
+
+    private function rememberDashboardPayload(string $scope, callable $resolver): array
+    {
+        $cacheKey = sprintf(
+            'account:dashboard:%s:%s',
+            self::DASHBOARD_CACHE_VERSION,
+            $scope
+        );
+
+        return Cache::remember(
+            $cacheKey,
+            now()->addSeconds($this->dashboardCacheTtlSeconds()),
+            static fn () => $resolver()
+        );
+    }
+
+    private function dashboardCacheTtlSeconds(): int
+    {
+        return max(30, (int) config('performance.dashboard_cache_ttl_seconds', 120));
+    }
+
+    private function recentMonthDescriptors(int $count = 6): array
+    {
+        $months = [];
+        for ($i = $count - 1; $i >= 0; $i--) {
+            $date = Carbon::now()->subMonths($i);
+            $months[] = [
+                'label' => $date->format('M'),
+                'period' => $date->format('Y-m'),
+            ];
+        }
+
+        return $months;
+    }
+
+    private function resolveMonthlyTotals(
+        string $table,
+        string $amountColumn,
+        array $months,
+        array $where = []
+    ): array {
+        if (empty($months)) {
+            return [];
+        }
+
+        $start = Carbon::createFromFormat('Y-m', $months[0]['period'])->startOfMonth()->toDateTimeString();
+        $end = Carbon::createFromFormat('Y-m', $months[count($months) - 1]['period'])->endOfMonth()->toDateTimeString();
+
+        $query = DB::table($table)->whereBetween('created_at', [$start, $end]);
+        foreach ($where as $column => $value) {
+            $query->where($column, $value);
+        }
+
+        return $query
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as period, COALESCE(SUM({$amountColumn}),0) as total")
+            ->groupBy('period')
+            ->pluck('total', 'period')
+            ->map(fn ($value) => (float) $value)
+            ->all();
+    }
+
+    private function buildMonthlySeries(array $months, array $totalsByPeriod, string $valueKey): array
+    {
+        return collect($months)->map(function (array $month) use ($totalsByPeriod, $valueKey) {
+            return [
+                'month' => $month['label'],
+                $valueKey => (float) ($totalsByPeriod[$month['period']] ?? 0),
+            ];
+        })->values()->all();
     }
 }
