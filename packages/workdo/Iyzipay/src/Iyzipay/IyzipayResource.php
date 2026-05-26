@@ -27,7 +27,7 @@ class IyzipayResource extends ApiResource
         return $header;
     }
 
-    protected static function getHttpHeadersV2($uri, Request $request = null, Options $options)
+    protected static function getHttpHeadersV2($uri, Options $options, ?Request $request = null)
     {
         $header = array(
             "Accept: application/json",
@@ -35,7 +35,7 @@ class IyzipayResource extends ApiResource
         );
 
         $rnd = uniqid();
-        array_push($header, "Authorization: " . self::prepareAuthorizationStringV2($uri, $request, $options, $rnd));
+        array_push($header, "Authorization: " . self::prepareAuthorizationStringV2($uri, $options, $rnd, $request));
         array_push($header, "x-iyzi-client-version: " . "iyzipay-php-2.0.43");
 
         return $header;
@@ -47,7 +47,7 @@ class IyzipayResource extends ApiResource
         return vsprintf("IYZWS %s:%s", array($options->getApiKey(), $authContent));
     }
 
-    protected static function prepareAuthorizationStringV2($uri, Request $request = null, Options $options, $rnd)
+    protected static function prepareAuthorizationStringV2($uri, Options $options, $rnd, ?Request $request = null)
     {
         $hash = IyziAuthV2Generator::generateAuthContent($uri, $options->getApiKey(), $options->getSecretKey(), $rnd, $request);
 
