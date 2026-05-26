@@ -9,6 +9,7 @@ PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php8.2-fpm.service}"
 QUEUE_SERVICE="${QUEUE_SERVICE:-indicoerp-queue.service}"
 SCHEDULER_SERVICE="${SCHEDULER_SERVICE:-indicoerp-scheduler.service}"
 REQUIRE_QUEUE="${REQUIRE_QUEUE:-1}"
+SENSITIVE_PATHS_CSV="${SENSITIVE_PATHS_CSV:-/.env,/.git/config,/storage/logs/laravel.log,/composer.json}"
 
 cd "$APP_DIR"
 
@@ -117,6 +118,23 @@ else
   echo "FAIL: HTTP inesperado (${HTTP_CODE}) em ${APP_URL}"
   FAILURES=$((FAILURES + 1))
 fi
+echo
+
+IFS=',' read -r -a SENSITIVE_PATHS <<< "$SENSITIVE_PATHS_CSV"
+echo "==> Sensitive path checks"
+for sensitive_path in "${SENSITIVE_PATHS[@]}"; do
+  sensitive_path="$(echo "$sensitive_path" | xargs)"
+  [ -n "$sensitive_path" ] || continue
+
+  SENSITIVE_HTTP_CODE="$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 20 "${APP_URL%/}${sensitive_path}" || true)"
+  if [[ "$SENSITIVE_HTTP_CODE" =~ ^(403|404)$ ]]; then
+    echo "OK: ${sensitive_path} bloqueado com HTTP ${SENSITIVE_HTTP_CODE}"
+  else
+    echo "FAIL: ${sensitive_path} respondeu com HTTP ${SENSITIVE_HTTP_CODE}"
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+echo
 
 if php artisan migrate:status >/tmp/indicoerp_migrate_status.txt 2>/tmp/indicoerp_migrate_status.err; then
   echo "OK: migrate:status executado"

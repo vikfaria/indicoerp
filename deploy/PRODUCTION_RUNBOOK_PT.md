@@ -189,3 +189,24 @@ Recomendação operacional:
 - correr carga a partir de uma máquina externa ao VPS;
 - começar em `10` utilizadores, depois `25`, e só depois `50`;
 - comparar `p95`, taxa de erro e tempo de login antes de decidir upgrade do servidor.
+
+## 11) Hardening Nginx contra probes comuns
+
+Para aplicar bloqueio a paths sensíveis no servidor atual:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/09_apply_nginx_hardening_indicoerp.sh
+```
+
+O script instala um snippet versionado e injeta o `include` no vhost do domínio.
+
+Depois valide:
+
+```bash
+curl -I https://indicoerp.com/.env
+curl -I https://indicoerp.com/.git/config
+curl -I https://indicoerp.com/storage/logs/laravel.log
+```
+
+O esperado é `403` ou `404`.

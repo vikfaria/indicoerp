@@ -5,12 +5,19 @@ DOMAIN="${DOMAIN:-indicoerp.com}"
 APP_DIR="${APP_DIR:-/var/www/hrm-saas}"
 PHP_FPM_SOCK="${PHP_FPM_SOCK:-/run/php/php8.3-fpm.sock}"
 NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARDENING_SNIPPET_SOURCE="${SCRIPT_DIR}/../nginx/indicoerp-hardening-snippet.conf"
+HARDENING_SNIPPET_TARGET="/etc/nginx/snippets/indicoerp-hardening.conf"
+
+mkdir -p /etc/nginx/snippets
+cp "$HARDENING_SNIPPET_SOURCE" "$HARDENING_SNIPPET_TARGET"
 
 cat > "$NGINX_SITE_PATH" <<EOF
 server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN} www.${DOMAIN};
+    include ${HARDENING_SNIPPET_TARGET};
 
     root ${APP_DIR}/current/public;
     index index.php index.html;
@@ -29,10 +36,6 @@ server {
         fastcgi_pass unix:${PHP_FPM_SOCK};
         fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
         include fastcgi_params;
-    }
-
-    location ~ /\.(?!well-known).* {
-        deny all;
     }
 }
 EOF
