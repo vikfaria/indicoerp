@@ -210,3 +210,40 @@ curl -I https://indicoerp.com/storage/logs/laravel.log
 ```
 
 O esperado é `403` ou `404`.
+
+## 12) Tuning runtime (PHP-FPM + Swap)
+
+Aplicar tuning conservador de PHP-FPM no servidor atual:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/10_tune_php_fpm_indicoerp.sh
+```
+
+Variáveis opcionais:
+
+- `PM_MAX_CHILDREN` (default `12`)
+- `PM_START_SERVERS` (default `4`)
+- `PM_MIN_SPARE_SERVERS` (default `2`)
+- `PM_MAX_SPARE_SERVERS` (default `6`)
+- `PM_MAX_REQUESTS` (default `500`)
+
+Criar swap de segurança (default `2G`):
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/11_setup_swap_indicoerp.sh
+```
+
+Variáveis opcionais:
+
+- `SWAP_SIZE_GB` (default `2`)
+- `SWAPPINESS` (default `10`)
+- `VFS_CACHE_PRESSURE` (default `50`)
+
+Validar após tuning:
+
+```bash
+bash deploy/scripts/07_server_performance_audit.sh
+LOG_SINCE='30 min ago' bash deploy/scripts/06_post_deploy_healthcheck_indicoerp.sh
+```
