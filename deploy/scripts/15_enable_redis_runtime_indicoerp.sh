@@ -39,12 +39,18 @@ fi
 BACKUP_DIR="/var/backups/indicoerp/env"
 mkdir -p "$BACKUP_DIR"
 
+LAST_BACKUP_FILE=""
+ROLLBACK_ON_ERROR=0
+
 set_env_value() {
   local key="$1"
   local value="$2"
+  local escaped_value
+
+  escaped_value="$(printf '%s' "$value" | sed -e 's/[\/&|]/\\&/g')"
 
   if grep -Eq "^${key}=" "$ENV_FILE"; then
-    sed -i -E "s|^${key}=.*|${key}=${value}|g" "$ENV_FILE"
+    sed -i -E "s|^${key}=.*|${key}=${escaped_value}|g" "$ENV_FILE"
   else
     printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
   fi
@@ -58,6 +64,20 @@ restart_if_exists() {
   fi
 }
 
+restore_runtime_backup() {
+  if [ "$ROLLBACK_ON_ERROR" -ne 1 ] || [ -z "$LAST_BACKUP_FILE" ] || [ ! -f "$LAST_BACKUP_FILE" ]; then
+    return 0
+  fi
+
+  echo "AVISO: falha detectada. A repor .env anterior a partir de $LAST_BACKUP_FILE"
+  cp "$LAST_BACKUP_FILE" "$ENV_FILE"
+  "$PHP_BIN" artisan optimize:clear >/dev/null 2>&1 || true
+  "$PHP_BIN" artisan config:cache >/dev/null 2>&1 || true
+  restart_if_exists "$PHP_FPM_SERVICE" || true
+  restart_if_exists "$QUEUE_SERVICE" || true
+  restart_if_exists "$SCHEDULER_SERVICE" || true
+}
+
 validate_redis_client() {
   if [ "$REDIS_CLIENT_VALUE" = "phpredis" ]; then
     if ! "$PHP_BIN" -m | grep -qi '^redis$'; then
@@ -66,6 +86,115 @@ validate_redis_client() {
       exit 1
     fi
   fi
+}
+
+redis_cli_available() {
+  command -v redis-cli >/dev/null 2>&1
+}
+
+normalize_redis_password_value() {
+  local value="${1:-}"
+
+  case "$value" in
+    ""|"null"|"NULL"|"auto"|"AUTO")
+      echo ""
+      ;;
+    *)
+      echo "$value"
+      ;;
+  esac
+}
+
+redis_ping() {
+  local password="${1:-}"
+  local output
+
+  if ! redis_cli_available; then
+    echo "ERRO: redis-cli nao encontrado no servidor."
+    return 1
+  fi
+
+  if [ -n "$password" ]; then
+    output="$(redis-cli --no-auth-warning -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" -a "$password" ping 2>&1 || true)"
+  else
+    output="$(redis-cli -h "$REDIS_HOST_VALUE" -p "$REDIS_PORT_VALUE" ping 2>&1 || true)"
+  fi
+
+  echo "$output"
+}
+
+discover_redis_password_from_aclfile() {
+  local acl_file="$1"
+  local line
+
+  [ -f "$acl_file" ] || return 1
+
+  line="$(grep -E '^user[[:space:]]+default[[:space:]]+' "$acl_file" | head -n 1 || true)"
+  [ -n "$line" ] || return 1
+
+  echo "$line" | sed -nE 's/.*[[:space:]]>([^[:space:]]+).*/\1/p' | head -n 1
+}
+
+discover_redis_password_from_configs() {
+  local config_file acl_file password
+  local candidates=(
+    /etc/redis/redis.conf
+    /etc/redis/redis-server.conf
+    /etc/valkey/valkey.conf
+  )
+
+  for config_file in "${candidates[@]}"; do
+    [ -f "$config_file" ] || continue
+
+    password="$(sed -nE 's/^[[:space:]]*requirepass[[:space:]]+(.+)$/\1/p' "$config_file" | tail -n 1 | tr -d '"' | xargs || true)"
+    if [ -n "$password" ]; then
+      echo "$password"
+      return 0
+    fi
+
+    acl_file="$(sed -nE 's/^[[:space:]]*aclfile[[:space:]]+(.+)$/\1/p' "$config_file" | tail -n 1 | tr -d '"' | xargs || true)"
+    if [ -n "$acl_file" ]; then
+      password="$(discover_redis_password_from_aclfile "$acl_file" || true)"
+      if [ -n "$password" ]; then
+        echo "$password"
+        return 0
+      fi
+    fi
+  done
+
+  return 1
+}
+
+resolve_redis_password() {
+  local normalized_password ping_output discovered_password
+
+  normalized_password="$(normalize_redis_password_value "$REDIS_PASSWORD_VALUE")"
+  ping_output="$(redis_ping "$normalized_password")"
+
+  if echo "$ping_output" | grep -q '^PONG'; then
+    REDIS_PASSWORD_VALUE="${normalized_password:-null}"
+    return 0
+  fi
+
+  if ! echo "$ping_output" | grep -qi 'NOAUTH\|authentication required'; then
+    echo "ERRO: falha a ligar ao Redis em ${REDIS_HOST_VALUE}:${REDIS_PORT_VALUE}"
+    echo "$ping_output"
+    return 1
+  fi
+
+  discovered_password="$(discover_redis_password_from_configs || true)"
+  if [ -n "$discovered_password" ]; then
+    ping_output="$(redis_ping "$discovered_password")"
+    if echo "$ping_output" | grep -q '^PONG'; then
+      REDIS_PASSWORD_VALUE="$discovered_password"
+      echo "INFO: password Redis descoberta automaticamente a partir da configuracao local."
+      return 0
+    fi
+  fi
+
+  echo "ERRO: Redis exige autenticacao e nao foi possivel validar uma password."
+  echo "Defina REDIS_PASSWORD_VALUE='a-password-certa' e volte a executar."
+  return 1
 }
 
 smoke_test_runtime() {
@@ -97,7 +226,12 @@ apply_runtime_config() {
 
 enable_runtime() {
   validate_redis_client
-  cp "$ENV_FILE" "$BACKUP_DIR/.env.$(date +%F_%H%M%S).bak"
+  resolve_redis_password
+
+  LAST_BACKUP_FILE="$BACKUP_DIR/.env.$(date +%F_%H%M%S).bak"
+  cp "$ENV_FILE" "$LAST_BACKUP_FILE"
+  ROLLBACK_ON_ERROR=1
+  trap restore_runtime_backup ERR
 
   apply_runtime_config
   set_env_value "CACHE_DRIVER" "redis"
@@ -113,10 +247,14 @@ enable_runtime() {
   restart_if_exists "$SCHEDULER_SERVICE"
 
   smoke_test_runtime
+
+  ROLLBACK_ON_ERROR=0
+  trap - ERR
 }
 
 disable_runtime() {
-  cp "$ENV_FILE" "$BACKUP_DIR/.env.$(date +%F_%H%M%S).bak"
+  LAST_BACKUP_FILE="$BACKUP_DIR/.env.$(date +%F_%H%M%S).bak"
+  cp "$ENV_FILE" "$LAST_BACKUP_FILE"
 
   set_env_value "CACHE_DRIVER" "file"
   set_env_value "CACHE_STORE" "file"
@@ -139,6 +277,8 @@ echo 'cache.default=' . config('cache.default') . PHP_EOL;
 }
 
 status_runtime() {
+  local configured_password
+
   "$PHP_BIN" artisan tinker --execute="
 echo 'session.driver=' . config('session.driver') . PHP_EOL;
 echo 'session.connection=' . (config('session.connection') ?? '') . PHP_EOL;
@@ -148,6 +288,13 @@ echo 'redis.client=' . config('database.redis.client') . PHP_EOL;
 echo 'redis.default.host=' . config('database.redis.default.host') . PHP_EOL;
 echo 'redis.cache.db=' . config('database.redis.cache.database') . PHP_EOL;
 " 
+
+  if redis_cli_available; then
+    local ping_output
+    configured_password="$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+    ping_output="$(redis_ping "$(normalize_redis_password_value "$configured_password")")"
+    echo "redis.ping=${ping_output}"
+  fi
 }
 
 case "$ACTION" in
@@ -165,4 +312,3 @@ case "$ACTION" in
     exit 1
     ;;
 esac
-
