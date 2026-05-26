@@ -247,3 +247,46 @@ Validar após tuning:
 bash deploy/scripts/07_server_performance_audit.sh
 LOG_SINCE='30 min ago' bash deploy/scripts/06_post_deploy_healthcheck_indicoerp.sh
 ```
+
+## 13) Slow query log (diagnóstico DB)
+
+Ativar e verificar slow query log:
+
+```bash
+cd /var/www/indicoerp/repo
+export DB_PASS='COLOCAR_PASSWORD_DB'
+bash deploy/scripts/12_mysql_slowlog_control_indicoerp.sh enable
+```
+
+Ver status sem alterar:
+
+```bash
+bash deploy/scripts/12_mysql_slowlog_control_indicoerp.sh status
+```
+
+Relatório rápido das queries lentas:
+
+```bash
+bash deploy/scripts/13_mysql_slowlog_report_indicoerp.sh
+```
+
+Desativar após coleta:
+
+```bash
+bash deploy/scripts/12_mysql_slowlog_control_indicoerp.sh disable
+```
+
+## 14) Teste de carga em matriz (10/25/50 VUs)
+
+Executar cenários sequenciais e gerar resumo markdown:
+
+```bash
+cd /var/www/indicoerp/repo
+K6_BASE_URL=https://indicoerp.com K6_DURATION=2m bash deploy/scripts/14_run_k6_matrix_indicoerp.sh
+```
+
+Personalizar níveis de carga:
+
+```bash
+K6_VUS_MATRIX='10,20,30' K6_DURATION=2m bash deploy/scripts/14_run_k6_matrix_indicoerp.sh
+```

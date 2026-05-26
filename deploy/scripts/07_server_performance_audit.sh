@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/var/www/indicoerp/repo}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php8.2-fpm.service}"
 PHP_FPM_POOL_CONF="${PHP_FPM_POOL_CONF:-/etc/php/8.2/fpm/pool.d/www.conf}"
 MEMORY_RESERVE_MB="${MEMORY_RESERVE_MB:-2048}"
+PHP_FPM_WORKER_RSS_MIN_MB="${PHP_FPM_WORKER_RSS_MIN_MB:-64}"
 
 to_mb_from_kb() {
   awk -v value_kb="$1" 'BEGIN { printf "%.1f", value_kb / 1024 }'
@@ -69,6 +70,13 @@ if [ -n "$worker_rss_kb" ]; then
   worker_count="$(echo "$worker_rss_kb" | awk '{print $1}')"
   worker_avg_kb="$(echo "$worker_rss_kb" | awk '{print $2}')"
   worker_max_kb="$(echo "$worker_rss_kb" | awk '{print $3}')"
+  worker_min_floor_kb="$(( PHP_FPM_WORKER_RSS_MIN_MB * 1024 ))"
+  worker_sizing_kb="$worker_max_kb"
+
+  if [ "$worker_sizing_kb" -lt "$worker_min_floor_kb" ]; then
+    worker_sizing_kb="$worker_min_floor_kb"
+  fi
+
   total_mem_mb="$(awk '/MemTotal/ { printf "%d", $2 / 1024 }' /proc/meminfo)"
   usable_mem_mb=$(( total_mem_mb - MEMORY_RESERVE_MB ))
 
@@ -76,11 +84,12 @@ if [ -n "$worker_rss_kb" ]; then
     usable_mem_mb=1024
   fi
 
-  recommended_children="$(awk -v usable_mb="$usable_mem_mb" -v max_kb="$worker_max_kb" 'BEGIN { if (max_kb <= 0) { print 0 } else { printf "%d", (usable_mb * 1024) / max_kb } }')"
+  recommended_children="$(awk -v usable_mb="$usable_mem_mb" -v max_kb="$worker_sizing_kb" 'BEGIN { if (max_kb <= 0) { print 0 } else { printf "%d", (usable_mb * 1024) / max_kb } }')"
 
   echo "Workers ativos: $worker_count"
   echo "RSS medio por worker: $(to_mb_from_kb "$worker_avg_kb") MB"
   echo "RSS maximo observado: $(to_mb_from_kb "$worker_max_kb") MB"
+  echo "RSS usado no calculo (com minimo ${PHP_FPM_WORKER_RSS_MIN_MB} MB): $(to_mb_from_kb "$worker_sizing_kb") MB"
   echo "Memoria reservada ao SO/DB/cache: ${MEMORY_RESERVE_MB} MB"
   echo "Recomendacao inicial pm.max_children: ${recommended_children}"
 else
