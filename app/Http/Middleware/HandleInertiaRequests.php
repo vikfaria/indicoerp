@@ -13,6 +13,58 @@ use App\Classes\Module;
 class HandleInertiaRequests extends Middleware
 {
     /**
+     * Whitelisted admin setting keys for public (guest) pages.
+     * This keeps Inertia payloads small on high-traffic routes like / and /login.
+     */
+    private const GUEST_ADMIN_SETTING_KEYS = [
+        'defaultLanguage',
+        'default_language',
+        'logo_dark',
+        'logo_light',
+        'favicon',
+        'titleText',
+        'footerText',
+        'sidebarVariant',
+        'sidebarStyle',
+        'layoutDirection',
+        'themeMode',
+        'themeColor',
+        'customColor',
+        'sidebar_variant',
+        'sidebar_style',
+        'layout_direction',
+        'theme_mode',
+        'theme_color',
+        'custom_color',
+        'currencySymbol',
+        'currencySymbolSpace',
+        'currencySymbolPosition',
+        'decimalFormat',
+        'decimalSeparator',
+        'currency_symbol',
+        'currency_symbol_space',
+        'currency_symbol_position',
+        'decimal_format',
+        'decimal_separator',
+        'enableCookiePopup',
+        'strictlyNecessaryCookies',
+        'cookieTitle',
+        'cookieDescription',
+        'strictlyCookieTitle',
+        'strictlyCookieDescription',
+        'contactUsDescription',
+        'contactUsUrl',
+        'enable_cookie_popup',
+        'strictly_necessary_cookies',
+        'cookie_title',
+        'cookie_description',
+        'strictly_cookie_title',
+        'strictly_cookie_description',
+        'contact_us_description',
+        'contact_us_url',
+    ];
+
+    /**
      * The root template that is loaded on the first page visit.
      *
      * @var string
@@ -39,7 +91,40 @@ class HandleInertiaRequests extends Middleware
         }
 
         $user = $request->user();
-        $locale = $user?->lang ?? $this->getSuperAdminLang();
+
+        if (!$user) {
+            $adminSettings = $this->getGuestAdminSettings();
+            $locale = $this->resolveGuestLocale($adminSettings);
+
+            if (config('app.is_demo') && Cookie::get('language')) {
+                $locale = Cookie::get('language');
+            }
+
+            app()->setLocale($locale);
+
+            return [
+                ...parent::share($request),
+                'auth' => [
+                    'user' => ['activatedPackages' => []],
+                    'impersonating' => false,
+                    'lang' => $locale,
+                ],
+                'flash' => [
+                    'success' => $request->session()->get('success'),
+                    'error' => $request->session()->get('error'),
+                ],
+                'packages' => [],
+                'adminAllSetting' => $adminSettings,
+                'companyAllSetting' => [],
+                'imageUrlPrefix' =>  getImageUrlPrefix(),
+                'baseUrl' => url('/'),
+                'currencies' => [],
+                'defaultLanguages' => fn () => $this->getDefaultLanguages(),
+                'is_demo' => config('app.is_demo', false),
+            ];
+        }
+
+        $locale = $user->lang ?? $this->getSuperAdminLang();
 
         if (config('app.is_demo') && Cookie::get('language')) {
             $locale = Cookie::get('language');
@@ -47,21 +132,19 @@ class HandleInertiaRequests extends Middleware
 
         app()->setLocale($locale);
 
-        $activatedPackages = $user ? ActivatedModule($user->id) : [];
+        $activatedPackages = ActivatedModule($user->id);
 
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $user
-                    ? array_merge(
-                        $user->toArray(),
-                        [
-                            'permissions' => $this->getUserPermissions($user),
-                            'roles' => $this->getUserRoles($user),
-                            'activatedPackages' => $activatedPackages,
-                        ]
-                    )
-                    : ['activatedPackages' => []],
+                'user' => array_merge(
+                    $user->toArray(),
+                    [
+                        'permissions' => $this->getUserPermissions($user),
+                        'roles' => $this->getUserRoles($user),
+                        'activatedPackages' => $activatedPackages,
+                    ]
+                ),
                 'impersonating' => $request->session()->has('impersonator_id'),
                 'lang' => $locale,
             ],
@@ -128,6 +211,23 @@ class HandleInertiaRequests extends Middleware
             $languages = json_decode(file_get_contents($languageFile), true) ?? [];
             return array_values($languages);
         });
+    }
+
+    private function getGuestAdminSettings(): array
+    {
+        $settings = getAdminAllSetting(true);
+        if (!$settings) {
+            return [];
+        }
+
+        return array_intersect_key($settings, array_flip(self::GUEST_ADMIN_SETTING_KEYS));
+    }
+
+    private function resolveGuestLocale(array $adminSettings): string
+    {
+        $locale = $adminSettings['defaultLanguage'] ?? $adminSettings['default_language'] ?? 'en';
+
+        return is_string($locale) && $locale !== '' ? $locale : 'en';
     }
 
     /**
