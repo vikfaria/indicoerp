@@ -220,6 +220,37 @@ cd /var/www/indicoerp/repo
 bash deploy/scripts/10_tune_php_fpm_indicoerp.sh
 ```
 
+## 13) Runtime Redis para cache e sessao
+
+Se o sistema ainda degrada em concorrencia, trocar `cache` e `session` de `file` para `redis`:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/15_enable_redis_runtime_indicoerp.sh enable
+```
+
+Validar estado actual:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/15_enable_redis_runtime_indicoerp.sh status
+```
+
+Se for preciso reverter rapidamente para `file`:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/15_enable_redis_runtime_indicoerp.sh disable
+```
+
+Depois da troca, repetir:
+
+```bash
+LOG_SINCE='30 min ago' bash deploy/scripts/06_post_deploy_healthcheck_indicoerp.sh
+K6_BASE_URL=https://indicoerp.com K6_DURATION=2m K6_VUS_MATRIX='25,50' \
+bash deploy/scripts/14_run_k6_matrix_indicoerp.sh
+```
+
 Variáveis opcionais:
 
 - `PM_MAX_CHILDREN` (default `12`)

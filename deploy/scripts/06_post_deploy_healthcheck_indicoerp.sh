@@ -155,6 +155,19 @@ else
 fi
 echo
 
+if php artisan tinker --execute="
+echo 'session.driver=' . config('session.driver') . PHP_EOL;
+echo 'cache.default=' . config('cache.default') . PHP_EOL;
+echo 'queue.default=' . config('queue.default') . PHP_EOL;
+" >/tmp/indicoerp_runtime_drivers.txt 2>/tmp/indicoerp_runtime_drivers.err; then
+  echo "==> Runtime drivers"
+  cat /tmp/indicoerp_runtime_drivers.txt
+else
+  echo "WARN: nao foi possivel obter runtime drivers"
+  cat /tmp/indicoerp_runtime_drivers.err || true
+fi
+echo
+
 if ! assert_unit_active "$NGINX_SERVICE" 1; then
   FAILURES=$((FAILURES + 1))
 fi
