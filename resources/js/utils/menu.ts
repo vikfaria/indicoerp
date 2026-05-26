@@ -10,6 +10,9 @@ const packageMenuModules = import.meta.glob(
     { eager: true }
 );
 
+let cachedMenuKey: string | null = null;
+let cachedMenuItems: NavItem[] = [];
+
 // Get role-based core menu items
 const getCoreMenuItems = (userRoles: string[], t: (key: string) => string): NavItem[] => {
     if (userRoles.includes('superadmin')) {
@@ -45,10 +48,7 @@ const getPackageMenuItems = (userRoles: string[], activatedPackages: string[], t
 };
 
 // Get custom menu items from database
-const getCustomMenuItems = (userRoles: string[], t: (key: string) => string): NavItem[] => {
-    const { auth } = usePage().props as any;
-    const customMenus = auth?.customMenus || [];
-    
+const getCustomMenuItems = (customMenus: any[]): NavItem[] => {
     return customMenus.map((menu: any) => {
         // Convert string icon to Lucide icon component
         let iconComponent = null;
@@ -125,16 +125,31 @@ const filterByPermission = (items: NavItem[], userPermissions: string[]): NavIte
 // Main function to get filtered menu items
 export const allMenuItems = (): NavItem[] => {
     const { auth } = usePage().props as any;
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const userPermissions = auth?.user?.permissions || [];
     const userRoles = auth?.user?.roles || [];
     const activatedPackages = auth?.user?.activatedPackages || [];
+    const customMenus = auth?.customMenus || [];
+
+    const menuCacheKey = [
+        i18n.language,
+        userRoles.join('|'),
+        userPermissions.join('|'),
+        activatedPackages.join('|'),
+        customMenus
+            .map((menu: any) => `${menu.id ?? menu.name ?? menu.title}:${menu.icon ?? ''}:${menu.parent ?? ''}:${menu.order ?? ''}:${menu.permission ?? ''}`)
+            .join(';')
+    ].join('::');
+
+    if (cachedMenuKey === menuCacheKey) {
+        return cachedMenuItems;
+    }
 
     const coreMenuItems = getCoreMenuItems(userRoles, t);
 
     const packageMenuItems = getPackageMenuItems(userRoles, activatedPackages, t);
     
-    const customMenuItems = getCustomMenuItems(userRoles, t);
+    const customMenuItems = getCustomMenuItems(customMenus);
     
     // Separate custom menus into parents and children
     const customParentMenus = customMenuItems.filter(menu => !menu.parent);
@@ -150,6 +165,8 @@ export const allMenuItems = (): NavItem[] => {
     const sortedMenuItems = finalGroupedMenuItems.sort((a, b) => (a.order || 999) - (b.order || 999));
 
     const finalMenuItems = filterByPermission(sortedMenuItems, userPermissions);
+    cachedMenuKey = menuCacheKey;
+    cachedMenuItems = finalMenuItems;
 
     return finalMenuItems;
 };

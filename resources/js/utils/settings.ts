@@ -14,6 +14,9 @@ const companySettingModules = import.meta.glob(
     { eager: true }
 );
 
+let cachedSettingsKey: string | null = null;
+let cachedSettingsItems: SettingMenuItem[] = [];
+
 // Get role-based core settings items
 const getCoreSettingsItems = (userRoles: string[], t: (key: string) => string): SettingMenuItem[] => {
     if (userRoles.includes('superadmin')) {
@@ -55,10 +58,21 @@ const filterByPermission = (items: SettingMenuItem[], userPermissions: string[])
 // Main function to get filtered settings items
 export const allSettingsItems = (): SettingMenuItem[] => {
     const { auth } = usePage().props as any;
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const userPermissions = auth?.user?.permissions || [];
     const userRoles = auth?.user?.roles || [];
     const activatedPackages = auth?.user?.activatedPackages || [];
+
+    const settingsCacheKey = [
+        i18n.language,
+        userRoles.join('|'),
+        userPermissions.join('|'),
+        activatedPackages.join('|')
+    ].join('::');
+
+    if (cachedSettingsKey === settingsCacheKey) {
+        return cachedSettingsItems;
+    }
 
     const coreSettingsItems = getCoreSettingsItems(userRoles, t);
     const packageSettingsItems = getPackageSettingsItems(userRoles, activatedPackages, t);
@@ -67,6 +81,9 @@ export const allSettingsItems = (): SettingMenuItem[] => {
 
     // Sort by order
     const sortedItems = allItems.sort((a, b) => (a.order || 999) - (b.order || 999));
+    const finalItems = filterByPermission(sortedItems, userPermissions);
+    cachedSettingsKey = settingsCacheKey;
+    cachedSettingsItems = finalItems;
 
-    return filterByPermission(sortedItems, userPermissions);
+    return finalItems;
 };
