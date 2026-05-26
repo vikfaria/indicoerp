@@ -11,6 +11,10 @@ import { Toaster } from "sonner";
 import { Suspense } from "react";
 import axios from "axios";
 
+const pageModules = {
+    ...import.meta.glob('./pages/**/*.tsx'),
+    ...import.meta.glob('../../packages/workdo/*/src/Resources/js/Pages/**/*.tsx')
+};
 
 // Silent CSRF token refresh
 const refreshToken = async () => {
@@ -93,22 +97,17 @@ createInertiaApp({
         return `${title} - ${appName}`;
     },
     resolve: (name) => {
-        const allPages = {
-            ...import.meta.glob('./pages/**/*.tsx'),
-            ...import.meta.glob('../../packages/workdo/*/src/Resources/js/Pages/**/*.tsx')
-        };
-
         // Try pages directory (lowercase p)
         const lowerPagePath = `./pages/${name}.tsx`;
-        if (allPages[lowerPagePath]) {
-            return allPages[lowerPagePath]();
+        if (pageModules[lowerPagePath]) {
+            return pageModules[lowerPagePath]();
         }
 
         // Try package pages
         const [packageName, ...pagePath] = name.split('/');
         const packagePagePath = `../../packages/workdo/${packageName}/src/Resources/js/Pages/${pagePath.join('/')}.tsx`;
-        if (allPages[packagePagePath]) {
-            return allPages[packagePagePath]();
+        if (pageModules[packagePagePath]) {
+            return pageModules[packagePagePath]();
         }
 
         throw new Error(`Page not found: ${name}`);
