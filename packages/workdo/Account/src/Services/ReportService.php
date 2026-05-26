@@ -2296,34 +2296,50 @@ class ReportService
     {
         $asOfDate = $filters['as_of_date'] ?? date('Y-m-d');
         $showZeroBalances = $filters['show_zero_balances'] ?? false;
+        $companyId = $this->companyId();
 
         $customers = DB::table('users')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('type', 'client')
             ->select('id', 'name', 'email')
             ->get();
+
+        $customerIds = $customers->pluck('id')->all();
+        $invoiceTotalsByCustomer = collect();
+        $returnTotalsByCustomer = collect();
+
+        if (!empty($customerIds)) {
+            $invoiceTotalsByCustomer = DB::table('sales_invoices')
+                ->where('created_by', $companyId)
+                ->whereIn('customer_id', $customerIds)
+                ->whereIn('status', ['posted', 'partial', 'paid'])
+                ->whereDate('invoice_date', '<=', $asOfDate)
+                ->selectRaw('customer_id, COALESCE(SUM(total_amount),0) as total_invoiced, COALESCE(SUM(balance_amount),0) as balance')
+                ->groupBy('customer_id')
+                ->get()
+                ->keyBy('customer_id');
+
+            $returnTotalsByCustomer = DB::table('sales_invoice_returns')
+                ->where('created_by', $companyId)
+                ->whereIn('customer_id', $customerIds)
+                ->whereIn('status', ['approved', 'completed'])
+                ->whereDate('return_date', '<=', $asOfDate)
+                ->selectRaw('customer_id, COALESCE(SUM(total_amount),0) as total_returns')
+                ->groupBy('customer_id')
+                ->get()
+                ->keyBy('customer_id');
+        }
 
         $balances = [];
         $totalBalance = 0;
 
         foreach ($customers as $customer) {
-            $invoiced = DB::table('sales_invoices')
-                ->where('customer_id', $customer->id)
-                ->whereIn('status', ['posted', 'partial', 'paid'])
-                ->where('invoice_date', '<=', $asOfDate)
-                ->sum('total_amount');
+            $invoiceTotals = $invoiceTotalsByCustomer->get($customer->id);
+            $returnTotals = $returnTotalsByCustomer->get($customer->id);
 
-            $returns = DB::table('sales_invoice_returns')
-                ->where('customer_id', $customer->id)
-                ->whereIn('status', ['approved', 'completed'])
-                ->where('return_date', '<=', $asOfDate)
-                ->sum('total_amount');
-
-            $balance = DB::table('sales_invoices')
-                ->where('customer_id', $customer->id)
-                ->whereIn('status', ['posted', 'partial', 'paid'])
-                ->where('invoice_date', '<=', $asOfDate)
-                ->sum('balance_amount');
+            $invoiced = (float) ($invoiceTotals->total_invoiced ?? 0);
+            $returns = (float) ($returnTotals->total_returns ?? 0);
+            $balance = (float) ($invoiceTotals->balance ?? 0);
 
             $netInvoiced = $invoiced - $returns;
             $paid = $invoiced - $balance;
@@ -2359,34 +2375,50 @@ class ReportService
     {
         $asOfDate = $filters['as_of_date'] ?? date('Y-m-d');
         $showZeroBalances = $filters['show_zero_balances'] ?? false;
+        $companyId = $this->companyId();
 
         $vendors = DB::table('users')
-            ->where('created_by', creatorId())
+            ->where('created_by', $companyId)
             ->where('type', 'vendor')
             ->select('id', 'name', 'email')
             ->get();
+
+        $vendorIds = $vendors->pluck('id')->all();
+        $invoiceTotalsByVendor = collect();
+        $returnTotalsByVendor = collect();
+
+        if (!empty($vendorIds)) {
+            $invoiceTotalsByVendor = DB::table('purchase_invoices')
+                ->where('created_by', $companyId)
+                ->whereIn('vendor_id', $vendorIds)
+                ->whereIn('status', ['posted', 'partial', 'paid'])
+                ->whereDate('invoice_date', '<=', $asOfDate)
+                ->selectRaw('vendor_id, COALESCE(SUM(total_amount),0) as total_billed, COALESCE(SUM(balance_amount),0) as balance')
+                ->groupBy('vendor_id')
+                ->get()
+                ->keyBy('vendor_id');
+
+            $returnTotalsByVendor = DB::table('purchase_returns')
+                ->where('created_by', $companyId)
+                ->whereIn('vendor_id', $vendorIds)
+                ->whereIn('status', ['approved', 'completed'])
+                ->whereDate('return_date', '<=', $asOfDate)
+                ->selectRaw('vendor_id, COALESCE(SUM(total_amount),0) as total_returns')
+                ->groupBy('vendor_id')
+                ->get()
+                ->keyBy('vendor_id');
+        }
 
         $balances = [];
         $totalBalance = 0;
 
         foreach ($vendors as $vendor) {
-            $billed = DB::table('purchase_invoices')
-                ->where('vendor_id', $vendor->id)
-                ->whereIn('status', ['posted', 'partial', 'paid'])
-                ->where('invoice_date', '<=', $asOfDate)
-                ->sum('total_amount');
+            $invoiceTotals = $invoiceTotalsByVendor->get($vendor->id);
+            $returnTotals = $returnTotalsByVendor->get($vendor->id);
 
-            $returns = DB::table('purchase_returns')
-                ->where('vendor_id', $vendor->id)
-                ->whereIn('status', ['approved', 'completed'])
-                ->where('return_date', '<=', $asOfDate)
-                ->sum('total_amount');
-
-            $balance = DB::table('purchase_invoices')
-                ->where('vendor_id', $vendor->id)
-                ->whereIn('status', ['posted', 'partial', 'paid'])
-                ->where('invoice_date', '<=', $asOfDate)
-                ->sum('balance_amount');
+            $billed = (float) ($invoiceTotals->total_billed ?? 0);
+            $returns = (float) ($returnTotals->total_returns ?? 0);
+            $balance = (float) ($invoiceTotals->balance ?? 0);
 
             $netBilled = $billed - $returns;
             $paid = $billed - $balance;
