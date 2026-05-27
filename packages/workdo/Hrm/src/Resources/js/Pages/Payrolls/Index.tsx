@@ -53,7 +53,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.payrolls.destroy',
-        defaultMessage: t('Are you sure you want to delete this payroll?')
+        defaultMessage: t('Are you sure you want to cancel this payroll?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        },
     });
 
     const handleFilter = () => {
@@ -233,7 +243,7 @@ export default function Index() {
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>{t('Delete')}</p>
+                                    <p>{t('Cancel Payroll')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         )}
@@ -402,9 +412,9 @@ export default function Index() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Payroll')}
+                title={t('Cancel Payroll')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel Payroll')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

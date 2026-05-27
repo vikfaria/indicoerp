@@ -23,6 +23,13 @@ export default function Create({ onSuccess }: CreateComplaintProps) {
         subject: '',
         description: '',
         complaint_date: '',
+        is_confidential: false,
+        is_harassment_report: false,
+        confidential_channel: '',
+        confidentiality_level: 'internal',
+        handling_owner_id: '',
+        investigation_started_at: '',
+        investigation_closed_at: '',
         document: '',
     });
 
@@ -145,6 +152,84 @@ export default function Create({ onSuccess }: CreateComplaintProps) {
                         required
                     />
                     <InputError message={errors.complaint_date} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="md:col-span-2 flex flex-wrap items-center gap-4">
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={data.is_confidential}
+                                onChange={(e) => setData('is_confidential', e.target.checked)}
+                            />
+                            {t('Confidential Case')}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={data.is_harassment_report}
+                                onChange={(e) => setData('is_harassment_report', e.target.checked)}
+                            />
+                            {t('Harassment Report')}
+                        </label>
+                    </div>
+                    <div>
+                        <Label>{t('Confidentiality Level')}</Label>
+                        <Select value={data.confidentiality_level} onValueChange={(value) => setData('confidentiality_level', value)}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="internal">{t('Internal')}</SelectItem>
+                                <SelectItem value="restricted">{t('Restricted')}</SelectItem>
+                                <SelectItem value="anonymous">{t('Anonymous')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.confidentiality_level} />
+                    </div>
+                    <div>
+                        <Label>{t('Confidential Channel')}</Label>
+                        <Input
+                            value={data.confidential_channel}
+                            onChange={(e) => setData('confidential_channel', e.target.value)}
+                            placeholder={t('e.g. hotline, email, manager')}
+                        />
+                        <InputError message={errors.confidential_channel} />
+                    </div>
+                    <div>
+                        <Label>{t('Handling Owner')}</Label>
+                        <Select value={data.handling_owner_id} onValueChange={(value) => setData('handling_owner_id', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select Handling Owner')} />
+                            </SelectTrigger>
+                            <SelectContent searchable={true}>
+                                {allEmployees?.map((employee: any) => (
+                                    <SelectItem key={employee.id} value={employee.id.toString()}>
+                                        {employee.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.handling_owner_id} />
+                    </div>
+                    <div>
+                        <Label>{t('Investigation Started At')}</Label>
+                        <Input
+                            type="date"
+                            value={data.investigation_started_at}
+                            onChange={(e) => setData('investigation_started_at', e.target.value)}
+                        />
+                        <InputError message={errors.investigation_started_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Investigation Closed At')}</Label>
+                        <Input
+                            type="date"
+                            value={data.investigation_closed_at}
+                            onChange={(e) => setData('investigation_closed_at', e.target.value)}
+                        />
+                        <InputError message={errors.investigation_closed_at} />
+                    </div>
                 </div>
                 
                 <div>

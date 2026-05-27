@@ -16,6 +16,36 @@ class Contract extends Model
 {
     use HasFactory;
 
+    public const LEGAL_CONTRACT_TYPES = [
+        'indefinite',
+        'fixed_term',
+        'uncertain_term',
+        'foreign',
+        'short_term',
+        'project',
+        'special_regime',
+    ];
+
+    public const FIXED_TERM_TYPES = [
+        'fixed_term',
+        'uncertain_term',
+        'short_term',
+        'project',
+        'special_regime',
+    ];
+
+    public const PROBATION_CATEGORIES = [
+        'base_indefinite',
+        'general',
+        'technician_mid',
+        'technician_high',
+        'leadership',
+    ];
+
+    protected $appends = [
+        'presumed_indefinite_risk',
+    ];
+
     protected $fillable = [
         'subject',
         'user_id',
@@ -26,6 +56,11 @@ class Contract extends Model
         'description',
         'status',
         'source_type',
+        'is_labour_contract',
+        'legal_contract_type',
+        'fixed_term_justification',
+        'probation_category',
+        'legal_notes',
         'contract_number',
         'template_number',
         'creator_id',
@@ -57,8 +92,23 @@ class Contract extends Model
             'type_id' => 'integer',
             'start_date' => 'date',
             'end_date' => 'date',
-            'status' => 'string'
+            'status' => 'string',
+            'is_labour_contract' => 'boolean',
         ];
+    }
+
+    public function getPresumedIndefiniteRiskAttribute(): bool
+    {
+        if (!$this->is_labour_contract) {
+            return false;
+        }
+
+        if (empty($this->legal_contract_type)) {
+            return true;
+        }
+
+        return in_array($this->legal_contract_type, self::FIXED_TERM_TYPES, true)
+            && blank($this->fixed_term_justification);
     }
 
     public function user()

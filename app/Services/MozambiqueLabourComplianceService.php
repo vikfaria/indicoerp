@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
 use Workdo\Hrm\Models\Holiday;
+use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Overtime;
 
 class MozambiqueLabourComplianceService
@@ -15,8 +16,10 @@ class MozambiqueLabourComplianceService
         $companyId = $companyId ?: creatorId();
 
         return [
-            'overtime_daily_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_daily_limit_hours', $companyId)),
+            'overtime_daily_limit_hours' => $this->toFloatWithDefault(company_setting('mz_overtime_daily_limit_hours', $companyId), 4.0),
+            'overtime_weekly_limit_hours' => $this->toFloatWithDefault(company_setting('mz_overtime_weekly_limit_hours', $companyId), 16.0),
             'overtime_monthly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_monthly_limit_hours', $companyId)),
+            'overtime_quarterly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_quarterly_limit_hours', $companyId)),
             'overtime_yearly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_yearly_limit_hours', $companyId)),
             'leave_min_notice_days' => max(0, (int) (company_setting('mz_leave_min_notice_days', $companyId) ?? 0)),
             'leave_max_consecutive_days' => $this->toNullableInt(company_setting('mz_leave_max_consecutive_days', $companyId)),
@@ -58,6 +61,38 @@ class MozambiqueLabourComplianceService
             ];
         }
 
+        if ($policy['overtime_weekly_limit_hours'] !== null) {
+            $periodStart = $start->copy();
+            while ($periodStart->lte($end)) {
+                $weekStart = $periodStart->copy()->startOfWeek(Carbon::MONDAY);
+                $weekEnd = $periodStart->copy()->endOfWeek(Carbon::SUNDAY);
+                $segmentEnd = $weekEnd->lt($end) ? $weekEnd : $end;
+
+                $segmentDays = $periodStart->diffInDays($segmentEnd) + 1;
+                $estimatedWeekHours = $dailyAverage * $segmentDays;
+
+                $weeklyHours = $this->sumOvertimeHoursForRange(
+                    $companyId,
+                    $employeeUserId,
+                    $weekStart->toDateString(),
+                    $weekEnd->toDateString(),
+                    $excludeOvertimeId
+                );
+
+                if (($weeklyHours + $estimatedWeekHours) > ($policy['overtime_weekly_limit_hours'] + 0.0001)) {
+                    return [
+                        'valid' => false,
+                        'field' => 'hours',
+                        'message' => __('Overtime exceeds weekly limit (:limit h).', [
+                            'limit' => rtrim(rtrim(number_format($policy['overtime_weekly_limit_hours'], 2, '.', ''), '0'), '.'),
+                        ]),
+                    ];
+                }
+
+                $periodStart = $segmentEnd->copy()->addDay();
+            }
+        }
+
         if ($policy['overtime_monthly_limit_hours'] !== null) {
             if ($start->format('Y-m') !== $end->format('Y-m')) {
                 return [
@@ -70,20 +105,51 @@ class MozambiqueLabourComplianceService
             $monthStart = $start->copy()->startOfMonth()->toDateString();
             $monthEnd = $start->copy()->endOfMonth()->toDateString();
 
-            $monthlyHours = Overtime::query()
-                ->where('created_by', $companyId)
-                ->where('employee_id', $employeeUserId)
-                ->whereDate('start_date', '<=', $monthEnd)
-                ->whereDate('end_date', '>=', $monthStart)
-                ->when($excludeOvertimeId, fn ($query) => $query->where('id', '!=', $excludeOvertimeId))
-                ->sum('hours');
+            $monthlyHours = $this->sumOvertimeHoursForRange(
+                $companyId,
+                $employeeUserId,
+                $monthStart,
+                $monthEnd,
+                $excludeOvertimeId
+            );
 
-            if (((float) $monthlyHours + $hours) > $policy['overtime_monthly_limit_hours']) {
+            if (($monthlyHours + $hours) > $policy['overtime_monthly_limit_hours']) {
                 return [
                     'valid' => false,
                     'field' => 'hours',
                     'message' => __('Overtime exceeds monthly limit (:limit h).', [
                         'limit' => rtrim(rtrim(number_format($policy['overtime_monthly_limit_hours'], 2, '.', ''), '0'), '.'),
+                    ]),
+                ];
+            }
+        }
+
+        if ($policy['overtime_quarterly_limit_hours'] !== null) {
+            if ($start->year !== $end->year || $start->quarter !== $end->quarter) {
+                return [
+                    'valid' => false,
+                    'field' => 'end_date',
+                    'message' => __('When quarterly overtime limit is active, each overtime record must stay within a single quarter.'),
+                ];
+            }
+
+            $quarterStart = $start->copy()->startOfQuarter()->toDateString();
+            $quarterEnd = $start->copy()->endOfQuarter()->toDateString();
+
+            $quarterlyHours = $this->sumOvertimeHoursForRange(
+                $companyId,
+                $employeeUserId,
+                $quarterStart,
+                $quarterEnd,
+                $excludeOvertimeId
+            );
+
+            if (($quarterlyHours + $hours) > $policy['overtime_quarterly_limit_hours']) {
+                return [
+                    'valid' => false,
+                    'field' => 'hours',
+                    'message' => __('Overtime exceeds quarterly limit (:limit h).', [
+                        'limit' => rtrim(rtrim(number_format($policy['overtime_quarterly_limit_hours'], 2, '.', ''), '0'), '.'),
                     ]),
                 ];
             }
@@ -101,15 +167,15 @@ class MozambiqueLabourComplianceService
             $yearStart = $start->copy()->startOfYear()->toDateString();
             $yearEnd = $start->copy()->endOfYear()->toDateString();
 
-            $yearlyHours = Overtime::query()
-                ->where('created_by', $companyId)
-                ->where('employee_id', $employeeUserId)
-                ->whereDate('start_date', '<=', $yearEnd)
-                ->whereDate('end_date', '>=', $yearStart)
-                ->when($excludeOvertimeId, fn ($query) => $query->where('id', '!=', $excludeOvertimeId))
-                ->sum('hours');
+            $yearlyHours = $this->sumOvertimeHoursForRange(
+                $companyId,
+                $employeeUserId,
+                $yearStart,
+                $yearEnd,
+                $excludeOvertimeId
+            );
 
-            if (((float) $yearlyHours + $hours) > $policy['overtime_yearly_limit_hours']) {
+            if (($yearlyHours + $hours) > $policy['overtime_yearly_limit_hours']) {
                 return [
                     'valid' => false,
                     'field' => 'hours',
@@ -185,6 +251,150 @@ class MozambiqueLabourComplianceService
         ];
     }
 
+    public function validateLeaveTypeCompliance(
+        int $companyId,
+        LeaveType $leaveType,
+        string $startDate,
+        string $endDate,
+        int $chargeableDays,
+        ?string $legalReferenceDate = null,
+        ?string $attachment = null,
+        int $compensatedDays = 0
+    ): array {
+        $today = Carbon::today();
+        $start = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->startOfDay();
+
+        if ($start->gt($end)) {
+            return [
+                'valid' => false,
+                'field' => 'end_date',
+                'message' => __('End date must be greater than or equal to start date.'),
+            ];
+        }
+
+        $calendarDays = (int) ($start->diffInDays($end) + 1);
+
+        if (
+            $leaveType->min_advance_notice_days !== null &&
+            $leaveType->min_advance_notice_days > 0 &&
+            $start->gte($today) &&
+            $start->lt($today->copy()->addDays((int) $leaveType->min_advance_notice_days))
+        ) {
+            return [
+                'valid' => false,
+                'field' => 'start_date',
+                'message' => __('This leave type requires :days day(s) minimum notice.', [
+                    'days' => (int) $leaveType->min_advance_notice_days,
+                ]),
+            ];
+        }
+
+        if ($leaveType->requires_supporting_document && $this->isBlank($attachment)) {
+            return [
+                'valid' => false,
+                'field' => 'attachment',
+                'message' => __('Supporting document is required for this leave type.'),
+            ];
+        }
+
+        if ($leaveType->legal_code === 'maternity') {
+            if ($this->isBlank($legalReferenceDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'legal_reference_date',
+                    'message' => __('Maternity leave requires expected childbirth date.'),
+                ];
+            }
+
+            $referenceDate = Carbon::parse($legalReferenceDate)->startOfDay();
+            $maxDaysBefore = (int) ($leaveType->pre_event_start_window_days ?? 20);
+            $minimumStartDate = $referenceDate->copy()->subDays($maxDaysBefore);
+
+            if ($start->lt($minimumStartDate) || $start->gt($referenceDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'start_date',
+                    'message' => __('Maternity leave must start between :from and :to.', [
+                        'from' => $minimumStartDate->toDateString(),
+                        'to' => $referenceDate->toDateString(),
+                    ]),
+                ];
+            }
+        }
+
+        if ($leaveType->fixed_duration_days !== null && $calendarDays !== (int) $leaveType->fixed_duration_days) {
+            return [
+                'valid' => false,
+                'field' => 'end_date',
+                'message' => __('This leave type requires exactly :days calendar day(s).', [
+                    'days' => (int) $leaveType->fixed_duration_days,
+                ]),
+            ];
+        }
+
+        if ($leaveType->legal_code === 'paternity') {
+            if ($this->isBlank($legalReferenceDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'legal_reference_date',
+                    'message' => __('Paternity leave requires childbirth date.'),
+                ];
+            }
+
+            $referenceDate = Carbon::parse($legalReferenceDate)->startOfDay();
+            $offsetDays = (int) ($leaveType->post_event_start_offset_days ?? 1);
+            $requiredStartDate = $referenceDate->copy()->addDays($offsetDays);
+
+            if (!$start->isSameDay($requiredStartDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'start_date',
+                    'message' => __('Paternity leave must start on :date.', [
+                        'date' => $requiredStartDate->toDateString(),
+                    ]),
+                ];
+            }
+        }
+
+        if ($compensatedDays < 0) {
+            return [
+                'valid' => false,
+                'field' => 'compensated_days',
+                'message' => __('Compensated days cannot be negative.'),
+            ];
+        }
+
+        if ($compensatedDays > 0 && !$leaveType->allow_cash_out) {
+            return [
+                'valid' => false,
+                'field' => 'compensated_days',
+                'message' => __('This leave type does not allow financial compensation of leave days.'),
+            ];
+        }
+
+        $effectiveRestDays = max(0, $chargeableDays - $compensatedDays);
+        if (
+            $leaveType->min_effective_rest_days !== null &&
+            $compensatedDays > 0 &&
+            $effectiveRestDays < (int) $leaveType->min_effective_rest_days
+        ) {
+            return [
+                'valid' => false,
+                'field' => 'compensated_days',
+                'message' => __('Compensation leaves less than minimum required effective rest (:days day(s)).', [
+                    'days' => (int) $leaveType->min_effective_rest_days,
+                ]),
+            ];
+        }
+
+        return [
+            'valid' => true,
+            'calendar_days' => $calendarDays,
+            'effective_rest_days' => $effectiveRestDays,
+        ];
+    }
+
     private function evaluateLeaveWindow(int $companyId, string $startDate, string $endDate): array
     {
         $start = Carbon::parse($startDate)->startOfDay();
@@ -230,7 +440,7 @@ class MozambiqueLabourComplianceService
         return [
             'valid' => true,
             'chargeable_days' => $chargeableDays,
-            'calendar_days' => $start->diffInDays($end) + 1,
+            'calendar_days' => (int) ($start->diffInDays($end) + 1),
             'excluded_non_working_days' => $excludedNonWorkingDays,
             'excluded_holidays' => $excludedHolidays,
         ];
@@ -262,6 +472,22 @@ class MozambiqueLabourComplianceService
         return false;
     }
 
+    private function sumOvertimeHoursForRange(
+        int $companyId,
+        int $employeeUserId,
+        string $rangeStart,
+        string $rangeEnd,
+        ?int $excludeOvertimeId = null
+    ): float {
+        return (float) Overtime::query()
+            ->where('created_by', $companyId)
+            ->where('employee_id', $employeeUserId)
+            ->whereDate('start_date', '<=', $rangeEnd)
+            ->whereDate('end_date', '>=', $rangeStart)
+            ->when($excludeOvertimeId, fn ($query) => $query->where('id', '!=', $excludeOvertimeId))
+            ->sum('hours');
+    }
+
     private function toNullableFloat($value): ?float
     {
         if ($value === null || $value === '') {
@@ -269,6 +495,15 @@ class MozambiqueLabourComplianceService
         }
 
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function toFloatWithDefault($value, float $default): float
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        return is_numeric($value) ? (float) $value : $default;
     }
 
     private function toNullableInt($value): ?int
@@ -301,5 +536,10 @@ class MozambiqueLabourComplianceService
         }
 
         return $default;
+    }
+
+    private function isBlank(?string $value): bool
+    {
+        return $value === null || trim($value) === '';
     }
 }

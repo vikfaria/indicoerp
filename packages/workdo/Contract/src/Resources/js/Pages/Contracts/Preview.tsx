@@ -162,6 +162,22 @@ export default function Preview() {
                                         <span className="font-medium">{t('Status')}:</span>
                                         <p className="mt-1">{getStatusText(contract.status)}</p>
                                     </div>
+                                    <div>
+                                        <span className="font-medium">{t('Labour Contract')}:</span>
+                                        <p className="mt-1">{contract.is_labour_contract ? t('Yes') : t('No')}</p>
+                                    </div>
+                                    {contract.is_labour_contract && (
+                                        <>
+                                            <div>
+                                                <span className="font-medium">{t('Legal Labour Type')}:</span>
+                                                <p className="mt-1">{contract.legal_contract_type || '-'}</p>
+                                            </div>
+                                            <div>
+                                                <span className="font-medium">{t('Probation Category')}:</span>
+                                                <p className="mt-1">{contract.probation_category || '-'}</p>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
@@ -201,6 +217,22 @@ export default function Preview() {
                                 <h3 className="text-lg font-semibold mb-4">{t('Description')}</h3>
                                 <div className="prose max-w-none">
                                     <div dangerouslySetInnerHTML={{ __html: contract.description }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {contract.is_labour_contract && (contract.fixed_term_justification || contract.legal_notes) && (
+                            <div>
+                                <h3 className="text-lg font-semibold mb-4">{t('Labour Legal Notes')}</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <span className="font-medium">{t('Fixed-Term Justification')}:</span>
+                                        <p className="mt-1">{contract.fixed_term_justification || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <span className="font-medium">{t('Legal Notes')}:</span>
+                                        <p className="mt-1">{contract.legal_notes || '-'}</p>
+                                    </div>
                                 </div>
                             </div>
                         )}

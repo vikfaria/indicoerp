@@ -62,7 +62,9 @@ class LeaveApplicationController extends Controller
             return Inertia::render('Hrm/LeaveApplications/Index', [
                 'leaveapplications' => $leaveapplications,
                 'employees' => $this->getFilteredEmployees(),
-                'leavetypes' => LeaveType::where('created_by', creatorId())->select('id', 'name')->get(),
+                'leavetypes' => LeaveType::where('created_by', creatorId())
+                    ->select('id', 'name', 'legal_code', 'requires_supporting_document', 'allow_cash_out')
+                    ->get(),
             ]);
         } else {
             return back()->with('error', __('Permission denied'));
@@ -95,6 +97,24 @@ class LeaveApplicationController extends Controller
             }
 
             $totalDays = $leavePolicyCheck['chargeable_days'];
+            $compensatedDays = (int) ($validated['compensated_days'] ?? 0);
+
+            $legalLeaveCheck = $this->labourComplianceService->validateLeaveTypeCompliance(
+                creatorId(),
+                $leaveType,
+                $validated['start_date'],
+                $validated['end_date'],
+                $totalDays,
+                $validated['legal_reference_date'] ?? null,
+                $validated['attachment'] ?? null,
+                $compensatedDays
+            );
+
+            if (!$legalLeaveCheck['valid']) {
+                return redirect()->back()->withErrors([
+                    $legalLeaveCheck['field'] => $legalLeaveCheck['message'],
+                ]);
+            }
 
             // Get current year
             $currentYear = date('Y');
@@ -146,7 +166,10 @@ class LeaveApplicationController extends Controller
             $leaveapplication = new LeaveApplication();
             $leaveapplication->start_date = $validated['start_date'];
             $leaveapplication->end_date = $validated['end_date'];
+            $leaveapplication->legal_reference_date = $validated['legal_reference_date'] ?? null;
             $leaveapplication->total_days = $totalDays;
+            $leaveapplication->compensated_days = $compensatedDays;
+            $leaveapplication->effective_rest_days = $legalLeaveCheck['effective_rest_days'] ?? max(0, $totalDays - $compensatedDays);
             $leaveapplication->reason = $validated['reason'];
             $leaveapplication->attachment = $validated['attachment'] ?? null;
             $leaveapplication->status = 'pending';
@@ -191,6 +214,24 @@ class LeaveApplicationController extends Controller
             }
 
             $totalDays = $leavePolicyCheck['chargeable_days'];
+            $compensatedDays = (int) ($validated['compensated_days'] ?? 0);
+
+            $legalLeaveCheck = $this->labourComplianceService->validateLeaveTypeCompliance(
+                creatorId(),
+                $leaveType,
+                $validated['start_date'],
+                $validated['end_date'],
+                $totalDays,
+                $validated['legal_reference_date'] ?? null,
+                $validated['attachment'] ?? null,
+                $compensatedDays
+            );
+
+            if (!$legalLeaveCheck['valid']) {
+                return redirect()->back()->withErrors([
+                    $legalLeaveCheck['field'] => $legalLeaveCheck['message'],
+                ]);
+            }
 
             // Get current year
             $currentYear = date('Y');
@@ -245,7 +286,10 @@ class LeaveApplicationController extends Controller
             $leaveapplication->leave_type_id = $validated['leave_type_id'];
             $leaveapplication->start_date = $validated['start_date'];
             $leaveapplication->end_date = $validated['end_date'];
+            $leaveapplication->legal_reference_date = $validated['legal_reference_date'] ?? null;
             $leaveapplication->total_days = $totalDays;
+            $leaveapplication->compensated_days = $compensatedDays;
+            $leaveapplication->effective_rest_days = $legalLeaveCheck['effective_rest_days'] ?? max(0, $totalDays - $compensatedDays);
             $leaveapplication->reason = $validated['reason'];
             $leaveapplication->attachment = $validated['attachment'] ?? null;
 
@@ -332,7 +376,9 @@ class LeaveApplicationController extends Controller
     public function getLeaveTypesByEmployee($employeeId)
     {
         if (Auth::user()->can('view-leave_types')) {
-            $leave_types = LeaveType::where('employee_id', $employeeId)->where('created_by', creatorId())->select('id', 'name')->get();
+            $leave_types = LeaveType::where('created_by', creatorId())
+                ->select('id', 'name', 'legal_code', 'requires_supporting_document', 'allow_cash_out')
+                ->get();
 
             return response()->json($leave_types);
         } else {

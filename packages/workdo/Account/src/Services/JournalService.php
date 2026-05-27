@@ -2,6 +2,8 @@
 
 namespace Workdo\Account\Services;
 
+use App\Models\AccountingJournal;
+use App\Services\PayrollCostCenterAllocatorService;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\JournalEntryItem;
 use Workdo\Account\Models\ChartOfAccount;
@@ -21,6 +23,8 @@ class JournalService
     private ?array $mozambiqueTaxAccountCodes = null;
     private array $chartAccountCache = [];
     private array $bankAccountCache = [];
+    private ?bool $hasCostCenterColumn = null;
+    private array $salaryJournalCache = [];
 
     private function getAccountByCode(string $accountCode, ?int $companyId = null): ?ChartOfAccount
     {
@@ -124,6 +128,52 @@ class JournalService
         $this->mozambiqueTaxAccountCodes = $codes;
 
         return $codes;
+    }
+
+    private function hasJournalEntryItemCostCenterColumn(): bool
+    {
+        if ($this->hasCostCenterColumn !== null) {
+            return $this->hasCostCenterColumn;
+        }
+
+        try {
+            $this->hasCostCenterColumn = Schema::hasTable('journal_entry_items')
+                && Schema::hasColumn('journal_entry_items', 'cost_center_id');
+        } catch (\Throwable) {
+            $this->hasCostCenterColumn = false;
+        }
+
+        return $this->hasCostCenterColumn;
+    }
+
+    private function resolveSalaryJournalId(int $companyId): ?int
+    {
+        if (array_key_exists($companyId, $this->salaryJournalCache)) {
+            return $this->salaryJournalCache[$companyId];
+        }
+
+        if (!Schema::hasTable('accounting_journals')) {
+            $this->salaryJournalCache[$companyId] = null;
+            return null;
+        }
+
+        try {
+            $journal = AccountingJournal::query()
+                ->where('company_id', $companyId)
+                ->where('is_active', true)
+                ->where(function ($query): void {
+                    $query->where('type', 'salaries')->orWhere('code', 'SL');
+                })
+                ->orderByRaw("CASE WHEN type = 'salaries' THEN 0 ELSE 1 END")
+                ->orderBy('id')
+                ->first(['id']);
+        } catch (\Throwable) {
+            $journal = null;
+        }
+
+        $this->salaryJournalCache[$companyId] = $journal?->id ? (int) $journal->id : null;
+
+        return $this->salaryJournalCache[$companyId];
     }
 
     /**
@@ -1119,52 +1169,144 @@ class JournalService
     }
 
     /**
-     * Creates journal entry for payroll: Dr: Salary Expense, Cr: Bank
-     * Usage: PaySalaryListener after paying salary
+     * Creates payroll posting with statutory liabilities:
+     * Dr: Salaries expense + employer INSS expense
+     * Cr: Bank (net pay) + IRPS payable + INSS payable + other withholdings.
+     *
+     * Usage: PaySalaryListener after paying salary slip.
      */
     public function createPayrollJournal($payrollEntry)
     {
-        $bankGLAccount = BankAccount::where('id', $payrollEntry->payroll->bank_account_id)->first()->glAccount;
-        if (!$bankGLAccount) {
-            throw new \Exception("Bank account must have a GL account assigned");
+        $payrollEntry->loadMissing(['employee.user', 'payroll']);
+
+        $existing = JournalEntry::query()
+            ->where('reference_type', 'payroll')
+            ->where('reference_id', $payrollEntry->id)
+            ->first();
+
+        if ($existing) {
+            return $existing;
         }
 
-        $this->validateAccounts(['5200']);
-        $salaryExpenseAccount = $this->getAccountByCode('5200');
-        $this->validateBalance($payrollEntry->net_pay, $payrollEntry->net_pay);
+        if (!$payrollEntry->payroll) {
+            throw new \Exception('Payroll data not found for selected payslip.');
+        }
+
+        $companyId = (int) ($payrollEntry->created_by ?: creatorId());
+        $creatorId = Auth::id() ?: $payrollEntry->creator_id;
+        $employeeName = $payrollEntry->employee?->user?->name ?? ('Employee #' . $payrollEntry->employee_id);
+
+        $bankAccount = BankAccount::query()
+            ->with('glAccount')
+            ->where('id', $payrollEntry->payroll->bank_account_id)
+            ->where('created_by', $companyId)
+            ->first();
+
+        $bankGLAccount = $bankAccount?->glAccount;
+        if (!$bankGLAccount) {
+            throw new \Exception('Bank account must have a GL account assigned');
+        }
+
+        $this->validateAccounts(['5200', '2200', '2400'], $companyId);
+
+        $salaryExpenseAccount = $this->getAccountByCode('5200', $companyId);
+        $employerInssExpenseAccount = $this->getAccountByCode('5210', $companyId) ?? $salaryExpenseAccount;
+        $irpsPayableAccount = $this->getAccountByCode('2200', $companyId);
+        $payrollLiabilityAccount = $this->getAccountByCode('2400', $companyId);
+
+        $posting = $this->resolvePayrollPostingAmounts($payrollEntry);
+        if ($posting['total_debit'] <= 0 && $posting['total_credit'] <= 0) {
+            return null;
+        }
+
+        $this->validateBalance($posting['total_debit'], $posting['total_credit']);
+
+        $costCenterId = null;
+        try {
+            /** @var PayrollCostCenterAllocatorService $allocator */
+            $allocator = app(PayrollCostCenterAllocatorService::class);
+            $costCenterId = $allocator->resolveCostCenterForEntry($payrollEntry, $companyId)?->id;
+        } catch (\Throwable) {
+            $costCenterId = null;
+        }
 
         $journalEntry = JournalEntry::create([
-            'journal_date' => now(),
+            'journal_date' => $payrollEntry->payroll->pay_date ?? now(),
             'entry_type' => 'automatic',
             'reference_type' => 'payroll',
             'reference_id' => $payrollEntry->id,
-            'description' => 'Salary Payment - ' . $payrollEntry->employee->user->name,
-            'total_debit' => $payrollEntry->net_pay,
-            'total_credit' => $payrollEntry->net_pay,
+            'description' => 'Payroll Posting - ' . $employeeName,
+            'total_debit' => $posting['total_debit'],
+            'total_credit' => $posting['total_credit'],
             'status' => 'posted',
-            'creator_id' => Auth::id(),
-            'created_by' => creatorId()
+            'accounting_journal_id' => $this->resolveSalaryJournalId($companyId),
+            'creator_id' => $creatorId,
+            'created_by' => $companyId,
         ]);
 
-        JournalEntryItem::create([
-            'journal_entry_id' => $journalEntry->id,
-            'account_id' => $salaryExpenseAccount->id,
-            'description' => 'Salary paid to ' . $payrollEntry->employee->user->name,
-            'debit_amount' => $payrollEntry->net_pay,
-            'credit_amount' => 0,
-            'creator_id' => Auth::id(),
-            'created_by' => creatorId()
-        ]);
+        $createItem = function (ChartOfAccount $account, string $description, float $debit, float $credit) use ($journalEntry, $creatorId, $companyId, $costCenterId): void {
+            if ($debit <= 0 && $credit <= 0) {
+                return;
+            }
 
-        JournalEntryItem::create([
-            'journal_entry_id' => $journalEntry->id,
-            'account_id' => $bankGLAccount->id,
-            'description' => 'Salary payment',
-            'debit_amount' => 0,
-            'credit_amount' => $payrollEntry->net_pay,
-            'creator_id' => Auth::id(),
-            'created_by' => creatorId()
-        ]);
+            $payload = [
+                'journal_entry_id' => $journalEntry->id,
+                'account_id' => $account->id,
+                'description' => $description,
+                'debit_amount' => $debit,
+                'credit_amount' => $credit,
+                'creator_id' => $creatorId,
+                'created_by' => $companyId,
+            ];
+
+            if ($costCenterId && $this->hasJournalEntryItemCostCenterColumn()) {
+                $payload['cost_center_id'] = $costCenterId;
+            }
+
+            JournalEntryItem::create($payload);
+        };
+
+        $createItem(
+            $salaryExpenseAccount,
+            'Salario bruto - ' . $employeeName,
+            $posting['gross_pay'],
+            0
+        );
+
+        $createItem(
+            $employerInssExpenseAccount,
+            'INSS entidade empregadora - ' . $employeeName,
+            $posting['inss_employer_amount'],
+            0
+        );
+
+        $createItem(
+            $bankGLAccount,
+            'Pagamento liquido - ' . $employeeName,
+            0,
+            $posting['net_pay']
+        );
+
+        $createItem(
+            $irpsPayableAccount,
+            'IRPS retido na fonte - ' . $employeeName,
+            0,
+            $posting['irps_amount']
+        );
+
+        $createItem(
+            $payrollLiabilityAccount,
+            'INSS a entregar (trabalhador + entidade) - ' . $employeeName,
+            0,
+            $posting['inss_payable_total']
+        );
+
+        $createItem(
+            $payrollLiabilityAccount,
+            'Outras retencoes salariais - ' . $employeeName,
+            0,
+            $posting['other_withholdings']
+        );
 
         try {
             UpdateBudgetSpending::dispatch($journalEntry);
@@ -1173,7 +1315,36 @@ class JournalService
         }
 
         $this->updateAccountBalances($journalEntry);
+
         return $journalEntry;
+    }
+
+    private function resolvePayrollPostingAmounts($payrollEntry): array
+    {
+        $grossPay = round(max(0, (float) ($payrollEntry->gross_pay ?? 0)), 2);
+        $netPay = round(max(0, (float) ($payrollEntry->net_pay ?? 0)), 2);
+        $irpsAmount = round(max(0, (float) ($payrollEntry->irps_amount ?? 0)), 2);
+        $inssEmployeeAmount = round(max(0, (float) ($payrollEntry->inss_employee_amount ?? 0)), 2);
+        $inssEmployerAmount = round(max(0, (float) ($payrollEntry->inss_employer_amount ?? 0)), 2);
+
+        $totalEmployeeWithholdings = round(max(0, $grossPay - $netPay), 2);
+        $inssPayableTotal = round($inssEmployeeAmount + $inssEmployerAmount, 2);
+        $otherWithholdings = round(max(0, $totalEmployeeWithholdings - ($irpsAmount + $inssEmployeeAmount)), 2);
+
+        $totalDebit = round($grossPay + $inssEmployerAmount, 2);
+        $totalCredit = round($netPay + $irpsAmount + $inssPayableTotal + $otherWithholdings, 2);
+
+        return [
+            'gross_pay' => $grossPay,
+            'net_pay' => $netPay,
+            'irps_amount' => $irpsAmount,
+            'inss_employee_amount' => $inssEmployeeAmount,
+            'inss_employer_amount' => $inssEmployerAmount,
+            'inss_payable_total' => $inssPayableTotal,
+            'other_withholdings' => $otherWithholdings,
+            'total_debit' => $totalDebit,
+            'total_credit' => $totalCredit,
+        ];
     }
 
     /**

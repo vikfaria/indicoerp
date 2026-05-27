@@ -48,6 +48,14 @@ export default function View({ leavetype }: ViewProps) {
                             </label>
                             <p className="mt-1 font-medium">{leavetype.max_days_per_year || '-'}</p>
                         </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                                <Hash className="h-4 w-4" />
+                                {t('Legal Leave Code')}
+                            </label>
+                            <p className="mt-1 font-medium">{leavetype.legal_code || '-'}</p>
+                        </div>
                     </div>
                     
                     <div className="space-y-4">
@@ -78,6 +86,36 @@ export default function View({ leavetype }: ViewProps) {
                                 <span className="text-sm text-gray-600">{leavetype.color || '#FF6B6B'}</span>
                             </div>
                         </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Requires Supporting Document')}</label>
+                            <p className="mt-1 font-medium">{leavetype.requires_supporting_document ? t('Yes') : t('No')}</p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Must Be Consecutive')}</label>
+                            <p className="mt-1 font-medium">{leavetype.must_be_consecutive ? t('Yes') : t('No')}</p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Allow Cash Out')}</label>
+                            <p className="mt-1 font-medium">{leavetype.allow_cash_out ? t('Yes') : t('No')}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Fixed Duration')}</label>
+                        <p className="mt-1 font-medium">{leavetype.fixed_duration_days ?? '-'}</p>
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Min Notice')}</label>
+                        <p className="mt-1 font-medium">{leavetype.min_advance_notice_days ?? '-'}</p>
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Min Effective Rest')}</label>
+                        <p className="mt-1 font-medium">{leavetype.min_effective_rest_days ?? '-'}</p>
                     </div>
                 </div>
                 

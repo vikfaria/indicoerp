@@ -117,6 +117,50 @@ export default function WarningView({ warning, onClose }: WarningViewProps) {
                         </div>
                     </div>
                 )}
+
+                {(warning.note_of_culpa_issued_at || warning.note_of_culpa_delivered_at || warning.response_deadline_at || warning.decision_deadline_at) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Note of Charge Issued')}</label>
+                            <p className="mt-1 font-medium">{warning.note_of_culpa_issued_at ? formatDate(warning.note_of_culpa_issued_at) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Note of Charge Delivered')}</label>
+                            <p className="mt-1 font-medium">{warning.note_of_culpa_delivered_at ? formatDate(warning.note_of_culpa_delivered_at) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Response Deadline')}</label>
+                            <p className="mt-1 font-medium">{warning.response_deadline_at ? formatDate(warning.response_deadline_at) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Decision Deadline')}</label>
+                            <p className="mt-1 font-medium">{warning.decision_deadline_at ? formatDate(warning.decision_deadline_at) : '-'}</p>
+                        </div>
+                    </div>
+                )}
+
+                {warning.worker_refused_note_of_culpa && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Signature Refusal Witnesses')}</label>
+                        <div className="mt-2 p-3 bg-yellow-50 rounded-lg text-sm space-y-1">
+                            <p>{warning.refusal_witness_one_name || '-'}</p>
+                            <p>{warning.refusal_witness_two_name || '-'}</p>
+                        </div>
+                    </div>
+                )}
+
+                {(warning.disciplinary_sanction || warning.disciplinary_decision_at) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Sanction')}</label>
+                            <p className="mt-1 font-medium">{warning.disciplinary_sanction ? t(warning.disciplinary_sanction) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Decision Date')}</label>
+                            <p className="mt-1 font-medium">{warning.disciplinary_decision_at ? formatDate(warning.disciplinary_decision_at) : '-'}</p>
+                        </div>
+                    </div>
+                )}
                 
                 {warning.employee_response && (
                     <div>

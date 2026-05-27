@@ -21,7 +21,7 @@ class ComplaintController extends Controller
     {
         if (Auth::user()->can('manage-complaints')) {
             $complaints = Complaint::query()
-                ->with(['employee', 'againstEmployee', 'complaintType', 'resolvedBy'])
+                ->with(['employee', 'againstEmployee', 'complaintType', 'resolvedBy', 'handlingOwner'])
                 ->where(function ($q) {
                     if (Auth::user()->can('manage-any-complaints')) {
                         $q->where('created_by', creatorId());
@@ -73,8 +73,9 @@ class ComplaintController extends Controller
             $complaint->subject = $validated['subject'];
             $complaint->description = $validated['description'];
             $complaint->complaint_date = $validated['complaint_date'];
-            $complaint->document = $validated['document'];
-            $complaint->status = 'Pending';
+            $complaint->document = $validated['document'] ?? null;
+            $complaint->status = 'pending';
+            $this->applyCaseComplianceFields($complaint, $validated);
             $complaint->creator_id = Auth::id();
             $complaint->created_by = creatorId();
             $complaint->save();
@@ -98,7 +99,8 @@ class ComplaintController extends Controller
             $complaint->subject = $validated['subject'];
             $complaint->description = $validated['description'];
             $complaint->complaint_date = $validated['complaint_date'];
-            $complaint->document = $validated['document'];
+            $complaint->document = $validated['document'] ?? null;
+            $this->applyCaseComplianceFields($complaint, $validated);
             $complaint->save();
 
             UpdateComplaint::dispatch($request, $complaint);
@@ -120,6 +122,11 @@ class ComplaintController extends Controller
             $complaint->resolved_by = Auth::id();
             if ($validated['status'] === 'resolved') {
                 $complaint->resolution_date = now()->toDateString();
+                if (!$complaint->investigation_closed_at) {
+                    $complaint->investigation_closed_at = now()->toDateString();
+                }
+            } elseif (in_array($validated['status'], ['in review', 'assigned', 'in progress'], true) && !$complaint->investigation_started_at) {
+                $complaint->investigation_started_at = now()->toDateString();
             }
 
             $complaint->save();
@@ -158,4 +165,15 @@ class ComplaintController extends Controller
     }
 
     private function getAllEmployees() {}
+
+    private function applyCaseComplianceFields(Complaint $complaint, array $validated): void
+    {
+        $complaint->is_confidential = (bool) ($validated['is_confidential'] ?? false);
+        $complaint->is_harassment_report = (bool) ($validated['is_harassment_report'] ?? false);
+        $complaint->confidential_channel = $validated['confidential_channel'] ?? null;
+        $complaint->confidentiality_level = $validated['confidentiality_level'] ?? 'internal';
+        $complaint->handling_owner_id = $validated['handling_owner_id'] ?? null;
+        $complaint->investigation_started_at = $validated['investigation_started_at'] ?? null;
+        $complaint->investigation_closed_at = $validated['investigation_closed_at'] ?? null;
+    }
 }

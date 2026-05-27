@@ -106,6 +106,14 @@ class PayrollController extends Controller
     public function update(UpdatePayrollRequest $request, Payroll $payroll)
     {
         if (Auth::user()->can('edit-payrolls')) {
+            if (!$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
+
+            if ($payroll->status === 'cancelled') {
+                return redirect()->back()->with('error', __('Cancelled payroll cannot be edited.'));
+            }
+
             $validated = $request->validated();
             $payroll->title = $validated['title'];
             $payroll->payroll_frequency = $validated['payroll_frequency'];
@@ -132,6 +140,10 @@ class PayrollController extends Controller
                 return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
             }
             $payroll->load(['payrollEntries' => function ($query) {
+                $query->where(function ($statusQuery): void {
+                    $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+                });
+
                 if (Auth::user()->can('view-any-payrolls')) {
                     $query->with('employee.user')->where('created_by', creatorId());
                 } elseif (Auth::user()->can('view-own-payrolls')) {
@@ -152,10 +164,45 @@ class PayrollController extends Controller
     public function destroy(Payroll $payroll)
     {
         if (Auth::user()->can('delete-payrolls')) {
-            DestroyPayroll::dispatch($payroll);
-            $payroll->delete();
+            if (!$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
 
-            return redirect()->back()->with('success', __('The payroll has been deleted.'));
+            if ($payroll->status === 'cancelled') {
+                return redirect()->back()->with('error', __('Payroll is already cancelled.'));
+            }
+
+            if (($payroll->is_payroll_paid ?? 'unpaid') === 'paid') {
+                return redirect()->back()->with('error', __('Paid payrolls cannot be cancelled.'));
+            }
+
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyPayroll::dispatch($payroll);
+            $payroll->update([
+                'status' => 'cancelled',
+                'is_payroll_paid' => 'unpaid',
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            PayrollEntry::query()
+                ->where('payroll_id', $payroll->id)
+                ->where(function ($query): void {
+                    $query->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+                })
+                ->update([
+                    'status' => 'unpaid',
+                    'is_cancelled' => true,
+                    'cancelled_at' => now(),
+                    'cancelled_by' => Auth::id(),
+                    'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+                ]);
+
+            return redirect()->back()->with('success', __('Payroll cancelled successfully.'));
         } else {
             return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
         }
@@ -164,6 +211,13 @@ class PayrollController extends Controller
     public function runPayroll(Payroll $payroll)
     {
         if (Auth::user()->can('run-payrolls')) {
+            if (!$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
+
+            if ($payroll->status === 'cancelled') {
+                return redirect()->back()->with('error', __('Cancelled payroll cannot be processed.'));
+            }
 
             try {
                 $payroll->update(['status' => 'processing']);
@@ -191,7 +245,9 @@ class PayrollController extends Controller
 
 
                 // Get all employees
-                $employees = Employee::with('user')->where('created_by', creatorId())->get();
+                $employees = Employee::with(['user', 'foreignWorkerProfile', 'dependents'])
+                    ->where('created_by', creatorId())
+                    ->get();
                 $legalSetupCheck = $this->validateMozambiquePayrollLegalSetup($payroll, $employees);
                 if (!$legalSetupCheck['valid']) {
                     $payroll->update(['status' => 'draft']);
@@ -201,9 +257,13 @@ class PayrollController extends Controller
                 $newEntriesCount = 0;
 
                 foreach ($employees as $employee) {
-                    // Check if payroll entry already exists for this employee
-                    $existingEntry = PayrollEntry::where('payroll_id', $payroll->id)
+                    // Skip employees with active payslips already calculated.
+                    $existingEntry = PayrollEntry::query()
+                        ->where('payroll_id', $payroll->id)
                         ->where('employee_id', $employee->user_id)
+                        ->where(function ($query): void {
+                            $query->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+                        })
                         ->first();
 
                     if (!$existingEntry) {
@@ -212,36 +272,26 @@ class PayrollController extends Controller
                     }
                 }
 
-                // Calculate totals from entries
-                $entries = $payroll->payrollEntries;
-                $totalGrossPay = $entries->sum('gross_pay');
-                $totalDeductions = $entries->sum('total_deductions');
-                $totalNetPay = $entries->sum('net_pay');
-                $totalIrps = $entries->sum('irps_amount');
-                $totalInssEmployee = $entries->sum('inss_employee_amount');
-                $totalInssEmployer = $entries->sum('inss_employer_amount');
-                $employeeCount = $entries->count();
+                $entries = $this->activeEntriesQuery($payroll)->get();
+                $totals = $this->computePayrollTotals($entries);
 
-                // Update payroll totals
                 $payroll->update([
                     'status' => 'completed',
-                    'total_gross_pay' => $totalGrossPay,
-                    'total_deductions' => $totalDeductions,
-                    'total_net_pay' => $totalNetPay,
-                    'total_irps' => $totalIrps,
-                    'total_inss_employee' => $totalInssEmployee,
-                    'total_inss_employer' => $totalInssEmployer,
-                    'employee_count' => $employeeCount
+                    'is_payroll_paid' => $totals['all_paid'] ? 'paid' : 'unpaid',
+                    'cancelled_at' => null,
+                    'cancelled_by' => null,
+                    'cancellation_reason' => null,
+                    ...$totals['values'],
                 ]);
 
                 if ($newEntriesCount > 0) {
                     return redirect()->back()->with('success', __('Payroll processed successfully. New payslips created for :new employees. Total employees: :total', [
                         'new' => $newEntriesCount,
-                        'total' => $entries->count(),
+                        'total' => $totals['values']['employee_count'],
                     ]));
                 } else {
                     return redirect()->back()->with('error', __('Payroll already processed. All employee payslips are created. Total employees: :count', [
-                        'count' => $entries->count(),
+                        'count' => $totals['values']['employee_count'],
                     ]));
                 }
             } catch (\Exception $e) {
@@ -428,8 +478,37 @@ class PayrollController extends Controller
 
         $taxDate = $payroll->pay_date ?? $endDate->format('Y-m-d');
         $companyId = creatorId();
+        $taxDateCarbon = \Illuminate\Support\Carbon::parse((string) $taxDate)->startOfDay();
+        $residencyStatus = strtolower((string) ($employee->foreignWorkerProfile?->residency_status ?? 'resident'));
+        if (!in_array($residencyStatus, ['resident', 'non_resident'], true)) {
+            $residencyStatus = 'resident';
+        }
 
-        $irpsData = $this->mozambiquePayrollTaxService->calculateIrps((float) $grossPay, $companyId, $taxDate);
+        $eligibleDependentsCount = collect($employee->dependents ?? [])
+            ->filter(function ($dependent) use ($taxDateCarbon): bool {
+                if (!$dependent || !$dependent->is_tax_eligible) {
+                    return false;
+                }
+
+                if ($dependent->valid_until === null) {
+                    return true;
+                }
+
+                return \Illuminate\Support\Carbon::parse((string) $dependent->valid_until)
+                    ->endOfDay()
+                    ->greaterThanOrEqualTo($taxDateCarbon);
+            })
+            ->count();
+
+        $irpsData = $this->mozambiquePayrollTaxService->calculateIrps(
+            (float) $grossPay,
+            $companyId,
+            $taxDate,
+            [
+                'residency_status' => $residencyStatus,
+                'eligible_dependents_count' => $eligibleDependentsCount,
+            ]
+        );
         $inssData = $this->mozambiquePayrollTaxService->calculateInss((float) $grossPay, $companyId, $taxDate);
 
         $sectorCode = $employee->employment_type ? strtoupper((string) $employee->employment_type) : 'GENERAL';
@@ -454,10 +533,11 @@ class PayrollController extends Controller
             $deductionsBreakdown = array_merge($deductionsBreakdown, $statutoryDeductionsBreakdown);
         }
 
-        // Create payroll entry
-        PayrollEntry::create([
+        // Upsert by unique payroll+employee key, reviving previously cancelled entries.
+        PayrollEntry::updateOrCreate([
             'payroll_id' => $payroll->id,
             'employee_id' => $employee->user_id,
+        ], [
             'basic_salary' => $basicSalary,
             'total_allowances' => $totalAllowances,
 
@@ -503,10 +583,45 @@ class PayrollController extends Controller
             'minimum_wage_compliant' => $minimumWageData['is_compliant'],
             'minimum_wage_gap' => $minimumWageData['gap'],
             'payroll_sector_code' => $minimumWageData['sector_code'],
+            'status' => 'unpaid',
+            'is_cancelled' => false,
+            'cancelled_at' => null,
+            'cancelled_by' => null,
+            'cancellation_reason' => null,
 
             'creator_id' => Auth::id(),
             'created_by' => creatorId(),
         ]);
+    }
+
+    private function activeEntriesQuery(Payroll $payroll)
+    {
+        return PayrollEntry::query()
+            ->where('payroll_id', $payroll->id)
+            ->where(function ($query): void {
+                $query->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+            });
+    }
+
+    private function computePayrollTotals($entries): array
+    {
+        $employeeCount = (int) $entries->count();
+        $allPaid = $employeeCount > 0
+            ? $entries->every(fn (PayrollEntry $entry): bool => ($entry->status ?? 'unpaid') === 'paid')
+            : false;
+
+        return [
+            'all_paid' => $allPaid,
+            'values' => [
+                'total_gross_pay' => (float) $entries->sum('gross_pay'),
+                'total_deductions' => (float) $entries->sum('total_deductions'),
+                'total_net_pay' => (float) $entries->sum('net_pay'),
+                'total_irps' => (float) $entries->sum('irps_amount'),
+                'total_inss_employee' => (float) $entries->sum('inss_employee_amount'),
+                'total_inss_employer' => (float) $entries->sum('inss_employer_amount'),
+                'employee_count' => $employeeCount,
+            ],
+        ];
     }
 
     private function calculateAllowances($employee, $basicSalary)
@@ -666,33 +781,49 @@ class PayrollController extends Controller
     public function destroyEntry(PayrollEntry $payrollEntry)
     {
         if (Auth::user()->can('delete-payslip')) {
-            $payroll = Payroll::find($payrollEntry->payroll_id);
-            DestroySalarySlip::dispatch($payrollEntry);
-            // Delete the entry
-            $payrollEntry->delete();
+            $payroll = Payroll::query()->find($payrollEntry->payroll_id);
+            if (!$payroll || !$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
 
-            // Recalculate totals from remaining entries
-            $entries = $payroll->payrollEntries;
-            $totalGrossPay = $entries->sum('gross_pay');
-            $totalDeductions = $entries->sum('total_deductions');
-            $totalNetPay = $entries->sum('net_pay');
-            $totalIrps = $entries->sum('irps_amount');
-            $totalInssEmployee = $entries->sum('inss_employee_amount');
-            $totalInssEmployer = $entries->sum('inss_employer_amount');
-            $employeeCount = $entries->count();
+            if ($payroll->status === 'cancelled') {
+                return redirect()->back()->with('error', __('Cannot modify payslips from a cancelled payroll.'));
+            }
 
-            // Update payroll totals
-            $payroll->update([
-                'total_gross_pay' => $totalGrossPay,
-                'total_deductions' => $totalDeductions,
-                'total_net_pay' => $totalNetPay,
-                'total_irps' => $totalIrps,
-                'total_inss_employee' => $totalInssEmployee,
-                'total_inss_employer' => $totalInssEmployer,
-                'employee_count' => $employeeCount
+            if ((bool) ($payrollEntry->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Payslip is already cancelled.'));
+            }
+
+            if (($payrollEntry->status ?? 'unpaid') === 'paid') {
+                return redirect()->back()->with('error', __('Paid payslips cannot be cancelled.'));
+            }
+
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
             ]);
 
-            return redirect()->back()->with('success', __('Payroll entry deleted successfully.'));
+            DestroySalarySlip::dispatch($payrollEntry);
+            $payrollEntry->update([
+                'status' => 'unpaid',
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            $entries = $this->activeEntriesQuery($payroll)->get();
+            $totals = $this->computePayrollTotals($entries);
+            $nextStatus = $totals['values']['employee_count'] > 0 ? $payroll->status : 'draft';
+            $payroll->update([
+                'status' => $nextStatus,
+                'is_payroll_paid' => $totals['all_paid'] ? 'paid' : 'unpaid',
+                'cancelled_at' => null,
+                'cancelled_by' => null,
+                'cancellation_reason' => null,
+                ...$totals['values'],
+            ]);
+
+            return redirect()->back()->with('success', __('Payslip cancelled successfully.'));
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
@@ -714,6 +845,19 @@ class PayrollController extends Controller
     public function paySalary(Request $request, PayrollEntry $payrollEntry)
     {
         if (Auth::user()->can('pay-payslip')) {
+            if ((bool) ($payrollEntry->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled payslips cannot be paid.'));
+            }
+
+            $payroll = $payrollEntry->payroll;
+            if (!$payroll || !$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
+
+            if ($payroll->status === 'cancelled') {
+                return redirect()->back()->with('error', __('Cannot pay salaries from a cancelled payroll.'));
+            }
+
             try {
                 PaySalary::dispatch($request, $payrollEntry);
             } catch (\Throwable $th) {
@@ -722,8 +866,7 @@ class PayrollController extends Controller
             $payrollEntry->update(['status' => 'paid']);
 
             // Check if all payroll entries are paid and update payroll status
-            $payroll = $payrollEntry->payroll;
-            $unpaidEntries = $payroll->payrollEntries()->where('status', '!=', 'paid')->count();
+            $unpaidEntries = $this->activeEntriesQuery($payroll)->where('status', '!=', 'paid')->count();
             if ($unpaidEntries === 0) {
                 $payroll->update(['is_payroll_paid' => 'paid']);
             }

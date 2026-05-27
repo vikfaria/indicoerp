@@ -26,6 +26,9 @@ class Payroll extends Model
         'employee_count',
         'status',
         'is_payroll_paid',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'bank_account_id',
         'creator_id',
         'created_by',
@@ -43,6 +46,7 @@ class Payroll extends Model
             'total_irps' => 'decimal:2',
             'total_inss_employee' => 'decimal:2',
             'total_inss_employer' => 'decimal:2',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -55,6 +59,13 @@ class Payroll extends Model
     public function payrollEntries()
     {
         return $this->hasMany(PayrollEntry::class);
+    }
+
+    public function activePayrollEntries()
+    {
+        return $this->hasMany(PayrollEntry::class)->where(function ($query): void {
+            $query->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
     }
 
 }

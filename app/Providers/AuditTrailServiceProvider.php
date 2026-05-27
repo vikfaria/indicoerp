@@ -43,6 +43,7 @@ class AuditTrailServiceProvider extends ServiceProvider
             Transfer::class,
             'Workdo\\Pos\\Models\\Pos',
             'Workdo\\Hrm\\Models\\Payroll',
+            'Workdo\\Hrm\\Models\\PayrollEntry',
         ];
     }
 }

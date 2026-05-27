@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import InputError from '@/components/ui/input-error';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import MediaPicker from '@/components/MediaPicker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useFormFields } from '@/hooks/useFormFields';
@@ -24,12 +25,15 @@ export default function EditLeaveApplication({ leaveapplication, onSuccess }: Ed
         leave_type_id: leaveapplication.leave_type_id?.toString() || '',
         start_date: leaveapplication.start_date || '',
         end_date: leaveapplication.end_date || '',
+        legal_reference_date: leaveapplication.legal_reference_date || '',
+        compensated_days: leaveapplication.compensated_days?.toString() || '0',
         reason: leaveapplication.reason ?? '',
         attachment: leaveapplication.attachment || '',
     });
 
     const [leaveBalance, setLeaveBalance] = useState<any>(null);
     const [totalDays, setTotalDays] = useState(0);
+    const selectedLeaveType = leavetypes?.find((item: any) => item.id.toString() === data.leave_type_id?.toString());
 
     // AI hooks for reason field
     const reasonAI = useFormFields('aiField', data, setData, errors, 'edit', 'reason', 'Reason', 'hrm', 'leave_application');
@@ -63,6 +67,12 @@ export default function EditLeaveApplication({ leaveapplication, onSuccess }: Ed
             setLeaveBalance(null);
         }
     }, [data.employee_id, data.leave_type_id]);
+
+    useEffect(() => {
+        if (!selectedLeaveType?.allow_cash_out && data.compensated_days !== '0') {
+            setData('compensated_days', '0');
+        }
+    }, [selectedLeaveType?.allow_cash_out]);
 
 
 
@@ -137,6 +147,30 @@ export default function EditLeaveApplication({ leaveapplication, onSuccess }: Ed
                         required
                     />
                     <InputError message={errors.end_date} />
+                </div>
+
+                <div>
+                    <Label htmlFor="legal_reference_date">{t('Legal Reference Date (Birth / Event Date)')}</Label>
+                    <DatePicker
+                        id="legal_reference_date"
+                        value={data.legal_reference_date}
+                        onChange={(date) => setData('legal_reference_date', date)}
+                        placeholder={t('Optional')}
+                    />
+                    <InputError message={errors.legal_reference_date} />
+                </div>
+
+                <div>
+                    <Label htmlFor="compensated_days">{t('Compensated Leave Days')}</Label>
+                    <Input
+                        id="compensated_days"
+                        type="number"
+                        min="0"
+                        value={data.compensated_days}
+                        onChange={(e) => setData('compensated_days', e.target.value)}
+                        disabled={!selectedLeaveType?.allow_cash_out}
+                    />
+                    <InputError message={errors.compensated_days} />
                 </div>
                 
                 {leaveBalance && (

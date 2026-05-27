@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Models\User;
+use Carbon\Carbon;
 use Workdo\Hrm\Models\Attendance;
 use Workdo\Hrm\Http\Requests\StoreAttendanceRequest;
 use Workdo\Hrm\Http\Requests\UpdateAttendanceRequest;
@@ -74,51 +75,32 @@ class AttendanceController extends Controller
                 return redirect()->back()->with('error', __('Attendance record already exists for this employee and date.'));
             }
 
-            // Validate working day, leave, and holiday
-            $date = \Carbon\Carbon::today();
-
-            $workingDays = getCompanyAllSetting(creatorId())['working_days'] ?? '';
-            $workingDaysArray = json_decode($workingDays, true) ?? [];
-            $isWorkingDay = in_array($date->dayOfWeek, $workingDaysArray);
-            
-            $isOnLeave = LeaveApplication::where('created_by', creatorId())
-                ->where('employee_id', $validated['employee_id'])
-                ->where('status', 'approved')
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->exists();
-                
-            $isHoliday = Holiday::where('created_by', creatorId())
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->exists();
-
-            if (!$isWorkingDay) {
-                return redirect()->back()->with('error', __('Attendance cannot be created for non-working days.'));
-            }
-            if ($isOnLeave) {
-                return redirect()->back()->with('error', __('Employee is on leave for this date.'));
-            }
-            if ($isHoliday) {
-                return redirect()->back()->with('error', __('Attendance cannot be created on holidays.'));
+            $attendanceDateError = $this->validateAttendanceDateRules(
+                (int) $validated['employee_id'],
+                $validated['date']
+            );
+            if ($attendanceDateError !== null) {
+                return redirect()->back()->with('error', $attendanceDateError);
             }
 
-            $employee = Employee::with('shift')->where('user_id', $validated['employee_id'])->where('created_by', creatorId())->first();
-            $shift = $employee ? $employee->shift : null;
+            $employee = Employee::where('user_id', $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
+            $shiftId = $employee?->shift;
 
             // Calculate attendance data first
             $calculatedData = $this->calculateAttendanceData(
                 $validated['clock_in'],
                 $validated['clock_out'],
                 $validated['break_hour'] ?? 0,
-                $shift,
+                $shiftId,
                 $employee
             );
 
 
             $attendance = new Attendance();
             $attendance->employee_id = $validated['employee_id'];
-            $attendance->shift_id = $shift;
+            $attendance->shift_id = $shiftId;
             $attendance->date = $validated['date'];
             $attendance->clock_in = $validated['clock_in'];
             $attendance->clock_out = $validated['clock_out'];
@@ -162,50 +144,32 @@ class AttendanceController extends Controller
                     return redirect()->back()->with('error', __('Attendance record already exists for this employee and date.'));
                 }
             }
-            // Validate working day, leave, and holiday
-            $date = \Carbon\Carbon::today();
 
-            $workingDays = getCompanyAllSetting(creatorId())['working_days'] ?? '';
-            $workingDaysArray = json_decode($workingDays, true) ?? [];
-            $isWorkingDay = in_array($date->dayOfWeek, $workingDaysArray);
-            
-            $isOnLeave = LeaveApplication::where('created_by', creatorId())
-                ->where('employee_id', $validated['employee_id'])
-                ->where('status', 'approved')
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->exists();
-                
-            $isHoliday = Holiday::where('created_by', creatorId())
-                ->where('start_date', '<=', $date)
-                ->where('end_date', '>=', $date)
-                ->exists();
-
-            if (!$isWorkingDay) {
-                return redirect()->back()->with('error', __('Attendance cannot be created for non-working days.'));
-            }
-            if ($isOnLeave) {
-                return redirect()->back()->with('error', __('Employee is on leave for this date.'));
-            }
-            if ($isHoliday) {
-                return redirect()->back()->with('error', __('Attendance cannot be created on holidays.'));
+            $attendanceDateError = $this->validateAttendanceDateRules(
+                (int) $validated['employee_id'],
+                $validated['date']
+            );
+            if ($attendanceDateError !== null) {
+                return redirect()->back()->with('error', $attendanceDateError);
             }
 
-            $employee = Employee::with('shift')->where('user_id', $validated['employee_id'])->where('created_by', creatorId())->first();
-            $shift = $employee ? $employee->shift : null;
+            $employee = Employee::where('user_id', $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
+            $shiftId = $employee?->shift;
 
             // Calculate attendance data first
             $calculatedData = $this->calculateAttendanceData(
                 $validated['clock_in'],
                 $validated['clock_out'],
                 $validated['break_hour'] ?? 0,
-                $shift,
+                $shiftId,
                 $employee
             );
 
             $attendance->update([
                 'employee_id' => $validated['employee_id'],
-                'shift_id' => $shift,
+                'shift_id' => $shiftId,
                 'date' => $validated['date'],
                 'clock_in' => $validated['clock_in'],
                 'clock_out' => $validated['clock_out'],
@@ -542,6 +506,45 @@ class AttendanceController extends Controller
             'clock_out_time' => $attendance ? $attendance->clock_out : null,
             'total_working_hours' => $attendance && $attendance->total_hour ? $attendance->total_hour . ' hours' : null,
         ]);
+    }
+
+    private function validateAttendanceDateRules(int $employeeUserId, string $date): ?string
+    {
+        $attendanceDate = Carbon::parse($date)->startOfDay();
+
+        $workingDays = getCompanyAllSetting(creatorId())['working_days'] ?? '';
+        $workingDaysArray = json_decode($workingDays, true);
+        if (!is_array($workingDaysArray) || $workingDaysArray === []) {
+            $workingDaysArray = [1, 2, 3, 4, 5];
+        }
+        $workingDaysArray = array_values(array_unique(array_map('intval', $workingDaysArray)));
+        $isWorkingDay = in_array($attendanceDate->dayOfWeek, $workingDaysArray, true);
+
+        if (!$isWorkingDay) {
+            return __('Attendance cannot be created for non-working days.');
+        }
+
+        $isOnLeave = LeaveApplication::where('created_by', creatorId())
+            ->where('employee_id', $employeeUserId)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $attendanceDate->toDateString())
+            ->whereDate('end_date', '>=', $attendanceDate->toDateString())
+            ->exists();
+
+        if ($isOnLeave) {
+            return __('Employee is on leave for this date.');
+        }
+
+        $isHoliday = Holiday::where('created_by', creatorId())
+            ->whereDate('start_date', '<=', $attendanceDate->toDateString())
+            ->whereDate('end_date', '>=', $attendanceDate->toDateString())
+            ->exists();
+
+        if ($isHoliday) {
+            return __('Attendance cannot be created on holidays.');
+        }
+
+        return null;
     }
 
     private function getFilteredEmployees()

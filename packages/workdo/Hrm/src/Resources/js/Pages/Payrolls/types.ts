@@ -19,6 +19,9 @@ export interface Payroll {
     employee_count?: number;
     status: string;
     is_payroll_paid?: 'paid' | 'unpaid';
+    cancelled_at?: string | null;
+    cancelled_by?: number | null;
+    cancellation_reason?: string | null;
     bank_account_id?: number | null;
     created_at: string;
 }

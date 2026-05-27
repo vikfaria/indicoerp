@@ -51,6 +51,10 @@ class PayrollEntry extends Model
         'minimum_wage_gap',
         'payroll_sector_code',
         'status',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'creator_id',
         'created_by',
     ];
@@ -87,6 +91,8 @@ class PayrollEntry extends Model
         'minimum_wage_required' => 'decimal:2',
         'minimum_wage_compliant' => 'boolean',
         'minimum_wage_gap' => 'decimal:2',
+        'is_cancelled' => 'boolean',
+        'cancelled_at' => 'datetime',
     ];
 
     public function payroll()

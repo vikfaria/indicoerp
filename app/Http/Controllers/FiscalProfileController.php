@@ -125,6 +125,10 @@ class FiscalProfileController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
+        if ($event->company_id !== creatorId()) {
+            abort(403, __('Permission denied'));
+        }
+
         $event->update([
             'status' => 'completed',
             'completed_date' => now()->toDateString(),

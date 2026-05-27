@@ -138,6 +138,10 @@ class TaxController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
+        if ($adjustment->company_id !== creatorId()) {
+            abort(403, __('Permission denied'));
+        }
+
         $adjustment->delete();
         return back()->with('success', __('Correcção fiscal eliminada.'));
     }

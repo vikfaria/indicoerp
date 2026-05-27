@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\PlanModuleCheck;
+use App\Models\FiscalCalendarEvent;
+use App\Models\TaxAdjustment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -131,6 +133,94 @@ class SceModuleAccessControlTest extends TestCase
             'company_id' => $company->id,
             'asset_code' => 'AF-0001',
             'name' => 'Laptop Contabilidade',
+        ]);
+    }
+
+    public function test_manage_account_reports_cannot_complete_foreign_fiscal_calendar_event(): void
+    {
+        $company = $this->makeCompany();
+        $foreignCompany = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+
+        $event = FiscalCalendarEvent::create([
+            'company_id' => $foreignCompany->id,
+            'code' => 'VAT-2026-01',
+            'title' => 'Declaração IVA',
+            'obligation_type' => 'vat',
+            'due_date' => now()->addDays(15)->toDateString(),
+            'reference_period' => '2026-01',
+            'status' => 'pending',
+            'created_by' => $foreignCompany->id,
+        ]);
+
+        $this->actingAs($company)
+            ->post(route('sce.fiscal.complete-event', $event))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('fiscal_calendar_events', [
+            'id' => $event->id,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_manage_account_reports_cannot_delete_foreign_tax_adjustment(): void
+    {
+        $company = $this->makeCompany();
+        $foreignCompany = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+
+        $adjustment = TaxAdjustment::create([
+            'company_id' => $foreignCompany->id,
+            'fiscal_year' => '2026',
+            'type' => 'add_back',
+            'category' => 'fines_penalties',
+            'description' => 'Multa fiscal',
+            'amount' => 500.00,
+            'created_by' => $foreignCompany->id,
+        ]);
+
+        $this->actingAs($company)
+            ->delete(route('sce.tax.irpc.adjustment.destroy', $adjustment))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('tax_adjustments', [
+            'id' => $adjustment->id,
+            'company_id' => $foreignCompany->id,
+        ]);
+    }
+
+    public function test_manage_account_cannot_create_duplicate_fixed_asset_code_for_same_company(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account']);
+
+        $payload = [
+            'asset_code' => 'AF-DUP-01',
+            'name' => 'Servidor Primário',
+            'category' => 'tangible',
+            'acquisition_date' => now()->toDateString(),
+            'acquisition_cost' => 150000,
+            'useful_life_months' => 60,
+            'depreciation_method' => 'straight_line',
+        ];
+
+        $this->actingAs($company)
+            ->from(route('sce.fixed-assets.index'))
+            ->post(route('sce.fixed-assets.store'), $payload)
+            ->assertSessionHas('success');
+
+        $this->actingAs($company)
+            ->from(route('sce.fixed-assets.index'))
+            ->post(route('sce.fixed-assets.store'), [
+                ...$payload,
+                'name' => 'Servidor Secundário',
+            ])
+            ->assertSessionHasErrors(['asset_code']);
+
+        $this->assertDatabaseMissing('fixed_assets', [
+            'company_id' => $company->id,
+            'asset_code' => 'AF-DUP-01',
+            'name' => 'Servidor Secundário',
         ]);
     }
 

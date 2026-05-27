@@ -8,6 +8,7 @@ use App\Models\DepreciationEntry;
 use App\Services\DepreciationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class FixedAssetController extends Controller
@@ -63,7 +64,13 @@ class FixedAssetController extends Controller
         }
 
         $validated = $request->validate([
-            'asset_code' => 'required|string|max:30',
+            'asset_code' => [
+                'required',
+                'string',
+                'max:30',
+                Rule::unique('fixed_assets', 'asset_code')
+                    ->where(fn ($query) => $query->where('company_id', creatorId())),
+            ],
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'category' => 'required|string|in:tangible,intangible,investment_property,biological',

@@ -66,11 +66,12 @@ class WarningController extends Controller
             $warning->subject = $validated['subject'];
             $warning->severity = $validated['severity'];
             $warning->warning_date = $validated['warning_date'];
-            $warning->description = $validated['description'];
-            $warning->document = $validated['document'];
+            $warning->description = $validated['description'] ?? null;
+            $warning->document = $validated['document'] ?? null;
             $warning->employee_id = $validated['employee_id'];
             $warning->warning_by = $validated['warning_by'];
             $warning->warning_type_id = $validated['warning_type_id'];
+            $this->applyLegalWorkflowFields($warning, $validated);
 
             $warning->creator_id = Auth::id();
             $warning->created_by = creatorId();
@@ -94,11 +95,12 @@ class WarningController extends Controller
             $warning->subject = $validated['subject'];
             $warning->severity = $validated['severity'];
             $warning->warning_date = $validated['warning_date'];
-            $warning->description = $validated['description'];
-            $warning->document = $validated['document'];
+            $warning->description = $validated['description'] ?? null;
+            $warning->document = $validated['document'] ?? null;
             $warning->employee_id = $validated['employee_id'];
             $warning->warning_by = $validated['warning_by'];
             $warning->warning_type_id = $validated['warning_type_id'];
+            $this->applyLegalWorkflowFields($warning, $validated);
 
             $warning->save();
 
@@ -153,5 +155,25 @@ class WarningController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function applyLegalWorkflowFields(Warning $warning, array $validated): void
+    {
+        $warning->note_of_culpa_issued_at = $validated['note_of_culpa_issued_at'] ?? null;
+        $warning->note_of_culpa_delivered_at = $validated['note_of_culpa_delivered_at'] ?? null;
+        $warning->worker_refused_note_of_culpa = (bool) ($validated['worker_refused_note_of_culpa'] ?? false);
+
+        if ($warning->worker_refused_note_of_culpa) {
+            $warning->refusal_witness_one_name = $validated['refusal_witness_one_name'] ?? null;
+            $warning->refusal_witness_two_name = $validated['refusal_witness_two_name'] ?? null;
+        } else {
+            $warning->refusal_witness_one_name = null;
+            $warning->refusal_witness_two_name = null;
+        }
+
+        $warning->response_deadline_at = $validated['response_deadline_at'] ?? null;
+        $warning->decision_deadline_at = $validated['decision_deadline_at'] ?? null;
+        $warning->disciplinary_sanction = $validated['disciplinary_sanction'] ?? null;
+        $warning->disciplinary_decision_at = $validated['disciplinary_decision_at'] ?? null;
     }
 }

@@ -21,6 +21,15 @@ export default function Create({ onSuccess }: CreateWarningProps) {
         subject: '',
         severity: 'Minor',
         warning_date: '',
+        note_of_culpa_issued_at: '',
+        note_of_culpa_delivered_at: '',
+        worker_refused_note_of_culpa: false,
+        refusal_witness_one_name: '',
+        refusal_witness_two_name: '',
+        response_deadline_at: '',
+        decision_deadline_at: '',
+        disciplinary_sanction: '',
+        disciplinary_decision_at: '',
         description: '',
         document: '',
         employee_id: '',
@@ -158,6 +167,102 @@ export default function Create({ onSuccess }: CreateWarningProps) {
                         required
                     />
                     <InputError message={errors.warning_date} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <Label>{t('Note of Charge Issued At')}</Label>
+                        <Input
+                            type="date"
+                            value={data.note_of_culpa_issued_at}
+                            onChange={(e) => setData('note_of_culpa_issued_at', e.target.value)}
+                        />
+                        <InputError message={errors.note_of_culpa_issued_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Note of Charge Delivered At')}</Label>
+                        <Input
+                            type="date"
+                            value={data.note_of_culpa_delivered_at}
+                            onChange={(e) => setData('note_of_culpa_delivered_at', e.target.value)}
+                        />
+                        <InputError message={errors.note_of_culpa_delivered_at} />
+                    </div>
+                    <div className="md:col-span-2">
+                        <label className="flex items-center gap-2 text-sm">
+                            <input
+                                type="checkbox"
+                                checked={data.worker_refused_note_of_culpa}
+                                onChange={(e) => setData('worker_refused_note_of_culpa', e.target.checked)}
+                            />
+                            {t('Employee refused to sign note of charge')}
+                        </label>
+                        <InputError message={errors.worker_refused_note_of_culpa} />
+                    </div>
+                    {data.worker_refused_note_of_culpa && (
+                        <>
+                            <div>
+                                <Label>{t('Witness 1 Name')}</Label>
+                                <Input
+                                    value={data.refusal_witness_one_name}
+                                    onChange={(e) => setData('refusal_witness_one_name', e.target.value)}
+                                />
+                                <InputError message={errors.refusal_witness_one_name} />
+                            </div>
+                            <div>
+                                <Label>{t('Witness 2 Name')}</Label>
+                                <Input
+                                    value={data.refusal_witness_two_name}
+                                    onChange={(e) => setData('refusal_witness_two_name', e.target.value)}
+                                />
+                                <InputError message={errors.refusal_witness_two_name} />
+                            </div>
+                        </>
+                    )}
+                    <div>
+                        <Label>{t('Response Deadline')}</Label>
+                        <Input
+                            type="date"
+                            value={data.response_deadline_at}
+                            onChange={(e) => setData('response_deadline_at', e.target.value)}
+                        />
+                        <InputError message={errors.response_deadline_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Decision Deadline')}</Label>
+                        <Input
+                            type="date"
+                            value={data.decision_deadline_at}
+                            onChange={(e) => setData('decision_deadline_at', e.target.value)}
+                        />
+                        <InputError message={errors.decision_deadline_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Disciplinary Sanction')}</Label>
+                        <Select value={data.disciplinary_sanction || ''} onValueChange={(value) => setData('disciplinary_sanction', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select Sanction')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="warning">{t('Warning')}</SelectItem>
+                                <SelectItem value="reprimand">{t('Reprimand')}</SelectItem>
+                                <SelectItem value="suspension">{t('Suspension')}</SelectItem>
+                                <SelectItem value="demotion">{t('Demotion')}</SelectItem>
+                                <SelectItem value="dismissal">{t('Dismissal')}</SelectItem>
+                                <SelectItem value="archived">{t('Archived')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.disciplinary_sanction} />
+                    </div>
+                    <div>
+                        <Label>{t('Disciplinary Decision Date')}</Label>
+                        <Input
+                            type="date"
+                            value={data.disciplinary_decision_at}
+                            onChange={(e) => setData('disciplinary_decision_at', e.target.value)}
+                        />
+                        <InputError message={errors.disciplinary_decision_at} />
+                    </div>
                 </div>
                 
                 <div>

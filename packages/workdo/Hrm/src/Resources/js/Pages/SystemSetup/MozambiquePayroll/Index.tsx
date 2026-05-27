@@ -51,7 +51,9 @@ interface MinimumWage {
 
 interface LabourPolicy {
     overtime_daily_limit_hours: number | null;
+    overtime_weekly_limit_hours: number | null;
     overtime_monthly_limit_hours: number | null;
+    overtime_quarterly_limit_hours: number | null;
     overtime_yearly_limit_hours: number | null;
     leave_min_notice_days: number;
     leave_max_consecutive_days: number | null;
@@ -59,11 +61,131 @@ interface LabourPolicy {
     leave_count_holidays: boolean;
 }
 
+interface ComplianceAlertItem {
+    key: string;
+    label: string;
+    count: number;
+    severity: 'high' | 'medium';
+}
+
+interface ComplianceSnapshot {
+    generated_at: string;
+    metrics: {
+        total_workers: number;
+        triggered_alerts: number;
+        high_alerts: number;
+        medium_alerts: number;
+    };
+    items: ComplianceAlertItem[];
+    quota: {
+        employer_type: string;
+        max_percentage: number;
+        total_workers: number;
+        quota_slots: number;
+        current_foreign_workers: number;
+        remaining_slots: number;
+        is_exceeded: boolean;
+    };
+    payroll_obligations?: PayrollObligations;
+    compliance_panel?: {
+        generated_at: string;
+        indicators: Array<{
+            key: string;
+            label: string;
+            count: number;
+            severity: 'high' | 'medium';
+            status: 'ok' | 'attention' | 'high_risk';
+        }>;
+        metrics: {
+            total_indicators: number;
+            triggered_indicators: number;
+            high_risk_indicators: number;
+            attention_indicators: number;
+            ok_indicators: number;
+        };
+    };
+}
+
+interface ComplianceAlertsState {
+    synced_at: string;
+    source_generated_at?: string | null;
+    metrics: {
+        open_alerts: number;
+        open_high_alerts: number;
+        open_medium_alerts: number;
+        resolved_alerts: number;
+    };
+}
+
+type ObligationStatus = 'not_applicable' | 'pending' | 'overdue' | 'completed';
+
+interface PayrollObligationRow {
+    reference_period: string;
+    month_label: string;
+    payroll_runs: number;
+    employee_count: number;
+    total_gross_pay: number;
+    total_irps: number;
+    total_inss_employee: number;
+    total_inss_employer: number;
+    total_inss: number;
+    has_completed_payroll: boolean;
+    inss_due_date: string | null;
+    irps_due_date: string | null;
+    inss_status: ObligationStatus;
+    irps_status: ObligationStatus;
+}
+
+interface PayrollObligations {
+    generated_at: string;
+    records: PayrollObligationRow[];
+    totals: {
+        applicable_periods: number;
+        overdue_inss: number;
+        pending_inss: number;
+        completed_inss: number;
+        overdue_irps: number;
+        pending_irps: number;
+        completed_irps: number;
+        total_irps: number;
+        total_inss_employee: number;
+        total_inss_employer: number;
+        total_inss: number;
+    };
+}
+
+interface CostCenterOption {
+    id: number;
+    code: string;
+    name: string;
+}
+
+interface MappingSourceOption {
+    id: number;
+    name: string;
+}
+
+interface CostCenterMappingConfig {
+    mode: 'configured' | 'configured_with_heuristic';
+    mappings: {
+        employee: Record<string, number>;
+        department: Record<string, number>;
+        branch: Record<string, number>;
+    };
+}
+
 interface PageProps {
     irpsTables: IrpsTable[];
     inssRates: InssRate[];
     minimumWages: MinimumWage[];
     labourPolicy: LabourPolicy;
+    complianceSnapshot: ComplianceSnapshot;
+    complianceAlerts?: ComplianceAlertsState;
+    costCenters: CostCenterOption[];
+    departments: MappingSourceOption[];
+    branches: MappingSourceOption[];
+    employees: MappingSourceOption[];
+    costCenterMappingConfig: CostCenterMappingConfig;
     auth: {
         user: {
             id: number;
@@ -74,8 +196,62 @@ interface PageProps {
 
 export default function MozambiquePayrollComplianceIndex() {
     const { t } = useTranslation();
-    const { irpsTables, inssRates, minimumWages, labourPolicy, auth } = usePage<PageProps>().props;
+    const { irpsTables, inssRates, minimumWages, labourPolicy, complianceSnapshot, complianceAlerts, costCenters, departments, branches, employees, costCenterMappingConfig, auth } = usePage<PageProps>().props;
     const canEdit = auth.user?.permissions?.includes('edit-payrolls') ?? false;
+    const triggeredItems = (complianceSnapshot?.items ?? []).filter((item) => item.count > 0);
+    const payrollObligations = complianceSnapshot?.payroll_obligations;
+    const payrollObligationRows = payrollObligations?.records ?? [];
+    const complianceSyncedAt = complianceAlerts?.synced_at ?? complianceSnapshot?.generated_at;
+    const compliancePanel = complianceSnapshot?.compliance_panel;
+    const compliancePanelIndicators = compliancePanel?.indicators ?? [];
+    const emptyMappings = { employee: {}, department: {}, branch: {} } as CostCenterMappingConfig['mappings'];
+
+    const formatMoney = (value: number) =>
+        new Intl.NumberFormat('pt-MZ', {
+            style: 'currency',
+            currency: 'MZN',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(Number.isFinite(value) ? value : 0);
+
+    const formatDateTime = (value?: string | null): string => {
+        if (!value) {
+            return '-';
+        }
+
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+            return value;
+        }
+
+        return parsed.toLocaleString('pt-MZ');
+    };
+
+    const obligationStatusLabel = (status: ObligationStatus): string => {
+        switch (status) {
+            case 'completed':
+                return t('Completed');
+            case 'overdue':
+                return t('Overdue');
+            case 'pending':
+                return t('Pending');
+            default:
+                return t('N/A');
+        }
+    };
+
+    const obligationStatusBadge = (status: ObligationStatus): string => {
+        switch (status) {
+            case 'completed':
+                return 'bg-green-100 text-green-700';
+            case 'overdue':
+                return 'bg-red-100 text-red-700';
+            case 'pending':
+                return 'bg-yellow-100 text-yellow-700';
+            default:
+                return 'bg-slate-100 text-slate-700';
+        }
+    };
 
     const irpsTableForm = useForm({
         name: '',
@@ -112,13 +288,44 @@ export default function MozambiquePayrollComplianceIndex() {
 
     const labourPolicyForm = useForm({
         overtime_daily_limit_hours: labourPolicy.overtime_daily_limit_hours?.toString() ?? '',
+        overtime_weekly_limit_hours: labourPolicy.overtime_weekly_limit_hours?.toString() ?? '',
         overtime_monthly_limit_hours: labourPolicy.overtime_monthly_limit_hours?.toString() ?? '',
+        overtime_quarterly_limit_hours: labourPolicy.overtime_quarterly_limit_hours?.toString() ?? '',
         overtime_yearly_limit_hours: labourPolicy.overtime_yearly_limit_hours?.toString() ?? '',
         leave_min_notice_days: labourPolicy.leave_min_notice_days?.toString() ?? '0',
         leave_max_consecutive_days: labourPolicy.leave_max_consecutive_days?.toString() ?? '',
         leave_count_non_working_days: labourPolicy.leave_count_non_working_days,
         leave_count_holidays: labourPolicy.leave_count_holidays,
     });
+
+    const costCenterMappingForm = useForm<CostCenterMappingConfig>({
+        mode: costCenterMappingConfig?.mode ?? 'configured_with_heuristic',
+        mappings: {
+            employee: { ...(costCenterMappingConfig?.mappings?.employee ?? emptyMappings.employee) },
+            department: { ...(costCenterMappingConfig?.mappings?.department ?? emptyMappings.department) },
+            branch: { ...(costCenterMappingConfig?.mappings?.branch ?? emptyMappings.branch) },
+        },
+    });
+
+    const setMappingValue = (type: 'employee' | 'department' | 'branch', sourceId: number, value: string) => {
+        const nextMappings = {
+            ...costCenterMappingForm.data.mappings,
+            [type]: { ...costCenterMappingForm.data.mappings[type] },
+        };
+
+        if (value === '') {
+            delete nextMappings[type][String(sourceId)];
+        } else {
+            nextMappings[type][String(sourceId)] = Number(value);
+        }
+
+        costCenterMappingForm.setData('mappings', nextMappings);
+    };
+
+    const mappingValue = (type: 'employee' | 'department' | 'branch', sourceId: number): string => {
+        const value = costCenterMappingForm.data.mappings[type][String(sourceId)];
+        return value ? String(value) : '';
+    };
 
     const handleDelete = (routeName: string, id: number) => {
         router.delete(route(routeName, id), {
@@ -143,6 +350,466 @@ export default function MozambiquePayrollComplianceIndex() {
                 </div>
 
                 <div className="flex-1 space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('Labour Compliance Dashboard')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Total Workers')}</p>
+                                    <p className="text-xl font-semibold">{complianceSnapshot?.metrics?.total_workers ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Triggered Alerts')}</p>
+                                    <p className="text-xl font-semibold">{complianceSnapshot?.metrics?.triggered_alerts ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('High Alerts')}</p>
+                                    <p className="text-xl font-semibold text-red-600">{complianceSnapshot?.metrics?.high_alerts ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Medium Alerts')}</p>
+                                    <p className="text-xl font-semibold text-yellow-600">{complianceSnapshot?.metrics?.medium_alerts ?? 0}</p>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground">
+                                {t('Last alert sync')}: {formatDateTime(complianceSyncedAt)}
+                            </p>
+
+                            <div className="rounded-lg border p-3 text-sm">
+                                <p className="font-medium">{t('Foreign Quota')}</p>
+                                <p className="text-muted-foreground">
+                                    {t('Type')}: {complianceSnapshot?.quota?.employer_type ?? '-'} · {t('Used')}: {complianceSnapshot?.quota?.current_foreign_workers ?? 0}/{complianceSnapshot?.quota?.quota_slots ?? 0} · {t('Remaining')}: {complianceSnapshot?.quota?.remaining_slots ?? 0}
+                                </p>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left py-2">{t('Indicator')}</th>
+                                            <th className="text-left py-2">{t('Severity')}</th>
+                                            <th className="text-left py-2">{t('Count')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {triggeredItems.length === 0 && (
+                                            <tr>
+                                                <td colSpan={3} className="py-3 text-muted-foreground">
+                                                    {t('No active compliance alerts.')}
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {triggeredItems.map((item) => (
+                                            <tr key={item.key} className="border-b">
+                                                <td className="py-2">{item.label}</td>
+                                                <td className="py-2">
+                                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${item.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                        {item.severity === 'high' ? t('High') : t('Medium')}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 font-semibold">{item.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('Labour Compliance Risk Panel')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Triggered Indicators')}</p>
+                                    <p className="text-xl font-semibold">{compliancePanel?.metrics?.triggered_indicators ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('High Risk Indicators')}</p>
+                                    <p className="text-xl font-semibold text-red-600">{compliancePanel?.metrics?.high_risk_indicators ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Attention Indicators')}</p>
+                                    <p className="text-xl font-semibold text-yellow-600">{compliancePanel?.metrics?.attention_indicators ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Indicators OK')}</p>
+                                    <p className="text-xl font-semibold text-green-600">{compliancePanel?.metrics?.ok_indicators ?? 0}</p>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left py-2">{t('Indicator')}</th>
+                                            <th className="text-left py-2">{t('Risk')}</th>
+                                            <th className="text-left py-2">{t('Count')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {compliancePanelIndicators.map((indicator) => (
+                                            <tr key={indicator.key} className="border-b">
+                                                <td className="py-2">{indicator.label}</td>
+                                                <td className="py-2">
+                                                    <span
+                                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                            indicator.status === 'high_risk'
+                                                                ? 'bg-red-100 text-red-700'
+                                                                : indicator.status === 'attention'
+                                                                  ? 'bg-yellow-100 text-yellow-700'
+                                                                  : 'bg-green-100 text-green-700'
+                                                        }`}
+                                                    >
+                                                        {indicator.status === 'high_risk'
+                                                            ? t('High Risk')
+                                                            : indicator.status === 'attention'
+                                                              ? t('Attention')
+                                                              : t('OK')}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 font-semibold">{indicator.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <CardTitle>{t('Payroll Legal Obligations (INSS / IRPS)')}</CardTitle>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    window.open(
+                                        route('hrm.mozambique-payroll-compliance.reports.expatriates.export'),
+                                        '_blank'
+                                    )
+                                }
+                            >
+                                {t('Expatriates Report')}
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Overdue INSS Submissions')}</p>
+                                    <p className="text-xl font-semibold text-red-600">{payrollObligations?.totals?.overdue_inss ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Overdue IRPS Submissions')}</p>
+                                    <p className="text-xl font-semibold text-red-600">{payrollObligations?.totals?.overdue_irps ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('INSS Amount (6 months)')}</p>
+                                    <p className="text-xl font-semibold">{formatMoney(payrollObligations?.totals?.total_inss ?? 0)}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('IRPS Amount (6 months)')}</p>
+                                    <p className="text-xl font-semibold">{formatMoney(payrollObligations?.totals?.total_irps ?? 0)}</p>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left py-2">{t('Reference')}</th>
+                                            <th className="text-left py-2">{t('Payroll Runs')}</th>
+                                            <th className="text-left py-2">{t('INSS Due')}</th>
+                                            <th className="text-left py-2">{t('INSS Status')}</th>
+                                            <th className="text-left py-2">{t('IRPS Due')}</th>
+                                            <th className="text-left py-2">{t('IRPS Status')}</th>
+                                            <th className="text-left py-2">{t('IRPS Total')}</th>
+                                            <th className="text-left py-2">{t('INSS Total')}</th>
+                                            <th className="text-left py-2">{t('Reports')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {payrollObligationRows.map((row) => (
+                                            <tr key={row.reference_period} className="border-b">
+                                                <td className="py-2">{row.reference_period}</td>
+                                                <td className="py-2">{row.payroll_runs}</td>
+                                                <td className="py-2">{row.inss_due_date ?? '-'}</td>
+                                                <td className="py-2">
+                                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${obligationStatusBadge(row.inss_status)}`}>
+                                                        {obligationStatusLabel(row.inss_status)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2">{row.irps_due_date ?? '-'}</td>
+                                                <td className="py-2">
+                                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${obligationStatusBadge(row.irps_status)}`}>
+                                                        {obligationStatusLabel(row.irps_status)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2">{formatMoney(row.total_irps ?? 0)}</td>
+                                                <td className="py-2">{formatMoney(row.total_inss ?? 0)}</td>
+                                                <td className="py-2">
+                                                    {row.has_completed_payroll ? (
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.modelo19-support.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Modelo 19')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.inss-guide.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('INSS Guide')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.bank-payment-file.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Bank Payment File')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.cost-allocation.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Cost Allocation')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Journal Lines')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.cost-allocation.json', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Cost JSON')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.cost-allocation.xml', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Cost XML')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.json', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Journal JSON')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.xml', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Journal XML')}
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">-</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('Payroll Cost Center Mapping')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <form
+                                className="space-y-4"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    costCenterMappingForm.put(route('hrm.mozambique-payroll-compliance.cost-center-mappings.update'));
+                                }}
+                            >
+                                <div className="space-y-2 max-w-sm">
+                                    <Label>{t('Mapping Mode')}</Label>
+                                    <select
+                                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={costCenterMappingForm.data.mode}
+                                        onChange={(e) => costCenterMappingForm.setData('mode', e.target.value as CostCenterMappingConfig['mode'])}
+                                        disabled={!canEdit}
+                                    >
+                                        <option value="configured">{t('Configured Only (Strict)')}</option>
+                                        <option value="configured_with_heuristic">{t('Configured + Heuristic Fallback')}</option>
+                                    </select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t('Strict mode enforces explicit mapping and does not auto-infer cost center by department/branch names.')}
+                                    </p>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b">
+                                                <th className="text-left py-2">{t('Source Type')}</th>
+                                                <th className="text-left py-2">{t('Source')}</th>
+                                                <th className="text-left py-2">{t('Cost Center')}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {departments.map((department) => (
+                                                <tr key={`dep-${department.id}`} className="border-b">
+                                                    <td className="py-2">{t('Department')}</td>
+                                                    <td className="py-2">{department.name}</td>
+                                                    <td className="py-2">
+                                                        <select
+                                                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                            value={mappingValue('department', department.id)}
+                                                            onChange={(e) => setMappingValue('department', department.id, e.target.value)}
+                                                            disabled={!canEdit}
+                                                        >
+                                                            <option value="">{t('Not mapped')}</option>
+                                                            {costCenters.map((center) => (
+                                                                <option key={`dep-${department.id}-cc-${center.id}`} value={center.id}>
+                                                                    {center.code} - {center.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {branches.map((branch) => (
+                                                <tr key={`branch-${branch.id}`} className="border-b">
+                                                    <td className="py-2">{t('Branch')}</td>
+                                                    <td className="py-2">{branch.name}</td>
+                                                    <td className="py-2">
+                                                        <select
+                                                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                            value={mappingValue('branch', branch.id)}
+                                                            onChange={(e) => setMappingValue('branch', branch.id, e.target.value)}
+                                                            disabled={!canEdit}
+                                                        >
+                                                            <option value="">{t('Not mapped')}</option>
+                                                            {costCenters.map((center) => (
+                                                                <option key={`branch-${branch.id}-cc-${center.id}`} value={center.id}>
+                                                                    {center.code} - {center.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {employees.map((employee) => (
+                                                <tr key={`emp-${employee.id}`} className="border-b">
+                                                    <td className="py-2">{t('Employee')}</td>
+                                                    <td className="py-2">{employee.name}</td>
+                                                    <td className="py-2">
+                                                        <select
+                                                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                            value={mappingValue('employee', employee.id)}
+                                                            onChange={(e) => setMappingValue('employee', employee.id, e.target.value)}
+                                                            disabled={!canEdit}
+                                                        >
+                                                            <option value="">{t('Not mapped')}</option>
+                                                            {costCenters.map((center) => (
+                                                                <option key={`emp-${employee.id}-cc-${center.id}`} value={center.id}>
+                                                                    {center.code} - {center.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {canEdit && (
+                                    <Button type="submit" disabled={costCenterMappingForm.processing}>
+                                        {t('Save Cost Center Mapping')}
+                                    </Button>
+                                )}
+                                <InputError message={costCenterMappingForm.errors.mode} />
+                            </form>
+                        </CardContent>
+                    </Card>
+
                     <Card>
                         <CardHeader>
                             <CardTitle>{t('IRPS Tables')}</CardTitle>
@@ -359,6 +1026,18 @@ export default function MozambiquePayrollComplianceIndex() {
                                     <InputError message={labourPolicyForm.errors.overtime_daily_limit_hours} />
                                 </div>
                                 <div>
+                                    <Label>{t('Weekly Overtime Limit (hours)')}</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        value={labourPolicyForm.data.overtime_weekly_limit_hours}
+                                        onChange={(e) => labourPolicyForm.setData('overtime_weekly_limit_hours', e.target.value)}
+                                        placeholder={t('Disabled when empty')}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.overtime_weekly_limit_hours} />
+                                </div>
+                                <div>
                                     <Label>{t('Monthly Overtime Limit (hours)')}</Label>
                                     <Input
                                         type="number"
@@ -369,6 +1048,18 @@ export default function MozambiquePayrollComplianceIndex() {
                                         placeholder={t('Disabled when empty')}
                                     />
                                     <InputError message={labourPolicyForm.errors.overtime_monthly_limit_hours} />
+                                </div>
+                                <div>
+                                    <Label>{t('Quarterly Overtime Limit (hours)')}</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        value={labourPolicyForm.data.overtime_quarterly_limit_hours}
+                                        onChange={(e) => labourPolicyForm.setData('overtime_quarterly_limit_hours', e.target.value)}
+                                        placeholder={t('Disabled when empty')}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.overtime_quarterly_limit_hours} />
                                 </div>
                                 <div>
                                     <Label>{t('Yearly Overtime Limit (hours)')}</Label>

@@ -7,6 +7,7 @@ import InputError from '@/components/ui/input-error';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EditLeaveTypeProps, EditLeaveTypeFormData } from './types';
 import { usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -16,11 +17,36 @@ export default function EditLeaveType({ leavetype, onSuccess }: EditLeaveTypePro
     const { } = usePage<any>().props;
 
     const { t } = useTranslation();
+    const legalCodes = [
+        { value: 'annual', label: t('Annual') },
+        { value: 'maternity', label: t('Maternity') },
+        { value: 'paternity', label: t('Paternity') },
+        { value: 'adoption', label: t('Adoption') },
+        { value: 'foster_care', label: t('Foster Care') },
+        { value: 'sick_leave', label: t('Sick Leave') },
+        { value: 'bereavement', label: t('Bereavement') },
+        { value: 'marriage', label: t('Marriage') },
+        { value: 'family_assistance', label: t('Family Assistance') },
+        { value: 'union_leave', label: t('Union Leave') },
+        { value: 'work_accident', label: t('Work Accident') },
+        { value: 'public_service', label: t('Public Service') },
+        { value: 'other', label: t('Other') },
+    ];
+
     const { data, setData, put, processing, errors } = useForm<EditLeaveTypeFormData>({
         name: leavetype.name ?? '',
+        legal_code: leavetype.legal_code ?? '',
         description: leavetype.description ?? '',
-        max_days_per_year: leavetype.max_days_per_year ?? '',
+        max_days_per_year: leavetype.max_days_per_year?.toString() ?? '',
         is_paid: leavetype.is_paid ?? false,
+        requires_supporting_document: leavetype.requires_supporting_document ?? false,
+        must_be_consecutive: leavetype.must_be_consecutive ?? false,
+        fixed_duration_days: leavetype.fixed_duration_days?.toString() ?? '',
+        min_advance_notice_days: leavetype.min_advance_notice_days?.toString() ?? '',
+        pre_event_start_window_days: leavetype.pre_event_start_window_days?.toString() ?? '',
+        post_event_start_offset_days: leavetype.post_event_start_offset_days?.toString() ?? '',
+        allow_cash_out: leavetype.allow_cash_out ?? false,
+        min_effective_rest_days: leavetype.min_effective_rest_days?.toString() ?? '',
         color: leavetype.color ?? '#FF6B6B',
     });
 
@@ -55,6 +81,23 @@ export default function EditLeaveType({ leavetype, onSuccess }: EditLeaveTypePro
                 </div>
 
                 <div>
+                    <Label htmlFor="legal_code">{t('Legal Leave Code')}</Label>
+                    <Select value={data.legal_code || ''} onValueChange={(value) => setData('legal_code', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Select Legal Code')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {legalCodes.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.legal_code} />
+                </div>
+
+                <div>
                     <Label htmlFor="max_days_per_year" required>{t('Max Days Per Year')}</Label>
                     <Input
                         id="max_days_per_year"
@@ -77,6 +120,96 @@ export default function EditLeaveType({ leavetype, onSuccess }: EditLeaveTypePro
                     />
                     <Label htmlFor="is_paid" className="cursor-pointer">{t('Is Paid')}</Label>
                     <InputError message={errors.is_paid} />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="flex items-center space-x-2">
+                        <Switch
+                            id="requires_supporting_document"
+                            checked={data.requires_supporting_document || false}
+                            onCheckedChange={(checked) => setData('requires_supporting_document', !!checked)}
+                        />
+                        <Label htmlFor="requires_supporting_document" className="cursor-pointer">{t('Requires Supporting Document')}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Switch
+                            id="must_be_consecutive"
+                            checked={data.must_be_consecutive || false}
+                            onCheckedChange={(checked) => setData('must_be_consecutive', !!checked)}
+                        />
+                        <Label htmlFor="must_be_consecutive" className="cursor-pointer">{t('Must Be Consecutive')}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Switch
+                            id="allow_cash_out"
+                            checked={data.allow_cash_out || false}
+                            onCheckedChange={(checked) => setData('allow_cash_out', !!checked)}
+                        />
+                        <Label htmlFor="allow_cash_out" className="cursor-pointer">{t('Allow Cash Out')}</Label>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                        <Label htmlFor="fixed_duration_days">{t('Fixed Duration (Calendar Days)')}</Label>
+                        <Input
+                            id="fixed_duration_days"
+                            type="number"
+                            min="1"
+                            value={data.fixed_duration_days}
+                            onChange={(e) => setData('fixed_duration_days', e.target.value)}
+                            placeholder={t('Optional')}
+                        />
+                        <InputError message={errors.fixed_duration_days} />
+                    </div>
+                    <div>
+                        <Label htmlFor="min_advance_notice_days">{t('Minimum Notice (Days)')}</Label>
+                        <Input
+                            id="min_advance_notice_days"
+                            type="number"
+                            min="0"
+                            value={data.min_advance_notice_days}
+                            onChange={(e) => setData('min_advance_notice_days', e.target.value)}
+                            placeholder={t('Optional')}
+                        />
+                        <InputError message={errors.min_advance_notice_days} />
+                    </div>
+                    <div>
+                        <Label htmlFor="pre_event_start_window_days">{t('Event Window Before Start (Days)')}</Label>
+                        <Input
+                            id="pre_event_start_window_days"
+                            type="number"
+                            min="0"
+                            value={data.pre_event_start_window_days}
+                            onChange={(e) => setData('pre_event_start_window_days', e.target.value)}
+                            placeholder={t('Optional')}
+                        />
+                        <InputError message={errors.pre_event_start_window_days} />
+                    </div>
+                    <div>
+                        <Label htmlFor="post_event_start_offset_days">{t('Event Start Offset (Days)')}</Label>
+                        <Input
+                            id="post_event_start_offset_days"
+                            type="number"
+                            min="0"
+                            value={data.post_event_start_offset_days}
+                            onChange={(e) => setData('post_event_start_offset_days', e.target.value)}
+                            placeholder={t('Optional')}
+                        />
+                        <InputError message={errors.post_event_start_offset_days} />
+                    </div>
+                    <div>
+                        <Label htmlFor="min_effective_rest_days">{t('Min Effective Rest Days')}</Label>
+                        <Input
+                            id="min_effective_rest_days"
+                            type="number"
+                            min="1"
+                            value={data.min_effective_rest_days}
+                            onChange={(e) => setData('min_effective_rest_days', e.target.value)}
+                            placeholder={t('Optional')}
+                        />
+                        <InputError message={errors.min_effective_rest_days} />
+                    </div>
                 </div>
 
                 <div>

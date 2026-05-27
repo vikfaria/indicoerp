@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from '@/components/ui/label';
 import InputError from '@/components/ui/input-error';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -24,6 +25,11 @@ export default function Create({ onSuccess }: CreateContractProps) {
         end_date: '',
         description: '',
         status: 'pending',
+        is_labour_contract: false,
+        legal_contract_type: '',
+        fixed_term_justification: '',
+        probation_category: '',
+        legal_notes: '',
         sync_to_google_calendar: false,
     });
 
@@ -113,6 +119,78 @@ export default function Create({ onSuccess }: CreateContractProps) {
                         </SelectContent>
                     </Select>
                     <InputError message={errors.status} />
+                </div>
+
+                <div className="space-y-3 rounded-lg border p-3">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                        <input
+                            type="checkbox"
+                            checked={data.is_labour_contract}
+                            onChange={(e) => setData('is_labour_contract', e.target.checked)}
+                        />
+                        {t('Labour Contract (Mozambique)')}
+                    </label>
+                    <InputError message={errors.is_labour_contract} />
+
+                    {data.is_labour_contract && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <Label required>{t('Legal Contract Type')}</Label>
+                                <Select value={data.legal_contract_type || ''} onValueChange={(value) => setData('legal_contract_type', value)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('Select legal type')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="indefinite">{t('Indefinite')}</SelectItem>
+                                        <SelectItem value="fixed_term">{t('Fixed Term')}</SelectItem>
+                                        <SelectItem value="uncertain_term">{t('Uncertain Term')}</SelectItem>
+                                        <SelectItem value="foreign">{t('Foreign Worker')}</SelectItem>
+                                        <SelectItem value="short_term">{t('Short Term')}</SelectItem>
+                                        <SelectItem value="project">{t('Project')}</SelectItem>
+                                        <SelectItem value="special_regime">{t('Special Regime')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.legal_contract_type} />
+                            </div>
+
+                            <div>
+                                <Label>{t('Probation Category')}</Label>
+                                <Select value={data.probation_category || ''} onValueChange={(value) => setData('probation_category', value)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={t('Select probation category')} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="base_indefinite">{t('Base (Indefinite)')}</SelectItem>
+                                        <SelectItem value="general">{t('General')}</SelectItem>
+                                        <SelectItem value="technician_mid">{t('Mid Technician')}</SelectItem>
+                                        <SelectItem value="technician_high">{t('High Technician')}</SelectItem>
+                                        <SelectItem value="leadership">{t('Leadership')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <InputError message={errors.probation_category} />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <Label>{t('Fixed-Term Justification')}</Label>
+                                <Textarea
+                                    value={data.fixed_term_justification}
+                                    onChange={(e) => setData('fixed_term_justification', e.target.value)}
+                                    placeholder={t('Provide legal/economic/technical reason for fixed-term contract')}
+                                />
+                                <InputError message={errors.fixed_term_justification} />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <Label>{t('Legal Notes')}</Label>
+                                <Textarea
+                                    value={data.legal_notes}
+                                    onChange={(e) => setData('legal_notes', e.target.value)}
+                                    placeholder={t('Additional legal notes')}
+                                />
+                                <InputError message={errors.legal_notes} />
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div>

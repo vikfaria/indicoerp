@@ -84,9 +84,45 @@ export default function Show({ complaint, onClose }: ShowComplaintProps) {
                             <User className="h-4 w-4" />
                             {t('Resolved By')}
                         </label>
-                        <p className="mt-1 font-medium">{complaint.resolved_by?.name || '-'}</p>
+                        <p className="mt-1 font-medium">{complaint.resolved_by?.name || complaint.resolvedBy?.name || '-'}</p>
                     </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            {t('Handling Owner')}
+                        </label>
+                        <p className="mt-1 font-medium">{complaint.handling_owner?.name || complaint.handlingOwner?.name || '-'}</p>
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            {t('Confidentiality')}
+                        </label>
+                        <p className="mt-1 font-medium">
+                            {complaint.is_confidential ? t('Confidential') : t('Standard')} · {t(complaint.confidentiality_level || 'internal')}
+                        </p>
+                    </div>
+                </div>
+
+                {(complaint.investigation_started_at || complaint.investigation_closed_at || complaint.confidential_channel) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Investigation Started')}</label>
+                            <p className="mt-1 font-medium">{complaint.investigation_started_at ? formatDate(complaint.investigation_started_at) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Investigation Closed')}</label>
+                            <p className="mt-1 font-medium">{complaint.investigation_closed_at ? formatDate(complaint.investigation_closed_at) : '-'}</p>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-sm font-medium text-gray-500">{t('Confidential Channel')}</label>
+                            <p className="mt-1 font-medium">{complaint.confidential_channel || '-'}</p>
+                        </div>
+                    </div>
+                )}
                 
                 {complaint.resolution_date && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

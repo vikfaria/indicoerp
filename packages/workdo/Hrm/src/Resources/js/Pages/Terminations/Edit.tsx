@@ -22,6 +22,16 @@ export default function EditTermination({ termination, onSuccess }: EditTerminat
     const { data, setData, put, processing, errors } = useForm<EditTerminationFormData>({
         notice_date: termination.notice_date || '',
         termination_date: termination.termination_date || '',
+        offboarding_letter_delivered_at: termination.offboarding_letter_delivered_at || '',
+        offboarding_assets_returned_at: termination.offboarding_assets_returned_at || '',
+        offboarding_access_revoked_at: termination.offboarding_access_revoked_at || '',
+        offboarding_final_payment_at: termination.offboarding_final_payment_at || '',
+        offboarding_certificate_issued_at: termination.offboarding_certificate_issued_at || '',
+        offboarding_inss_notified_at: termination.offboarding_inss_notified_at || '',
+        offboarding_migration_notified_at: termination.offboarding_migration_notified_at || '',
+        offboarding_archive_completed_at: termination.offboarding_archive_completed_at || '',
+        offboarding_completed_at: termination.offboarding_completed_at || '',
+        offboarding_notes: termination.offboarding_notes || '',
         reason: termination.reason ?? '',
         description: termination.description ?? '',
         document: termination.document || '',
@@ -104,6 +114,63 @@ export default function EditTermination({ termination, onSuccess }: EditTerminat
                         required
                     />
                     <InputError message={errors.termination_date} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <Label>{t('Letter Delivered At')}</Label>
+                        <Input type="date" value={data.offboarding_letter_delivered_at} onChange={(e) => setData('offboarding_letter_delivered_at', e.target.value)} />
+                        <InputError message={errors.offboarding_letter_delivered_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Assets Returned At')}</Label>
+                        <Input type="date" value={data.offboarding_assets_returned_at} onChange={(e) => setData('offboarding_assets_returned_at', e.target.value)} />
+                        <InputError message={errors.offboarding_assets_returned_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Access Revoked At')}</Label>
+                        <Input type="date" value={data.offboarding_access_revoked_at} onChange={(e) => setData('offboarding_access_revoked_at', e.target.value)} />
+                        <InputError message={errors.offboarding_access_revoked_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Final Payment At')}</Label>
+                        <Input type="date" value={data.offboarding_final_payment_at} onChange={(e) => setData('offboarding_final_payment_at', e.target.value)} />
+                        <InputError message={errors.offboarding_final_payment_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Certificate Issued At')}</Label>
+                        <Input type="date" value={data.offboarding_certificate_issued_at} onChange={(e) => setData('offboarding_certificate_issued_at', e.target.value)} />
+                        <InputError message={errors.offboarding_certificate_issued_at} />
+                    </div>
+                    <div>
+                        <Label>{t('INSS Notified At')}</Label>
+                        <Input type="date" value={data.offboarding_inss_notified_at} onChange={(e) => setData('offboarding_inss_notified_at', e.target.value)} />
+                        <InputError message={errors.offboarding_inss_notified_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Migration Notified At')}</Label>
+                        <Input type="date" value={data.offboarding_migration_notified_at} onChange={(e) => setData('offboarding_migration_notified_at', e.target.value)} />
+                        <InputError message={errors.offboarding_migration_notified_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Archive Completed At')}</Label>
+                        <Input type="date" value={data.offboarding_archive_completed_at} onChange={(e) => setData('offboarding_archive_completed_at', e.target.value)} />
+                        <InputError message={errors.offboarding_archive_completed_at} />
+                    </div>
+                    <div>
+                        <Label>{t('Checklist Completed At')}</Label>
+                        <Input type="date" value={data.offboarding_completed_at} onChange={(e) => setData('offboarding_completed_at', e.target.value)} />
+                        <InputError message={errors.offboarding_completed_at} />
+                    </div>
+                    <div className="md:col-span-2">
+                        <Label>{t('Offboarding Notes')}</Label>
+                        <Textarea
+                            value={data.offboarding_notes}
+                            onChange={(e) => setData('offboarding_notes', e.target.value)}
+                            rows={2}
+                        />
+                        <InputError message={errors.offboarding_notes} />
+                    </div>
                 </div>
                 
                 <div>

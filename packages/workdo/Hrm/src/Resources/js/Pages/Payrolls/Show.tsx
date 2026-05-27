@@ -42,6 +42,9 @@ interface PayrollEntry {
     deductions_breakdown: Record<string, number>;
     manual_overtimes_breakdown: Record<string, number>;
     loans_breakdown: Record<string, number>;
+    status: string;
+    is_cancelled?: boolean;
+    cancellation_reason?: string | null;
 }
 
 interface Payroll {
@@ -99,7 +102,17 @@ export default function Show() {
     
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.payroll-entries.destroy',
-        defaultMessage: t('Are you sure you want to delete this payroll entry? This will remove the salary calculation for this employee.')
+        defaultMessage: t('Are you sure you want to cancel this payslip?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        },
     });
 
     const getStatusColor = (status: string) => {
@@ -170,14 +183,16 @@ export default function Show() {
         {
             key: 'status',
             header: t('Status'),
-            render: (value: string) => {
+            render: (value: string, entry: PayrollEntry) => {
+                const displayStatus = entry.is_cancelled ? 'cancelled' : value;
                 const statusColors = {
                     'paid': 'bg-green-100 text-green-800',
-                    'unpaid': 'bg-red-100 text-red-800'
+                    'unpaid': 'bg-red-100 text-red-800',
+                    'cancelled': 'bg-slate-200 text-slate-800',
                 };
                 return (
-                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[value as keyof typeof statusColors] || statusColors.unpaid}`}>
-                        {t(value?.charAt(0).toUpperCase() + value?.slice(1) || 'Unpaid')}
+                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[displayStatus as keyof typeof statusColors] || statusColors.unpaid}`}>
+                        {t(displayStatus?.charAt(0).toUpperCase() + displayStatus?.slice(1) || 'Unpaid')}
                     </span>
                 );
             }
@@ -188,7 +203,7 @@ export default function Show() {
             render: (_: any, entry: PayrollEntry) => (
                 <div className="flex gap-1">
                     <TooltipProvider>
-                        {auth.user?.permissions?.includes('pay-payslip') && entry.status !== 'paid' && (
+                        {auth.user?.permissions?.includes('pay-payslip') && entry.status !== 'paid' && !entry.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => handlePayment(entry.id)} className="h-8 w-8 p-0 text-purple-600 hover:text-purple-700">
@@ -224,7 +239,7 @@ export default function Show() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('delete-payslip') && entry.status !== 'paid' && (
+                        {auth.user?.permissions?.includes('delete-payslip') && entry.status !== 'paid' && !entry.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openDeleteDialog(entry.id)} className="h-8 w-8 p-0 text-red-600 hover:text-red-700">
@@ -232,7 +247,7 @@ export default function Show() {
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>{t('Delete Payslip')}</p>
+                                    <p>{t('Cancel Payslip')}</p>
                                 </TooltipContent>
                             </Tooltip>
                         )}
@@ -407,9 +422,9 @@ export default function Show() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Payroll Entry')}
+                title={t('Cancel Payslip')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel Payslip')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

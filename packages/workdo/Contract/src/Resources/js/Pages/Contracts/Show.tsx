@@ -417,6 +417,50 @@ export default function Show() {
                                         </span>
                                     </div>
 
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            {t('Labour Contract')}
+                                        </div>
+                                        <p className="font-medium">{contract.is_labour_contract ? t('Yes') : t('No')}</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            {t('Legal Labour Type')}
+                                        </div>
+                                        <p className="font-medium">{contract.legal_contract_type || t('Not Set')}</p>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            {t('Probation Category')}
+                                        </div>
+                                        <p className="font-medium">{contract.probation_category || t('Not Set')}</p>
+                                    </div>
+
+                                    {contract.is_labour_contract && (
+                                        <div className="col-span-full">
+                                            <Badge variant={contract.presumed_indefinite_risk ? 'destructive' : 'secondary'}>
+                                                {contract.presumed_indefinite_risk
+                                                    ? t('Legal Risk: May Be Presumed as Indefinite-Term Contract')
+                                                    : t('Legal Risk: No Presumption Triggered')}
+                                            </Badge>
+                                        </div>
+                                    )}
+
+                                    {(contract.fixed_term_justification || contract.legal_notes) && (
+                                        <div className="col-span-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <p className="text-sm text-muted-foreground">{t('Fixed-Term Justification')}</p>
+                                                <p className="font-medium">{contract.fixed_term_justification || t('Not Set')}</p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-sm text-muted-foreground">{t('Legal Notes')}</p>
+                                                <p className="font-medium">{contract.legal_notes || t('Not Set')}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="mt-6 pt-6 col-span-full">
                                         <div className="flex items-center justify-between mb-3">
                                             <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">

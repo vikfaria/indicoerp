@@ -29,8 +29,15 @@ export interface Contract {
     end_date: string;
     description?: string;
     status: boolean | string;
+    is_labour_contract?: boolean;
+    legal_contract_type?: string | null;
+    fixed_term_justification?: string | null;
+    probation_category?: string | null;
+    legal_notes?: string | null;
+    presumed_indefinite_risk?: boolean;
     user?: User;
     contractType?: ContractType;
+    contract_type?: ContractType;
     contract_number?: string;
     created_at: string;
     signatures?: ContractSignature[];
@@ -48,7 +55,12 @@ export interface CreateContractFormData {
     start_date: string;
     end_date: string;
     description: string;
-    status: boolean;
+    status: string;
+    is_labour_contract: boolean;
+    legal_contract_type: string;
+    fixed_term_justification: string;
+    probation_category: string;
+    legal_notes: string;
     sync_to_google_calendar: boolean;
 }
 
@@ -60,7 +72,12 @@ export interface EditContractFormData {
     start_date: string;
     end_date: string;
     description: string;
-    status: boolean;
+    status: string;
+    is_labour_contract: boolean;
+    legal_contract_type: string;
+    fixed_term_justification: string;
+    probation_category: string;
+    legal_notes: string;
 }
 
 export interface ContractFilters {

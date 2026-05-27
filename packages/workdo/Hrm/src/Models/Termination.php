@@ -14,6 +14,16 @@ class Termination extends Model
     protected $fillable = [
         'notice_date',
         'termination_date',
+        'offboarding_letter_delivered_at',
+        'offboarding_assets_returned_at',
+        'offboarding_access_revoked_at',
+        'offboarding_final_payment_at',
+        'offboarding_certificate_issued_at',
+        'offboarding_inss_notified_at',
+        'offboarding_migration_notified_at',
+        'offboarding_archive_completed_at',
+        'offboarding_completed_at',
+        'offboarding_notes',
         'reason',
         'description',
         'document',
@@ -30,7 +40,16 @@ class Termination extends Model
         return [
             'notice_date' => 'date',
             'termination_date' => 'date',
-            'document' => 'string'
+            'offboarding_letter_delivered_at' => 'date',
+            'offboarding_assets_returned_at' => 'date',
+            'offboarding_access_revoked_at' => 'date',
+            'offboarding_final_payment_at' => 'date',
+            'offboarding_certificate_issued_at' => 'date',
+            'offboarding_inss_notified_at' => 'date',
+            'offboarding_migration_notified_at' => 'date',
+            'offboarding_archive_completed_at' => 'date',
+            'offboarding_completed_at' => 'date',
+            'document' => 'string',
         ];
     }
 

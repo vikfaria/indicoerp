@@ -75,6 +75,22 @@ export default function View({ leaveapplication }: ViewProps) {
                             </label>
                             <p className="mt-1 font-medium">{leaveapplication.total_days || '-'}</p>
                         </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                {t('Compensated Days')}
+                            </label>
+                            <p className="mt-1 font-medium">{leaveapplication.compensated_days ?? 0}</p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                                <Clock className="h-4 w-4" />
+                                {t('Effective Rest Days')}
+                            </label>
+                            <p className="mt-1 font-medium">{leaveapplication.effective_rest_days ?? leaveapplication.total_days ?? '-'}</p>
+                        </div>
                         
                         <div>
                             <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
@@ -107,6 +123,14 @@ export default function View({ leaveapplication }: ViewProps) {
                                 {t('Approved At')}
                             </label>
                             <p className="mt-1 font-medium">{leaveapplication.approved_at ? formatDateTime(leaveapplication.approved_at) : '-'}</p>
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                                <Calendar className="h-4 w-4" />
+                                {t('Legal Reference Date')}
+                            </label>
+                            <p className="mt-1 font-medium">{leaveapplication.legal_reference_date ? formatDate(leaveapplication.legal_reference_date) : '-'}</p>
                         </div>
                     </div>
                 </div>

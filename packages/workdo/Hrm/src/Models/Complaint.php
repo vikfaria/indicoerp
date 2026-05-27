@@ -18,9 +18,16 @@ class Complaint extends Model
         'description',
         'complaint_date',
         'status',
+        'is_confidential',
+        'is_harassment_report',
+        'confidential_channel',
+        'confidentiality_level',
         'document',
         'resolved_by',
+        'handling_owner_id',
         'resolution_date',
+        'investigation_started_at',
+        'investigation_closed_at',
         'creator_id',
         'created_by',
     ];
@@ -28,6 +35,10 @@ class Complaint extends Model
     protected $casts = [
         'complaint_date' => 'date',
         'resolution_date' => 'date',
+        'investigation_started_at' => 'date',
+        'investigation_closed_at' => 'date',
+        'is_confidential' => 'boolean',
+        'is_harassment_report' => 'boolean',
     ];
 
     public function employee()
@@ -48,5 +59,10 @@ class Complaint extends Model
     public function resolvedBy()
     {
         return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    public function handlingOwner()
+    {
+        return $this->belongsTo(User::class, 'handling_owner_id');
     }
 }

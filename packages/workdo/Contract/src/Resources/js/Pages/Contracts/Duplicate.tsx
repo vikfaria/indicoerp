@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -25,7 +26,12 @@ export default function Duplicate({ contract, onSuccess }: DuplicateProps) {
         start_date: '',
         end_date: '',
         description: contract.description || '',
-        status: 'pending'
+        status: 'pending',
+        is_labour_contract: !!contract.is_labour_contract,
+        legal_contract_type: contract.legal_contract_type || '',
+        fixed_term_justification: contract.fixed_term_justification || '',
+        probation_category: contract.probation_category || '',
+        legal_notes: contract.legal_notes || ''
     });
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -146,6 +152,80 @@ export default function Duplicate({ contract, onSuccess }: DuplicateProps) {
                             </Select>
                             {errors.user_id && <p className="text-sm text-red-500">{errors.user_id}</p>}
                         </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-3">
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <input
+                                type="checkbox"
+                                checked={data.is_labour_contract}
+                                onChange={(e) => setData('is_labour_contract', e.target.checked)}
+                            />
+                            {t('Labour Contract (Mozambique)')}
+                        </label>
+                        {errors.is_labour_contract && <p className="text-sm text-red-500">{errors.is_labour_contract}</p>}
+
+                        {data.is_labour_contract && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label required>{t('Legal Contract Type')}</Label>
+                                    <Select value={data.legal_contract_type || ''} onValueChange={(value) => setData('legal_contract_type', value)}>
+                                        <SelectTrigger className={errors.legal_contract_type ? 'border-red-500' : ''}>
+                                            <SelectValue placeholder={t('Select legal type')} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="indefinite">{t('Indefinite')}</SelectItem>
+                                            <SelectItem value="fixed_term">{t('Fixed Term')}</SelectItem>
+                                            <SelectItem value="uncertain_term">{t('Uncertain Term')}</SelectItem>
+                                            <SelectItem value="foreign">{t('Foreign Worker')}</SelectItem>
+                                            <SelectItem value="short_term">{t('Short Term')}</SelectItem>
+                                            <SelectItem value="project">{t('Project')}</SelectItem>
+                                            <SelectItem value="special_regime">{t('Special Regime')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.legal_contract_type && <p className="text-sm text-red-500">{errors.legal_contract_type}</p>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label>{t('Probation Category')}</Label>
+                                    <Select value={data.probation_category || ''} onValueChange={(value) => setData('probation_category', value)}>
+                                        <SelectTrigger className={errors.probation_category ? 'border-red-500' : ''}>
+                                            <SelectValue placeholder={t('Select probation category')} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="base_indefinite">{t('Base (Indefinite)')}</SelectItem>
+                                            <SelectItem value="general">{t('General')}</SelectItem>
+                                            <SelectItem value="technician_mid">{t('Mid Technician')}</SelectItem>
+                                            <SelectItem value="technician_high">{t('High Technician')}</SelectItem>
+                                            <SelectItem value="leadership">{t('Leadership')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.probation_category && <p className="text-sm text-red-500">{errors.probation_category}</p>}
+                                </div>
+
+                                <div className="md:col-span-2 space-y-2">
+                                    <Label>{t('Fixed-Term Justification')}</Label>
+                                    <Textarea
+                                        value={data.fixed_term_justification}
+                                        onChange={(e) => setData('fixed_term_justification', e.target.value)}
+                                        placeholder={t('Provide legal/economic/technical reason for fixed-term contract')}
+                                        className={errors.fixed_term_justification ? 'border-red-500' : ''}
+                                    />
+                                    {errors.fixed_term_justification && <p className="text-sm text-red-500">{errors.fixed_term_justification}</p>}
+                                </div>
+
+                                <div className="md:col-span-2 space-y-2">
+                                    <Label>{t('Legal Notes')}</Label>
+                                    <Textarea
+                                        value={data.legal_notes}
+                                        onChange={(e) => setData('legal_notes', e.target.value)}
+                                        placeholder={t('Additional legal notes')}
+                                        className={errors.legal_notes ? 'border-red-500' : ''}
+                                    />
+                                    {errors.legal_notes && <p className="text-sm text-red-500">{errors.legal_notes}</p>}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
 

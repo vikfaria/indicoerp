@@ -2,6 +2,7 @@
 
 namespace Workdo\Account\Models;
 
+use App\Models\CostCenter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\User;
@@ -11,6 +12,7 @@ class JournalEntryItem extends Model
     protected $fillable = [
         'journal_entry_id',
         'account_id',
+        'cost_center_id',
         'description',
         'debit_amount',
         'credit_amount',
@@ -31,6 +33,11 @@ class JournalEntryItem extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'account_id');
+    }
+
+    public function costCenter(): BelongsTo
+    {
+        return $this->belongsTo(CostCenter::class, 'cost_center_id');
     }
 
     public function isDebit(): bool

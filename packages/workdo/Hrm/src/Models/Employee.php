@@ -17,7 +17,7 @@ class Employee extends Model
         'employee_id',
         'date_of_birth',
         'gender',
-        'shift_id',
+        'shift',
         'date_of_joining',
         'employment_type',
         'address_line_1',
@@ -80,6 +80,26 @@ class Employee extends Model
     public function shift()
     {
         return $this->belongsTo(Shift::class, 'shift', 'id');
+    }
+
+    public function dependents()
+    {
+        return $this->hasMany(EmployeeDependent::class);
+    }
+
+    public function socialSecurityProfile()
+    {
+        return $this->hasOne(EmployeeSocialSecurityProfile::class);
+    }
+
+    public function foreignWorkerProfile()
+    {
+        return $this->hasOne(EmployeeForeignWorkerProfile::class);
+    }
+
+    public function probationProfile()
+    {
+        return $this->hasOne(EmployeeProbationProfile::class);
     }
 
     public static function generateEmployeeId()

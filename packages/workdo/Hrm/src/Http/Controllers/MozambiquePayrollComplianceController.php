@@ -2,7 +2,14 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Models\CostCenter;
+use App\Services\MozambiqueForeignWorkerComplianceReportService;
+use App\Services\MozambiqueHrComplianceAlertService;
+use App\Services\MozambiquePayrollAccountingExportService;
+use App\Services\MozambiqueHrComplianceDashboardService;
 use App\Services\MozambiqueLabourComplianceService;
+use App\Services\MozambiquePayrollSubmissionReportService;
+use App\Services\PayrollCostCenterAllocatorService;
 use App\Models\MozInssRate;
 use App\Models\MozIrpsBracket;
 use App\Models\MozIrpsTable;
@@ -11,12 +18,21 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use Workdo\Hrm\Models\Branch;
+use Workdo\Hrm\Models\Department;
+use Workdo\Hrm\Models\Employee;
 
 class MozambiquePayrollComplianceController extends Controller
 {
-    public function __construct(private readonly MozambiqueLabourComplianceService $labourComplianceService)
-    {
-    }
+    public function __construct(
+        private readonly MozambiqueLabourComplianceService $labourComplianceService,
+        private readonly MozambiqueHrComplianceDashboardService $complianceDashboardService,
+        private readonly MozambiqueHrComplianceAlertService $complianceAlertService,
+        private readonly MozambiquePayrollSubmissionReportService $payrollSubmissionReportService,
+        private readonly MozambiqueForeignWorkerComplianceReportService $foreignWorkerComplianceReportService,
+        private readonly MozambiquePayrollAccountingExportService $payrollAccountingExportService,
+        private readonly PayrollCostCenterAllocatorService $payrollCostCenterAllocatorService
+    ) {}
 
     public function index()
     {
@@ -53,12 +69,100 @@ class MozambiquePayrollComplianceController extends Controller
             ->orderByDesc('effective_from')
             ->get();
 
+        $costCenterOptions = CostCenter::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+
+        $departmentOptions = Department::query()
+            ->where('created_by', $companyId)
+            ->orderBy('department_name')
+            ->get(['id', 'department_name']);
+
+        $branchOptions = Branch::query()
+            ->where('created_by', $companyId)
+            ->orderBy('branch_name')
+            ->get(['id', 'branch_name']);
+
+        $employeeOptions = Employee::query()
+            ->where('created_by', $companyId)
+            ->with('user:id,name')
+            ->orderBy('id')
+            ->get(['id', 'user_id'])
+            ->map(static fn (Employee $employee): array => [
+                'id' => $employee->id,
+                'name' => $employee->user?->name ?? ('Employee #' . $employee->id),
+            ])
+            ->values();
+
+        $complianceSnapshot = $this->complianceDashboardService->snapshot($companyId);
+        $complianceAlerts = $this->complianceAlertService->syncFromSnapshot($companyId, $complianceSnapshot);
+
         return Inertia::render('Hrm/SystemSetup/MozambiquePayroll/Index', [
             'irpsTables' => $irpsTables,
             'inssRates' => $inssRates,
             'minimumWages' => $minimumWages,
             'labourPolicy' => $this->labourComplianceService->getPolicy($companyId),
+            'complianceSnapshot' => $complianceSnapshot,
+            'complianceAlerts' => $complianceAlerts,
+            'costCenters' => $costCenterOptions,
+            'departments' => $departmentOptions,
+            'branches' => $branchOptions,
+            'employees' => $employeeOptions,
+            'costCenterMappingConfig' => $this->payrollCostCenterAllocatorService->getConfiguration($companyId),
         ]);
+    }
+
+    public function updateCostCenterMappings(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'mode' => 'required|string|in:configured,configured_with_heuristic',
+            'mappings' => 'required|array',
+            'mappings.employee' => 'nullable|array',
+            'mappings.department' => 'nullable|array',
+            'mappings.branch' => 'nullable|array',
+            'mappings.employee.*' => 'nullable|integer',
+            'mappings.department.*' => 'nullable|integer',
+            'mappings.branch.*' => 'nullable|integer',
+        ]);
+
+        $allowedCostCenterIds = CostCenter::query()
+            ->where('company_id', creatorId())
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        $allowedLookup = array_fill_keys($allowedCostCenterIds, true);
+        $mappings = $validated['mappings'] ?? [];
+
+        foreach (['employee', 'department', 'branch'] as $type) {
+            $items = $mappings[$type] ?? [];
+            if (!is_array($items)) {
+                continue;
+            }
+
+            foreach ($items as $sourceId => $costCenterId) {
+                if ((int) $costCenterId <= 0) {
+                    continue;
+                }
+
+                if (!isset($allowedLookup[(int) $costCenterId])) {
+                    return back()->with('error', __('Invalid cost center selected for mapping.'));
+                }
+            }
+        }
+
+        $this->payrollCostCenterAllocatorService->saveConfiguration(creatorId(), [
+            'mode' => $validated['mode'],
+            'mappings' => $mappings,
+        ]);
+
+        return back()->with('success', __('Payroll cost center mappings updated successfully.'));
     }
 
     public function updateLabourPolicy(Request $request)
@@ -69,7 +173,9 @@ class MozambiquePayrollComplianceController extends Controller
 
         $validated = $request->validate([
             'overtime_daily_limit_hours' => 'nullable|numeric|min:0.25|max:24',
+            'overtime_weekly_limit_hours' => 'nullable|numeric|min:1|max:168',
             'overtime_monthly_limit_hours' => 'nullable|numeric|min:1|max:744',
+            'overtime_quarterly_limit_hours' => 'nullable|numeric|min:1|max:2208',
             'overtime_yearly_limit_hours' => 'nullable|numeric|min:1|max:9999',
             'leave_min_notice_days' => 'required|integer|min:0|max:365',
             'leave_max_consecutive_days' => 'nullable|integer|min:1|max:366',
@@ -78,7 +184,9 @@ class MozambiquePayrollComplianceController extends Controller
         ]);
 
         setSetting('mz_overtime_daily_limit_hours', $validated['overtime_daily_limit_hours'] ?? '');
+        setSetting('mz_overtime_weekly_limit_hours', $validated['overtime_weekly_limit_hours'] ?? '');
         setSetting('mz_overtime_monthly_limit_hours', $validated['overtime_monthly_limit_hours'] ?? '');
+        setSetting('mz_overtime_quarterly_limit_hours', $validated['overtime_quarterly_limit_hours'] ?? '');
         setSetting('mz_overtime_yearly_limit_hours', $validated['overtime_yearly_limit_hours'] ?? '');
         setSetting('mz_leave_min_notice_days', (string) $validated['leave_min_notice_days']);
         setSetting('mz_leave_max_consecutive_days', $validated['leave_max_consecutive_days'] ?? '');
@@ -341,5 +449,612 @@ class MozambiquePayrollComplianceController extends Controller
         $wage->delete();
 
         return back()->with('success', __('Minimum wage row deleted successfully.'));
+    }
+
+    public function exportModelo19Support(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildModelo19Dataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'modelo19-irps-support-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Submission Due Date',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Residency Status',
+            'Eligible Dependents',
+            'Gross Pay',
+            'Taxable Income',
+            'Dependent Deduction',
+            'Adjusted Taxable Income',
+            'IRPS Rule',
+            'IRPS Rate %',
+            'IRPS Withheld',
+            'Net Pay',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
+            return [
+                $row['reference_period'],
+                $dataset['submission_due_date'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['residency_status'],
+                $row['eligible_dependents_count'],
+                $row['gross_pay'],
+                $row['taxable_income'],
+                $row['dependent_deduction_total'],
+                $row['adjusted_taxable_income'],
+                $row['irps_rule'],
+                $row['irps_rate_percent'],
+                $row['irps_amount'],
+                $row['net_pay'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportInssGuide(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildInssDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'inss-monthly-guide-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Submission Due Date',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Contributive Base',
+            'Employee Rate %',
+            'Employee Contribution',
+            'Employer Rate %',
+            'Employer Contribution',
+            'Total INSS Contribution',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
+            return [
+                $row['reference_period'],
+                $dataset['submission_due_date'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['contributive_base'],
+                $row['employee_rate_percent'],
+                $row['employee_contribution'],
+                $row['employer_rate_percent'],
+                $row['employer_contribution'],
+                $row['total_contribution'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportBankPaymentFile(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildBankPaymentDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-bank-payment-file-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Payment Reference',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Account Holder Name',
+            'Bank Name',
+            'Bank Branch',
+            'Bank Identifier Code',
+            'Account Number',
+            'Currency',
+            'Net Pay',
+            'Payroll Entry Status',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['payment_reference'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['account_holder_name'],
+                $row['bank_name'],
+                $row['bank_branch'],
+                $row['bank_identifier_code'],
+                $row['account_number'],
+                $row['currency'],
+                $row['net_pay'],
+                $row['payroll_entry_status'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportExpatriatesReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+            'window_days' => 'nullable|integer|min:1|max:180',
+        ]);
+
+        $dataset = $this->foreignWorkerComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null,
+            (int) ($validated['window_days'] ?? 30)
+        );
+
+        $filename = sprintf(
+            'expatriates-compliance-%s-%s.csv',
+            $dataset['report_date'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Report Date',
+            'Window Days',
+            'Employer Type',
+            'Quota Slots',
+            'Quota Used',
+            'Quota Available',
+            'Quota Exceeded',
+            'Foreign Workers Total',
+            'Work Authorizations Expiring',
+            'Visas Expiring',
+            'Contracts Expiring',
+            'Migration Notifications Pending',
+            'Migration Notifications Overdue',
+            'Employee',
+            'Employee Internal ID',
+            'Employee NUIT',
+            'Nationality',
+            'Residency Status',
+            'Hiring Regime',
+            'Work Province',
+            'Passport Number',
+            'Passport Expires At',
+            'Passport Status',
+            'Visa Type',
+            'Visa Expires At',
+            'Visa Status',
+            'Work Authorization Number',
+            'Work Authorization Expires At',
+            'Work Authorization Status',
+            'Contract Number',
+            'Contract End Date',
+            'Contract Status',
+            'Contract Expiring In Window',
+            'Cessation Effective Date',
+            'Cessation Notification Due Date',
+            'Cessation Notified At',
+            'Migration Notification Status',
+        ];
+
+        $summary = $dataset['summary'] ?? [];
+        $quota = $dataset['quota'] ?? [];
+        $detailRows = collect($dataset['rows'] ?? [])->values();
+
+        if ($detailRows->isEmpty()) {
+            $detailRows = collect([[
+                'employee_name' => '',
+                'employee_internal_id' => '',
+                'employee_nuit' => '',
+                'nationality' => '',
+                'residency_status' => '',
+                'hiring_regime' => '',
+                'work_province' => '',
+                'passport_number' => '',
+                'passport_expires_at' => '',
+                'passport_status' => '',
+                'visa_type' => '',
+                'visa_expires_at' => '',
+                'visa_status' => '',
+                'work_authorization_number' => '',
+                'work_authorization_expires_at' => '',
+                'work_authorization_status' => '',
+                'contract_number' => '',
+                'contract_end_date' => '',
+                'contract_status' => '',
+                'contract_expiring_in_window' => false,
+                'cessation_effective_date' => '',
+                'cessation_notification_due_at' => '',
+                'cessation_notified_at' => '',
+                'migration_notification_status' => '',
+            ]]);
+        }
+
+        $rows = $detailRows->map(function (array $row) use ($dataset, $summary, $quota): array {
+            return [
+                $dataset['report_date'],
+                $dataset['window_days'],
+                $quota['employer_type'] ?? '',
+                $quota['quota_slots'] ?? 0,
+                $quota['current_foreign_workers'] ?? 0,
+                $quota['remaining_slots'] ?? 0,
+                ($quota['is_exceeded'] ?? false) ? 'yes' : 'no',
+                $summary['total_foreign_workers'] ?? 0,
+                $summary['work_authorizations_expiring'] ?? 0,
+                $summary['visas_expiring'] ?? 0,
+                $summary['contracts_expiring'] ?? 0,
+                $summary['migration_notifications_pending'] ?? 0,
+                $summary['migration_notifications_overdue'] ?? 0,
+                $row['employee_name'] ?? '',
+                $row['employee_internal_id'] ?? '',
+                $row['employee_nuit'] ?? '',
+                $row['nationality'] ?? '',
+                $row['residency_status'] ?? '',
+                $row['hiring_regime'] ?? '',
+                $row['work_province'] ?? '',
+                $row['passport_number'] ?? '',
+                $row['passport_expires_at'] ?? '',
+                $row['passport_status'] ?? '',
+                $row['visa_type'] ?? '',
+                $row['visa_expires_at'] ?? '',
+                $row['visa_status'] ?? '',
+                $row['work_authorization_number'] ?? '',
+                $row['work_authorization_expires_at'] ?? '',
+                $row['work_authorization_status'] ?? '',
+                $row['contract_number'] ?? '',
+                $row['contract_end_date'] ?? '',
+                $row['contract_status'] ?? '',
+                ($row['contract_expiring_in_window'] ?? false) ? 'yes' : 'no',
+                $row['cessation_effective_date'] ?? '',
+                $row['cessation_notification_due_at'] ?? '',
+                $row['cessation_notified_at'] ?? '',
+                $row['migration_notification_status'] ?? '',
+            ];
+        })->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportCostAllocationReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildCostAllocationDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-cost-allocation-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Branch',
+            'Department',
+            'Designation',
+            'Cost Center Code',
+            'Cost Center Name',
+            'Gross Pay',
+            'Allowances',
+            'Manual Overtime',
+            'Deductions',
+            'Loans',
+            'IRPS',
+            'INSS Employee',
+            'INSS Employer',
+            'Net Pay',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['branch'],
+                $row['department'],
+                $row['designation'],
+                $row['cost_center_code'],
+                $row['cost_center_name'],
+                $row['gross_pay'],
+                $row['total_allowances'],
+                $row['total_manual_overtimes'],
+                $row['total_deductions'],
+                $row['total_loans'],
+                $row['irps_amount'],
+                $row['inss_employee_amount'],
+                $row['inss_employer_amount'],
+                $row['net_pay'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportAccountingJournalLines(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildJournalLinesDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-journal-lines-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Journal ID',
+            'Journal Number',
+            'Journal Date',
+            'Journal Code',
+            'Journal Name',
+            'Line Number',
+            'Payroll Entry ID',
+            'Payroll ID',
+            'Payroll Title',
+            'Employee',
+            'Account Code',
+            'Account Name',
+            'Cost Center Code',
+            'Cost Center Name',
+            'Debit',
+            'Credit',
+            'Description',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['journal_id'],
+                $row['journal_number'],
+                $row['journal_date'],
+                $row['journal_code'],
+                $row['journal_name'],
+                $row['line_number'],
+                $row['payroll_entry_id'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['employee_name'],
+                $row['account_code'],
+                $row['account_name'],
+                $row['cost_center_code'],
+                $row['cost_center_name'],
+                $row['debit_amount'],
+                $row['credit_amount'],
+                $row['description'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportCostAllocationJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildCostAllocationDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportAccountingJournalLinesJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildJournalLinesDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportCostAllocationXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildCostAllocationDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-cost-allocation-%s-%s.xml',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('payroll_cost_allocation', $dataset, $filename);
+    }
+
+    public function exportAccountingJournalLinesXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildJournalLinesDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-journal-lines-%s-%s.xml',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('payroll_journal_lines', $dataset, $filename);
+    }
+
+    private function exportCsv(string $filename, array $headers, array $rows)
+    {
+        $handle = fopen('php://temp', 'r+');
+        fputcsv($handle, $headers);
+
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
+        }
+
+        rewind($handle);
+        $csvContent = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return response($csvContent, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
+        ]);
+    }
+
+    private function exportXml(string $rootElement, array $dataset, string $filename)
+    {
+        $xml = new \XMLWriter();
+        $xml->openMemory();
+        $xml->startDocument('1.0', 'UTF-8');
+        $xml->setIndent(true);
+        $xml->startElement($rootElement);
+
+        $xml->writeElement('reference_period', (string) ($dataset['reference_period'] ?? ''));
+        $xml->writeElement('period_start', (string) ($dataset['period_start'] ?? ''));
+        $xml->writeElement('period_end', (string) ($dataset['period_end'] ?? ''));
+
+        $xml->startElement('summary');
+        foreach (($dataset['summary'] ?? []) as $key => $value) {
+            $xml->writeElement((string) $key, (string) $value);
+        }
+        $xml->endElement();
+
+        $xml->startElement('rows');
+        foreach (($dataset['rows'] ?? []) as $row) {
+            $xml->startElement('row');
+            foreach ($row as $key => $value) {
+                $xml->writeElement((string) $key, (string) ($value ?? ''));
+            }
+            $xml->endElement();
+        }
+        $xml->endElement();
+
+        $xml->endElement();
+        $xml->endDocument();
+
+        return response($xml->outputMemory(), 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
+        ]);
     }
 }

@@ -13,10 +13,21 @@ export interface WarningType {
 export interface Warning {
     id: number;
     subject: string;
-    severity: boolean;
+    severity: string;
     warning_date: string;
+    note_of_culpa_issued_at?: string;
+    note_of_culpa_delivered_at?: string;
+    worker_refused_note_of_culpa?: boolean;
+    refusal_witness_one_name?: string;
+    refusal_witness_two_name?: string;
+    response_deadline_at?: string;
+    decision_deadline_at?: string;
+    disciplinary_sanction?: string;
+    disciplinary_decision_at?: string;
     description?: string;
     document?: string;
+    status?: string;
+    employee_response?: string;
     employee_id?: number;
     employee?: User;
     warning_by?: number;
@@ -28,8 +39,17 @@ export interface Warning {
 
 export interface CreateWarningFormData {
     subject: string;
-    severity: boolean;
+    severity: string;
     warning_date: string;
+    note_of_culpa_issued_at: string;
+    note_of_culpa_delivered_at: string;
+    worker_refused_note_of_culpa: boolean;
+    refusal_witness_one_name: string;
+    refusal_witness_two_name: string;
+    response_deadline_at: string;
+    decision_deadline_at: string;
+    disciplinary_sanction: string;
+    disciplinary_decision_at: string;
     description: string;
     document: string;
     employee_id: string;
@@ -39,8 +59,17 @@ export interface CreateWarningFormData {
 
 export interface EditWarningFormData {
     subject: string;
-    severity: boolean;
+    severity: string;
     warning_date: string;
+    note_of_culpa_issued_at: string;
+    note_of_culpa_delivered_at: string;
+    worker_refused_note_of_culpa: boolean;
+    refusal_witness_one_name: string;
+    refusal_witness_two_name: string;
+    response_deadline_at: string;
+    decision_deadline_at: string;
+    disciplinary_sanction: string;
+    disciplinary_decision_at: string;
     description: string;
     document: string;
     employee_id: string;

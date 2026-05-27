@@ -65,6 +65,7 @@ use Workdo\Hrm\Http\Controllers\AwardController;
 use Workdo\Hrm\Http\Controllers\AwardTypeController;
 
 use Workdo\Hrm\Http\Controllers\EmployeeController;
+use Workdo\Hrm\Http\Controllers\EmployeeLegalProfileController;
 
 use Workdo\Hrm\Http\Controllers\EmployeeDocumentTypeController;
 
@@ -126,6 +127,12 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::put('/{employee}', [EmployeeController::class, 'update'])->name('update');
         Route::delete('/{employee}', [EmployeeController::class, 'destroy'])->name('destroy');
         Route::get('/{employee}', [EmployeeController::class, 'show'])->name('show');
+        Route::put('/{employee}/social-security-profile', [EmployeeLegalProfileController::class, 'upsertSocialSecurity'])->name('social-security-profile.upsert');
+        Route::put('/{employee}/foreign-worker-profile', [EmployeeLegalProfileController::class, 'upsertForeignWorker'])->name('foreign-worker-profile.upsert');
+        Route::put('/{employee}/probation-profile', [EmployeeLegalProfileController::class, 'upsertProbation'])->name('probation-profile.upsert');
+        Route::post('/{employee}/dependents', [EmployeeLegalProfileController::class, 'storeDependent'])->name('dependents.store');
+        Route::put('/{employee}/dependents/{dependent}', [EmployeeLegalProfileController::class, 'updateDependent'])->name('dependents.update');
+        Route::delete('/{employee}/dependents/{dependent}', [EmployeeLegalProfileController::class, 'destroyDependent'])->name('dependents.destroy');
     });
 
     // Delete employee document
@@ -396,6 +403,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
     Route::prefix('hrm/mozambique-payroll-compliance')->name('hrm.mozambique-payroll-compliance.')->group(function () {
         Route::get('/', [MozambiquePayrollComplianceController::class, 'index'])->name('index');
         Route::put('/labour-policy', [MozambiquePayrollComplianceController::class, 'updateLabourPolicy'])->name('labour-policy.update');
+        Route::put('/cost-center-mappings', [MozambiquePayrollComplianceController::class, 'updateCostCenterMappings'])->name('cost-center-mappings.update');
 
         Route::post('/irps-tables', [MozambiquePayrollComplianceController::class, 'storeIrpsTable'])->name('irps-tables.store');
         Route::put('/irps-tables/{table}', [MozambiquePayrollComplianceController::class, 'updateIrpsTable'])->name('irps-tables.update');
@@ -412,6 +420,27 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::post('/minimum-wages', [MozambiquePayrollComplianceController::class, 'storeMinimumWage'])->name('minimum-wages.store');
         Route::put('/minimum-wages/{wage}', [MozambiquePayrollComplianceController::class, 'updateMinimumWage'])->name('minimum-wages.update');
         Route::delete('/minimum-wages/{wage}', [MozambiquePayrollComplianceController::class, 'destroyMinimumWage'])->name('minimum-wages.destroy');
+
+        Route::get('/reports/modelo19-support', [MozambiquePayrollComplianceController::class, 'exportModelo19Support'])
+            ->name('reports.modelo19-support.export');
+        Route::get('/reports/inss-guide', [MozambiquePayrollComplianceController::class, 'exportInssGuide'])
+            ->name('reports.inss-guide.export');
+        Route::get('/reports/bank-payment-file', [MozambiquePayrollComplianceController::class, 'exportBankPaymentFile'])
+            ->name('reports.bank-payment-file.export');
+        Route::get('/reports/expatriates', [MozambiquePayrollComplianceController::class, 'exportExpatriatesReport'])
+            ->name('reports.expatriates.export');
+        Route::get('/reports/cost-allocation', [MozambiquePayrollComplianceController::class, 'exportCostAllocationReport'])
+            ->name('reports.cost-allocation.export');
+        Route::get('/reports/accounting-journal-lines', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLines'])
+            ->name('reports.accounting-journal-lines.export');
+        Route::get('/reports/cost-allocation.json', [MozambiquePayrollComplianceController::class, 'exportCostAllocationJson'])
+            ->name('reports.cost-allocation.json');
+        Route::get('/reports/cost-allocation.xml', [MozambiquePayrollComplianceController::class, 'exportCostAllocationXml'])
+            ->name('reports.cost-allocation.xml');
+        Route::get('/reports/accounting-journal-lines.json', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesJson'])
+            ->name('reports.accounting-journal-lines.json');
+        Route::get('/reports/accounting-journal-lines.xml', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesXml'])
+            ->name('reports.accounting-journal-lines.xml');
     });
 
     // Allowances routes

@@ -114,6 +114,86 @@ class MozambiquePayrollTaxServiceTest extends TestCase
         $this->assertSame(400.0, $inss['employer_amount']);
     }
 
+    public function test_service_applies_non_resident_flat_rate_rule(): void
+    {
+        $service = app(MozambiquePayrollTaxService::class);
+
+        $irps = $service->calculateIrps(
+            50000,
+            null,
+            now()->toDateString(),
+            [
+                'residency_status' => 'non_resident',
+                'non_resident_flat_rate_percent' => 20,
+            ]
+        );
+
+        $this->assertTrue($irps['configured']);
+        $this->assertSame('non_resident_flat', $irps['rule']);
+        $this->assertSame(50000.0, $irps['taxable_income']);
+        $this->assertSame(50000.0, $irps['adjusted_taxable_income']);
+        $this->assertSame(20.0, $irps['rate_percent']);
+        $this->assertSame(10000.0, $irps['irps_amount']);
+    }
+
+    public function test_service_applies_dependent_deduction_before_bracket_for_resident_workers(): void
+    {
+        $company = $this->makeCompany();
+
+        $irpsTable = MozIrpsTable::create([
+            'name' => 'Tabela IRPS Dependentes',
+            'effective_from' => now()->startOfYear()->toDateString(),
+            'effective_to' => null,
+            'is_active' => true,
+            'created_by' => $company->id,
+        ]);
+
+        MozIrpsBracket::insert([
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 0,
+                'range_to' => 10000,
+                'fixed_amount' => 0,
+                'rate_percent' => 0,
+                'sequence' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 10000,
+                'range_to' => 50000,
+                'fixed_amount' => 0,
+                'rate_percent' => 10,
+                'sequence' => 2,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $service = app(MozambiquePayrollTaxService::class);
+
+        $irps = $service->calculateIrps(
+            20000,
+            $company->id,
+            now()->toDateString(),
+            [
+                'residency_status' => 'resident',
+                'eligible_dependents_count' => 2,
+                'dependent_deduction_amount' => 3000,
+            ]
+        );
+
+        $this->assertTrue($irps['configured']);
+        $this->assertSame('table_bracket', $irps['rule']);
+        $this->assertSame(2, $irps['eligible_dependents_count']);
+        $this->assertSame(2, $irps['effective_dependents_count']);
+        $this->assertSame(6000.0, $irps['dependent_deduction_total']);
+        $this->assertSame(14000.0, $irps['adjusted_taxable_income']);
+        $this->assertSame(10.0, $irps['rate_percent']);
+        $this->assertSame(400.0, $irps['irps_amount']);
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([

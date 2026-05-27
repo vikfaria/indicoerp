@@ -14,7 +14,10 @@ class LeaveApplication extends Model
     protected $fillable = [
         'start_date',
         'end_date',
+        'legal_reference_date',
         'total_days',
+        'compensated_days',
+        'effective_rest_days',
         'reason',
         'attachment',
         'status',
@@ -32,6 +35,9 @@ class LeaveApplication extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'legal_reference_date' => 'date',
+            'compensated_days' => 'integer',
+            'effective_rest_days' => 'integer',
             'attachment' => 'string',
             'approved_at' => 'datetime'
         ];

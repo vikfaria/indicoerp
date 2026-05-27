@@ -63,11 +63,12 @@ class TerminationController extends Controller
             $termination->notice_date = $validated['notice_date'];
             $termination->termination_date = $validated['termination_date'];
             $termination->reason = $validated['reason'];
-            $termination->description = $validated['description'];
-            $termination->document = $validated['document'];
+            $termination->description = $validated['description'] ?? null;
+            $termination->document = $validated['document'] ?? null;
             $termination->employee_id = $validated['employee_id'];
             $termination->termination_type_id = $validated['termination_type_id'];
             $termination->status = 'pending';
+            $this->applyOffboardingChecklist($termination, $validated);
 
             $termination->creator_id = Auth::id();
             $termination->created_by = creatorId();
@@ -91,10 +92,11 @@ class TerminationController extends Controller
             $termination->notice_date = $validated['notice_date'];
             $termination->termination_date = $validated['termination_date'];
             $termination->reason = $validated['reason'];
-            $termination->description = $validated['description'];
-            $termination->document = $validated['document'];
+            $termination->description = $validated['description'] ?? null;
+            $termination->document = $validated['document'] ?? null;
             $termination->employee_id = $validated['employee_id'];
             $termination->termination_type_id = $validated['termination_type_id'];
+            $this->applyOffboardingChecklist($termination, $validated);
 
             $termination->save();
 
@@ -152,5 +154,19 @@ class TerminationController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function applyOffboardingChecklist(Termination $termination, array $validated): void
+    {
+        $termination->offboarding_letter_delivered_at = $validated['offboarding_letter_delivered_at'] ?? null;
+        $termination->offboarding_assets_returned_at = $validated['offboarding_assets_returned_at'] ?? null;
+        $termination->offboarding_access_revoked_at = $validated['offboarding_access_revoked_at'] ?? null;
+        $termination->offboarding_final_payment_at = $validated['offboarding_final_payment_at'] ?? null;
+        $termination->offboarding_certificate_issued_at = $validated['offboarding_certificate_issued_at'] ?? null;
+        $termination->offboarding_inss_notified_at = $validated['offboarding_inss_notified_at'] ?? null;
+        $termination->offboarding_migration_notified_at = $validated['offboarding_migration_notified_at'] ?? null;
+        $termination->offboarding_archive_completed_at = $validated['offboarding_archive_completed_at'] ?? null;
+        $termination->offboarding_completed_at = $validated['offboarding_completed_at'] ?? null;
+        $termination->offboarding_notes = $validated['offboarding_notes'] ?? null;
     }
 }

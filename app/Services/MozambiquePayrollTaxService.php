@@ -10,20 +10,74 @@ use Illuminate\Support\Carbon;
 
 class MozambiquePayrollTaxService
 {
-    public function calculateIrps(float $taxableIncome, ?int $companyId = null, mixed $effectiveDate = null): array
+    private const DEFAULT_NON_RESIDENT_FLAT_RATE_PERCENT = 20.0;
+    private const SETTING_IRPS_DEPENDENT_DEDUCTION_AMOUNT = 'mz_irps_dependent_deduction_amount';
+    private const SETTING_IRPS_MAX_DEPENDENTS_FOR_DEDUCTION = 'mz_irps_max_dependents_for_deduction';
+    private const SETTING_IRPS_NON_RESIDENT_FLAT_RATE_PERCENT = 'mz_irps_non_resident_flat_rate_percent';
+
+    public function calculateIrps(
+        float $taxableIncome,
+        ?int $companyId = null,
+        mixed $effectiveDate = null,
+        array $context = []
+    ): array
     {
         $income = max(0, round($taxableIncome, 2));
         $date = $this->resolveDate($effectiveDate);
+        $irpsContext = $this->resolveIrpsContext($companyId, $context);
+
+        $effectiveDependents = $irpsContext['eligible_dependents_count'];
+        if ($irpsContext['max_dependents_for_deduction'] !== null) {
+            $effectiveDependents = min($effectiveDependents, $irpsContext['max_dependents_for_deduction']);
+        }
+
+        $dependentDeductionTotal = round(
+            $effectiveDependents * $irpsContext['dependent_deduction_amount'],
+            2
+        );
+        $adjustedIncome = max(0, round($income - $dependentDeductionTotal, 2));
 
         if ($income <= 0) {
             return [
                 'taxable_income' => $income,
+                'adjusted_taxable_income' => $adjustedIncome,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
                 'table_id' => null,
                 'bracket_id' => null,
                 'configured' => false,
+                'residency_status' => $irpsContext['residency_status'],
+                'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
+                'effective_dependents_count' => $effectiveDependents,
+                'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
+                'dependent_deduction_total' => $dependentDeductionTotal,
+                'rule' => 'none',
+            ];
+        }
+
+        if (
+            $irpsContext['residency_status'] === 'non_resident'
+            && $irpsContext['apply_non_resident_flat_rate']
+            && $irpsContext['non_resident_flat_rate_percent'] > 0
+        ) {
+            $irpsAmount = round(($adjustedIncome * $irpsContext['non_resident_flat_rate_percent']) / 100, 2);
+
+            return [
+                'taxable_income' => $income,
+                'adjusted_taxable_income' => $adjustedIncome,
+                'irps_amount' => $irpsAmount,
+                'rate_percent' => $irpsContext['non_resident_flat_rate_percent'],
+                'fixed_amount' => 0.0,
+                'table_id' => null,
+                'bracket_id' => null,
+                'configured' => true,
+                'residency_status' => $irpsContext['residency_status'],
+                'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
+                'effective_dependents_count' => $effectiveDependents,
+                'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
+                'dependent_deduction_total' => $dependentDeductionTotal,
+                'rule' => 'non_resident_flat',
             ];
         }
 
@@ -32,30 +86,37 @@ class MozambiquePayrollTaxService
         if ($table === null) {
             return [
                 'taxable_income' => $income,
+                'adjusted_taxable_income' => $adjustedIncome,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
                 'table_id' => null,
                 'bracket_id' => null,
                 'configured' => false,
+                'residency_status' => $irpsContext['residency_status'],
+                'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
+                'effective_dependents_count' => $effectiveDependents,
+                'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
+                'dependent_deduction_total' => $dependentDeductionTotal,
+                'rule' => 'table_missing',
             ];
         }
 
         $brackets = $table->brackets()->orderBy('sequence')->orderBy('range_from')->get();
-        $bracket = $brackets->first(function ($row) use ($income) {
+        $bracket = $brackets->first(function ($row) use ($adjustedIncome) {
             $rangeFrom = (float) $row->range_from;
             $rangeTo = $row->range_to !== null ? (float) $row->range_to : null;
 
-            if ($income < $rangeFrom) {
+            if ($adjustedIncome < $rangeFrom) {
                 return false;
             }
 
-            return $rangeTo === null || $income <= $rangeTo;
+            return $rangeTo === null || $adjustedIncome <= $rangeTo;
         });
 
         if ($bracket === null) {
             $bracket = $brackets
-                ->filter(fn($row) => $income >= (float) $row->range_from)
+                ->filter(fn($row) => $adjustedIncome >= (float) $row->range_from)
                 ->sortByDesc('range_from')
                 ->first();
         }
@@ -63,29 +124,43 @@ class MozambiquePayrollTaxService
         if ($bracket === null) {
             return [
                 'taxable_income' => $income,
+                'adjusted_taxable_income' => $adjustedIncome,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
                 'table_id' => $table->id,
                 'bracket_id' => null,
                 'configured' => false,
+                'residency_status' => $irpsContext['residency_status'],
+                'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
+                'effective_dependents_count' => $effectiveDependents,
+                'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
+                'dependent_deduction_total' => $dependentDeductionTotal,
+                'rule' => 'no_matching_bracket',
             ];
         }
 
         $rangeFrom = (float) $bracket->range_from;
         $fixedAmount = (float) $bracket->fixed_amount;
         $ratePercent = (float) $bracket->rate_percent;
-        $variableBase = max(0, $income - $rangeFrom);
+        $variableBase = max(0, $adjustedIncome - $rangeFrom);
         $irpsAmount = round($fixedAmount + (($variableBase * $ratePercent) / 100), 2);
 
         return [
             'taxable_income' => $income,
+            'adjusted_taxable_income' => $adjustedIncome,
             'irps_amount' => $irpsAmount,
             'rate_percent' => $ratePercent,
             'fixed_amount' => $fixedAmount,
             'table_id' => $table->id,
             'bracket_id' => $bracket->id,
             'configured' => true,
+            'residency_status' => $irpsContext['residency_status'],
+            'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
+            'effective_dependents_count' => $effectiveDependents,
+            'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
+            'dependent_deduction_total' => $dependentDeductionTotal,
+            'rule' => 'table_bracket',
         ];
     }
 
@@ -236,5 +311,56 @@ class MozambiquePayrollTaxService
         }
 
         return now();
+    }
+
+    private function resolveIrpsContext(?int $companyId, array $context): array
+    {
+        $settings = $companyId !== null ? getCompanyAllSetting($companyId) : [];
+
+        $residencyStatus = strtolower((string) ($context['residency_status'] ?? 'resident'));
+        if (!in_array($residencyStatus, ['resident', 'non_resident'], true)) {
+            $residencyStatus = 'resident';
+        }
+
+        $eligibleDependentsCount = (int) ($context['eligible_dependents_count'] ?? $context['dependents_count'] ?? 0);
+        $eligibleDependentsCount = max(0, $eligibleDependentsCount);
+
+        $dependentDeductionAmount = (float) (
+            $context['dependent_deduction_amount']
+            ?? $settings[self::SETTING_IRPS_DEPENDENT_DEDUCTION_AMOUNT]
+            ?? 0
+        );
+        $dependentDeductionAmount = round(max(0, $dependentDeductionAmount), 2);
+
+        $maxDependentsRaw = $context['max_dependents_for_deduction']
+            ?? $settings[self::SETTING_IRPS_MAX_DEPENDENTS_FOR_DEDUCTION]
+            ?? null;
+        $maxDependents = null;
+        if ($maxDependentsRaw !== null && $maxDependentsRaw !== '') {
+            $parsed = (int) $maxDependentsRaw;
+            if ($parsed > 0) {
+                $maxDependents = $parsed;
+            }
+        }
+
+        $nonResidentRate = (float) (
+            $context['non_resident_flat_rate_percent']
+            ?? $settings[self::SETTING_IRPS_NON_RESIDENT_FLAT_RATE_PERCENT]
+            ?? self::DEFAULT_NON_RESIDENT_FLAT_RATE_PERCENT
+        );
+        $nonResidentRate = max(0, min(100, round($nonResidentRate, 4)));
+
+        $applyNonResidentFlatRate = array_key_exists('apply_non_resident_flat_rate', $context)
+            ? (bool) $context['apply_non_resident_flat_rate']
+            : true;
+
+        return [
+            'residency_status' => $residencyStatus,
+            'eligible_dependents_count' => $eligibleDependentsCount,
+            'dependent_deduction_amount' => $dependentDeductionAmount,
+            'max_dependents_for_deduction' => $maxDependents,
+            'non_resident_flat_rate_percent' => $nonResidentRate,
+            'apply_non_resident_flat_rate' => $applyNonResidentFlatRate,
+        ];
     }
 }

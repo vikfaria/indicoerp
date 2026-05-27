@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
+import type { RequestPayload } from '@inertiajs/core';
 
 interface UseDeleteHandlerOptions {
     routeName: string;
     defaultMessage?: string;
+    buildRequestData?: (id: number | string) => RequestPayload | null;
     onSuccess?: (response?: any) => void;
     onError?: (error: any) => void;
 }
@@ -11,6 +13,7 @@ interface UseDeleteHandlerOptions {
 export const useDeleteHandler = ({
     routeName,
     defaultMessage = 'Are you sure you want to delete this item?',
+    buildRequestData,
     onSuccess,
     onError
 }: UseDeleteHandlerOptions) => {
@@ -42,7 +45,13 @@ export const useDeleteHandler = ({
 
     const confirmDelete = () => {
         if (deleteState.id) {
+            const requestData = buildRequestData ? buildRequestData(deleteState.id) : undefined;
+            if (requestData === null) {
+                return;
+            }
+
             router.delete(route(routeName, deleteState.id), {
+                data: requestData,
                 onSuccess: (response) => {
                     closeDeleteDialog();
                     onSuccess?.(response);

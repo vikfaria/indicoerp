@@ -2,6 +2,8 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueForeignWorkerQuotaService;
+use App\Services\MozambiqueProbationPolicyService;
 use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Http\Requests\StoreEmployeeRequest;
 use Workdo\Hrm\Http\Requests\UpdateEmployeeRequest;
@@ -21,6 +23,11 @@ use Workdo\Hrm\Events\UpdateEmployee;
 
 class EmployeeController extends Controller
 {
+    public function __construct(
+        private readonly MozambiqueForeignWorkerQuotaService $foreignWorkerQuotaService,
+        private readonly MozambiqueProbationPolicyService $probationPolicyService
+    ) {}
+
     private function checkEmployeeAccess(Employee $employee)
     {
         if(Auth::user()->can('manage-any-employees')) {
@@ -280,7 +287,17 @@ class EmployeeController extends Controller
             if(!$this->checkEmployeeAccess($employee)) {
                 return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));
             }
-            $employee->load(['user:id,name,email,avatar', 'branch', 'department', 'designation', 'shift']);
+            $employee->load([
+                'user:id,name,email,avatar',
+                'branch',
+                'department',
+                'designation',
+                'shift',
+                'dependents',
+                'socialSecurityProfile',
+                'foreignWorkerProfile',
+                'probationProfile',
+            ]);
             
             $documents = EmployeeDocument::where('user_id', $employee->id)
                 ->with('documentType')
@@ -297,6 +314,11 @@ class EmployeeController extends Controller
             return Inertia::render('Hrm/Employees/Show', [
                 'employee' => $employee,
                 'documents' => $documents,
+                'foreignQuota' => $this->foreignWorkerQuotaService->evaluate((int) creatorId()),
+                'probationAlerts' => $this->probationPolicyService->buildAlerts(
+                    $employee->probationProfile?->expected_end_at?->toDateString()
+                ),
+                'probationCategoryLimits' => $this->probationPolicyService->allCategoryLimits(),
             ]);
         } else {
             return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));

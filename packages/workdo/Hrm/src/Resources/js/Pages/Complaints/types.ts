@@ -7,9 +7,16 @@ export interface Complaint {
     description: string;
     complaint_date: string;
     status: string;
+    is_confidential?: boolean;
+    is_harassment_report?: boolean;
+    confidential_channel?: string;
+    confidentiality_level?: string;
     document?: string;
     resolved_by?: number;
+    handling_owner_id?: number;
     resolution_date?: string;
+    investigation_started_at?: string;
+    investigation_closed_at?: string;
     creator_id: number;
     created_by: number;
     employee?: {
@@ -20,11 +27,31 @@ export interface Complaint {
         id: number;
         name: string;
     };
+    against_employee?: {
+        id: number;
+        name: string;
+    };
     complaintType?: {
         id: number;
         complaint_type: string;
     };
+    complaint_type?: {
+        id: number;
+        complaint_type: string;
+    };
     resolvedBy?: {
+        id: number;
+        name: string;
+    };
+    resolved_by?: {
+        id: number;
+        name: string;
+    };
+    handlingOwner?: {
+        id: number;
+        name: string;
+    };
+    handling_owner?: {
         id: number;
         name: string;
     };
@@ -88,6 +115,13 @@ export interface CreateComplaintFormData {
     subject: string;
     description: string;
     complaint_date: string;
+    is_confidential: boolean;
+    is_harassment_report: boolean;
+    confidential_channel: string;
+    confidentiality_level: string;
+    handling_owner_id: string;
+    investigation_started_at: string;
+    investigation_closed_at: string;
     document: string;
 }
 
@@ -98,6 +132,13 @@ export interface EditComplaintFormData {
     subject: string;
     description: string;
     complaint_date: string;
+    is_confidential: boolean;
+    is_harassment_report: boolean;
+    confidential_channel: string;
+    confidentiality_level: string;
+    handling_owner_id: string;
+    investigation_started_at: string;
+    investigation_closed_at: string;
     document: string;
 }
 

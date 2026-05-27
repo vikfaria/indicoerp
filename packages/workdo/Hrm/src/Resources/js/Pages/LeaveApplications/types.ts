@@ -8,6 +8,9 @@ export interface User {
 export interface LeaveType {
     id: number;
     name: string;
+    legal_code?: string | null;
+    requires_supporting_document?: boolean;
+    allow_cash_out?: boolean;
 }
 
 export interface Employee {
@@ -20,7 +23,10 @@ export interface LeaveApplication {
     id: number;
     start_date: string;
     end_date: string;
+    legal_reference_date?: string;
     total_days: number;
+    compensated_days?: number;
+    effective_rest_days?: number;
     reason: string;
     attachment?: string;
     status: string;
@@ -39,6 +45,8 @@ export interface CreateLeaveApplicationFormData {
     leave_type_id: string;
     start_date: string;
     end_date: string;
+    legal_reference_date: string;
+    compensated_days: string;
     reason: string;
     attachment: string;
 }
@@ -48,6 +56,8 @@ export interface EditLeaveApplicationFormData {
     leave_type_id: string;
     start_date: string;
     end_date: string;
+    legal_reference_date: string;
+    compensated_days: string;
     reason: string;
     attachment: string;
 }
