@@ -7,13 +7,20 @@ use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
 
 class MozambiqueForeignWorkerQuotaService
 {
+    public function __construct(
+        private readonly MozambiqueHrLegalSettingsService $legalSettingsService
+    ) {}
+
     public function evaluate(int $companyId, ?int $excludeEmployeeId = null): array
     {
+        $legalSettings = $this->legalSettingsService->getSettings($companyId);
+        $quotaRules = $legalSettings['foreign_quota'] ?? [];
+
         $totalWorkers = Employee::query()
             ->where('created_by', $companyId)
             ->count();
 
-        $classification = $this->classificationFor($totalWorkers);
+        $classification = $this->classificationFor($totalWorkers, $quotaRules);
         $quotaSlots = $this->quotaSlotsFor($totalWorkers, $classification['max_percentage']);
 
         $currentForeignWorkers = EmployeeForeignWorkerProfile::query()
@@ -59,21 +66,37 @@ class MozambiqueForeignWorkerQuotaService
         ];
     }
 
-    private function classificationFor(int $totalWorkers): array
+    private function classificationFor(int $totalWorkers, array $quotaRules): array
     {
-        if ($totalWorkers <= 10) {
-            return ['employer_type' => 'micro', 'max_percentage' => 15.0];
+        $microMaxWorkers = max(1, (int) ($quotaRules['micro_max_workers'] ?? 10));
+        $smallMaxWorkers = max($microMaxWorkers + 1, (int) ($quotaRules['small_max_workers'] ?? 30));
+        $mediumMaxWorkers = max($smallMaxWorkers + 1, (int) ($quotaRules['medium_max_workers'] ?? 100));
+
+        if ($totalWorkers <= $microMaxWorkers) {
+            return [
+                'employer_type' => 'micro',
+                'max_percentage' => max(0.0, min(100.0, (float) ($quotaRules['micro_quota_percent'] ?? 15.0))),
+            ];
         }
 
-        if ($totalWorkers <= 30) {
-            return ['employer_type' => 'small', 'max_percentage' => 10.0];
+        if ($totalWorkers <= $smallMaxWorkers) {
+            return [
+                'employer_type' => 'small',
+                'max_percentage' => max(0.0, min(100.0, (float) ($quotaRules['small_quota_percent'] ?? 10.0))),
+            ];
         }
 
-        if ($totalWorkers <= 100) {
-            return ['employer_type' => 'medium', 'max_percentage' => 8.0];
+        if ($totalWorkers <= $mediumMaxWorkers) {
+            return [
+                'employer_type' => 'medium',
+                'max_percentage' => max(0.0, min(100.0, (float) ($quotaRules['medium_quota_percent'] ?? 8.0))),
+            ];
         }
 
-        return ['employer_type' => 'large', 'max_percentage' => 5.0];
+        return [
+            'employer_type' => 'large',
+            'max_percentage' => max(0.0, min(100.0, (float) ($quotaRules['large_quota_percent'] ?? 5.0))),
+        ];
     }
 
     private function quotaSlotsFor(int $totalWorkers, float $maxPercentage): int

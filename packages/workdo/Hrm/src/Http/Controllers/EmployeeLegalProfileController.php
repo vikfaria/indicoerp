@@ -103,11 +103,11 @@ class EmployeeLegalProfileController extends Controller
         $profile = EmployeeProbationProfile::query()->firstOrNew(['employee_id' => $employee->id]);
 
         $probationCategory = $validated['probation_category'];
-        $legalMaxDays = $this->probationPolicyService->legalMaxDaysFor($probationCategory);
+        $legalMaxDays = $this->probationPolicyService->legalMaxDaysFor($probationCategory, creatorId());
         $startsAt = Carbon::parse($validated['starts_at'])->startOfDay();
         $expectedEndDate = !empty($validated['expected_end_at'])
             ? Carbon::parse($validated['expected_end_at'])->startOfDay()
-            : Carbon::parse($this->probationPolicyService->calculateExpectedEndDate($validated['starts_at'], $probationCategory))->startOfDay();
+            : Carbon::parse($this->probationPolicyService->calculateExpectedEndDate($validated['starts_at'], $probationCategory, creatorId()))->startOfDay();
 
         $legalMaxDate = $startsAt->copy()->addDays($legalMaxDays);
         if ($expectedEndDate->greaterThan($legalMaxDate)) {

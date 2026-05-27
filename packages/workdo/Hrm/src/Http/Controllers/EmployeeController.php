@@ -316,9 +316,10 @@ class EmployeeController extends Controller
                 'documents' => $documents,
                 'foreignQuota' => $this->foreignWorkerQuotaService->evaluate((int) creatorId()),
                 'probationAlerts' => $this->probationPolicyService->buildAlerts(
-                    $employee->probationProfile?->expected_end_at?->toDateString()
+                    $employee->probationProfile?->expected_end_at?->toDateString(),
+                    (int) creatorId()
                 ),
-                'probationCategoryLimits' => $this->probationPolicyService->allCategoryLimits(),
+                'probationCategoryLimits' => $this->probationPolicyService->allCategoryLimits((int) creatorId()),
             ]);
         } else {
             return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));

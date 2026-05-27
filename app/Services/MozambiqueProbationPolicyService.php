@@ -6,7 +6,7 @@ use Carbon\Carbon;
 
 class MozambiqueProbationPolicyService
 {
-    private const CATEGORY_LIMITS = [
+    private const DEFAULT_CATEGORY_LIMITS = [
         'base_indefinite' => 30,
         'general' => 60,
         'technician_mid' => 90,
@@ -14,30 +14,49 @@ class MozambiqueProbationPolicyService
         'leadership' => 180,
     ];
 
-    public function allCategoryLimits(): array
+    public function __construct(
+        private readonly MozambiqueHrLegalSettingsService $legalSettingsService
+    ) {}
+
+    public function allCategoryLimits(?int $companyId = null): array
     {
-        return self::CATEGORY_LIMITS;
+        if (!$companyId) {
+            return self::DEFAULT_CATEGORY_LIMITS;
+        }
+
+        $settings = $this->legalSettingsService->getSettings($companyId);
+        $limits = $settings['probation_limits_days'] ?? [];
+
+        return [
+            'base_indefinite' => max(1, (int) ($limits['base_indefinite'] ?? self::DEFAULT_CATEGORY_LIMITS['base_indefinite'])),
+            'general' => max(1, (int) ($limits['general'] ?? self::DEFAULT_CATEGORY_LIMITS['general'])),
+            'technician_mid' => max(1, (int) ($limits['technician_mid'] ?? self::DEFAULT_CATEGORY_LIMITS['technician_mid'])),
+            'technician_high' => max(1, (int) ($limits['technician_high'] ?? self::DEFAULT_CATEGORY_LIMITS['technician_high'])),
+            'leadership' => max(1, (int) ($limits['leadership'] ?? self::DEFAULT_CATEGORY_LIMITS['leadership'])),
+        ];
     }
 
-    public function categories(): array
+    public function categories(?int $companyId = null): array
     {
-        return array_keys(self::CATEGORY_LIMITS);
+        return array_keys($this->allCategoryLimits($companyId));
     }
 
-    public function legalMaxDaysFor(string $category): int
+    public function legalMaxDaysFor(string $category, ?int $companyId = null): int
     {
-        return self::CATEGORY_LIMITS[$category] ?? self::CATEGORY_LIMITS['general'];
+        $limits = $this->allCategoryLimits($companyId);
+
+        return $limits[$category] ?? $limits['general'];
     }
 
-    public function calculateExpectedEndDate(string $startsAt, string $category): string
+    public function calculateExpectedEndDate(string $startsAt, string $category, ?int $companyId = null): string
     {
         return Carbon::parse($startsAt)
             ->startOfDay()
-            ->addDays($this->legalMaxDaysFor($category))
+            ->addDays($this->legalMaxDaysFor($category, $companyId))
             ->toDateString();
     }
 
-    public function buildAlerts(?string $expectedEndAt): array
+    public function buildAlerts(?string $expectedEndAt, ?int $companyId = null): array
     {
         if (empty($expectedEndAt)) {
             return [
@@ -52,12 +71,17 @@ class MozambiqueProbationPolicyService
         $today = Carbon::today();
         $endDate = Carbon::parse($expectedEndAt)->startOfDay();
         $daysRemaining = $today->diffInDays($endDate, false);
+        $settings = $companyId
+            ? $this->legalSettingsService->getSettings($companyId)
+            : $this->legalSettingsService->defaultSettings();
+        $primaryAlertDays = max(1, (int) ($settings['probation_alert_days']['primary'] ?? 15));
+        $secondaryAlertDays = max(0, min($primaryAlertDays, (int) ($settings['probation_alert_days']['secondary'] ?? 7)));
 
         return [
             'days_remaining' => $daysRemaining,
             'is_overdue' => $daysRemaining < 0,
-            'alert_15_days' => $daysRemaining >= 0 && $daysRemaining <= 15,
-            'alert_7_days' => $daysRemaining >= 0 && $daysRemaining <= 7,
+            'alert_15_days' => $daysRemaining >= 0 && $daysRemaining <= $primaryAlertDays,
+            'alert_7_days' => $daysRemaining >= 0 && $daysRemaining <= $secondaryAlertDays,
             'alert_last_day' => $daysRemaining === 0,
         ];
     }

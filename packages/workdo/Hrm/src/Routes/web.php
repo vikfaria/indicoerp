@@ -403,6 +403,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
     Route::prefix('hrm/mozambique-payroll-compliance')->name('hrm.mozambique-payroll-compliance.')->group(function () {
         Route::get('/', [MozambiquePayrollComplianceController::class, 'index'])->name('index');
         Route::put('/labour-policy', [MozambiquePayrollComplianceController::class, 'updateLabourPolicy'])->name('labour-policy.update');
+        Route::put('/legal-settings', [MozambiquePayrollComplianceController::class, 'updateLegalSettings'])->name('legal-settings.update');
         Route::put('/cost-center-mappings', [MozambiquePayrollComplianceController::class, 'updateCostCenterMappings'])->name('cost-center-mappings.update');
 
         Route::post('/irps-tables', [MozambiquePayrollComplianceController::class, 'storeIrpsTable'])->name('irps-tables.store');
@@ -441,6 +442,14 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
             ->name('reports.accounting-journal-lines.json');
         Route::get('/reports/accounting-journal-lines.xml', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesXml'])
             ->name('reports.accounting-journal-lines.xml');
+        Route::get('/reports/workforce-register', [MozambiquePayrollComplianceController::class, 'exportWorkforceRegister'])
+            ->name('reports.workforce-register.export');
+        Route::post('/reports/workforce-register/import', [MozambiquePayrollComplianceController::class, 'importWorkforceRegister'])
+            ->name('reports.workforce-register.import');
+        Route::get('/reports/workforce-register.json', [MozambiquePayrollComplianceController::class, 'exportWorkforceRegisterJson'])
+            ->name('reports.workforce-register.json');
+        Route::get('/reports/workforce-register.xml', [MozambiquePayrollComplianceController::class, 'exportWorkforceRegisterXml'])
+            ->name('reports.workforce-register.xml');
     });
 
     // Allowances routes

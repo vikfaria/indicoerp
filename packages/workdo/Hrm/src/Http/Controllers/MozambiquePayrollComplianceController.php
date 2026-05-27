@@ -7,6 +7,8 @@ use App\Services\MozambiqueForeignWorkerComplianceReportService;
 use App\Services\MozambiqueHrComplianceAlertService;
 use App\Services\MozambiquePayrollAccountingExportService;
 use App\Services\MozambiqueHrComplianceDashboardService;
+use App\Services\MozambiqueHrLegalSettingsService;
+use App\Services\MozambiqueHrWorkforceExportService;
 use App\Services\MozambiqueLabourComplianceService;
 use App\Services\MozambiquePayrollSubmissionReportService;
 use App\Services\PayrollCostCenterAllocatorService;
@@ -30,7 +32,9 @@ class MozambiquePayrollComplianceController extends Controller
         private readonly MozambiqueHrComplianceAlertService $complianceAlertService,
         private readonly MozambiquePayrollSubmissionReportService $payrollSubmissionReportService,
         private readonly MozambiqueForeignWorkerComplianceReportService $foreignWorkerComplianceReportService,
+        private readonly MozambiqueHrLegalSettingsService $legalSettingsService,
         private readonly MozambiquePayrollAccountingExportService $payrollAccountingExportService,
+        private readonly MozambiqueHrWorkforceExportService $workforceExportService,
         private readonly PayrollCostCenterAllocatorService $payrollCostCenterAllocatorService
     ) {}
 
@@ -106,6 +110,7 @@ class MozambiquePayrollComplianceController extends Controller
             'labourPolicy' => $this->labourComplianceService->getPolicy($companyId),
             'complianceSnapshot' => $complianceSnapshot,
             'complianceAlerts' => $complianceAlerts,
+            'legalSettings' => $this->legalSettingsService->getSettings($companyId),
             'costCenters' => $costCenterOptions,
             'departments' => $departmentOptions,
             'branches' => $branchOptions,
@@ -194,6 +199,56 @@ class MozambiquePayrollComplianceController extends Controller
         setSetting('mz_leave_count_holidays', $validated['leave_count_holidays'] ? '1' : '0');
 
         return back()->with('success', __('Mozambique labour policy updated successfully.'));
+    }
+
+    public function updateLegalSettings(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'foreign_quota' => 'required|array',
+            'foreign_quota.micro_max_workers' => 'required|integer|min:1|max:500000',
+            'foreign_quota.small_max_workers' => 'required|integer|min:2|max:500000',
+            'foreign_quota.medium_max_workers' => 'required|integer|min:3|max:500000',
+            'foreign_quota.micro_quota_percent' => 'required|numeric|min:0|max:100',
+            'foreign_quota.small_quota_percent' => 'required|numeric|min:0|max:100',
+            'foreign_quota.medium_quota_percent' => 'required|numeric|min:0|max:100',
+            'foreign_quota.large_quota_percent' => 'required|numeric|min:0|max:100',
+            'probation_limits_days' => 'required|array',
+            'probation_limits_days.base_indefinite' => 'required|integer|min:1|max:365',
+            'probation_limits_days.general' => 'required|integer|min:1|max:365',
+            'probation_limits_days.technician_mid' => 'required|integer|min:1|max:365',
+            'probation_limits_days.technician_high' => 'required|integer|min:1|max:365',
+            'probation_limits_days.leadership' => 'required|integer|min:1|max:365',
+            'probation_alert_days' => 'required|array',
+            'probation_alert_days.primary' => 'required|integer|min:1|max:365',
+            'probation_alert_days.secondary' => 'required|integer|min:0|max:365',
+        ]);
+
+        $quota = $validated['foreign_quota'];
+        if ((int) $quota['small_max_workers'] <= (int) $quota['micro_max_workers']) {
+            return back()->withErrors([
+                'foreign_quota.small_max_workers' => __('Small employer max workers must be greater than micro employer max workers.'),
+            ]);
+        }
+
+        if ((int) $quota['medium_max_workers'] <= (int) $quota['small_max_workers']) {
+            return back()->withErrors([
+                'foreign_quota.medium_max_workers' => __('Medium employer max workers must be greater than small employer max workers.'),
+            ]);
+        }
+
+        if ((int) $validated['probation_alert_days']['secondary'] > (int) $validated['probation_alert_days']['primary']) {
+            return back()->withErrors([
+                'probation_alert_days.secondary' => __('Secondary probation alert day must be less than or equal to primary alert day.'),
+            ]);
+        }
+
+        $this->legalSettingsService->updateSettings(creatorId(), $validated);
+
+        return back()->with('success', __('Mozambique legal settings updated successfully.'));
     }
 
     public function storeIrpsTable(Request $request)
@@ -976,6 +1031,218 @@ class MozambiquePayrollComplianceController extends Controller
         );
 
         return $this->exportXml('payroll_cost_allocation', $dataset, $filename);
+    }
+
+    public function exportWorkforceRegister(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+        ]);
+
+        $dataset = $this->workforceExportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null
+        );
+
+        $filename = sprintf(
+            'hr-workforce-register-%s-%s.csv',
+            $dataset['reference_date'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Date',
+            'Employee Record ID',
+            'Employee Internal ID',
+            'Employee',
+            'Employment Type',
+            'Date of Joining',
+            'Branch',
+            'Department',
+            'Designation',
+            'Employee NUIT',
+            'Basic Salary',
+            'INSS Number',
+            'INSS Status',
+            'INSS Registration Date',
+            'Dependents Total',
+            'Dependents Tax Eligible',
+            'Is Foreign Worker',
+            'Nationality',
+            'Residency Status',
+            'Hiring Regime',
+            'Work Province',
+            'Passport Number',
+            'Passport Expires At',
+            'Visa Type',
+            'Visa Expires At',
+            'Work Authorization Number',
+            'Work Authorization Expires At',
+            'Mozambique Entry Date',
+            'Cessation Effective Date',
+            'Cessation Notification Due Date',
+            'Cessation Notified At',
+            'Probation Category',
+            'Probation Starts At',
+            'Probation Expected End',
+            'Probation Evaluation',
+            'Probation Decision',
+            'Probation Decision Date',
+            'Contract Number',
+            'Contract Status',
+            'Contract Start Date',
+            'Contract End Date',
+            'Contract Legal Type',
+            'Contract Fixed-term Justification',
+            'Contract Presumed Indefinite Risk',
+            'Approved Leave Days (Year)',
+            'Approved Leave Days (Total)',
+            'Latest Pay Date',
+            'Latest Gross Pay',
+            'Latest Net Pay',
+            'Latest IRPS',
+            'Latest INSS Employee',
+            'Latest INSS Employer',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_date'],
+                $row['employee_record_id'],
+                $row['employee_internal_id'],
+                $row['employee_name'],
+                $row['employment_type'],
+                $row['date_of_joining'],
+                $row['branch'],
+                $row['department'],
+                $row['designation'],
+                $row['employee_nuit'],
+                $row['basic_salary'],
+                $row['inss_number'],
+                $row['inss_registration_status'],
+                $row['inss_registration_date'],
+                $row['dependents_total'],
+                $row['dependents_tax_eligible'],
+                $row['is_foreign_worker'] ? 'yes' : 'no',
+                $row['nationality'],
+                $row['residency_status'],
+                $row['hiring_regime'],
+                $row['work_province'],
+                $row['passport_number'],
+                $row['passport_expires_at'],
+                $row['visa_type'],
+                $row['visa_expires_at'],
+                $row['work_authorization_number'],
+                $row['work_authorization_expires_at'],
+                $row['mozambique_entry_date'],
+                $row['cessation_effective_date'],
+                $row['cessation_notification_due_at'],
+                $row['cessation_notified_at'],
+                $row['probation_category'],
+                $row['probation_starts_at'],
+                $row['probation_expected_end_at'],
+                $row['probation_evaluation_status'],
+                $row['probation_decision_status'],
+                $row['probation_decision_date'],
+                $row['contract_number'],
+                $row['contract_status'],
+                $row['contract_start_date'],
+                $row['contract_end_date'],
+                $row['contract_legal_type'],
+                $row['contract_fixed_term_justification'],
+                $row['contract_presumed_indefinite_risk'] ? 'yes' : 'no',
+                $row['approved_leave_days_current_year'],
+                $row['approved_leave_days_total'],
+                $row['latest_pay_date'],
+                $row['latest_gross_pay'],
+                $row['latest_net_pay'],
+                $row['latest_irps_amount'],
+                $row['latest_inss_employee_amount'],
+                $row['latest_inss_employer_amount'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function importWorkforceRegister(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
+
+        $summary = $this->workforceExportService->importCsv(
+            creatorId(),
+            $validated['csv_file']->getRealPath() ?: '',
+            Auth::id()
+        );
+
+        if (($summary['processed'] ?? 0) === 0 && !empty($summary['errors'])) {
+            return back()->with('error', $summary['errors'][0]['message'] ?? __('Workforce import failed.'));
+        }
+
+        $errorCount = count($summary['errors'] ?? []);
+        $message = __('Workforce import completed. Processed: :processed, Updated: :updated, Skipped: :skipped.', [
+            'processed' => (int) ($summary['processed'] ?? 0),
+            'updated' => (int) ($summary['updated'] ?? 0),
+            'skipped' => (int) ($summary['skipped'] ?? 0),
+        ]);
+
+        if ($errorCount > 0) {
+            $message .= ' ' . __('Rows with issues: :count.', ['count' => $errorCount]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    public function exportWorkforceRegisterJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+        ]);
+
+        $dataset = $this->workforceExportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportWorkforceRegisterXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+        ]);
+
+        $dataset = $this->workforceExportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null
+        );
+
+        $filename = sprintf(
+            'hr-workforce-register-%s-%s.xml',
+            $dataset['reference_date'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('hr_workforce_register', $dataset, $filename);
     }
 
     public function exportAccountingJournalLinesXml(Request $request)

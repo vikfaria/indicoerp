@@ -61,6 +61,29 @@ interface LabourPolicy {
     leave_count_holidays: boolean;
 }
 
+interface LegalSettings {
+    foreign_quota: {
+        micro_max_workers: number;
+        small_max_workers: number;
+        medium_max_workers: number;
+        micro_quota_percent: number;
+        small_quota_percent: number;
+        medium_quota_percent: number;
+        large_quota_percent: number;
+    };
+    probation_limits_days: {
+        base_indefinite: number;
+        general: number;
+        technician_mid: number;
+        technician_high: number;
+        leadership: number;
+    };
+    probation_alert_days: {
+        primary: number;
+        secondary: number;
+    };
+}
+
 interface ComplianceAlertItem {
     key: string;
     label: string;
@@ -179,6 +202,7 @@ interface PageProps {
     inssRates: InssRate[];
     minimumWages: MinimumWage[];
     labourPolicy: LabourPolicy;
+    legalSettings: LegalSettings;
     complianceSnapshot: ComplianceSnapshot;
     complianceAlerts?: ComplianceAlertsState;
     costCenters: CostCenterOption[];
@@ -196,7 +220,7 @@ interface PageProps {
 
 export default function MozambiquePayrollComplianceIndex() {
     const { t } = useTranslation();
-    const { irpsTables, inssRates, minimumWages, labourPolicy, complianceSnapshot, complianceAlerts, costCenters, departments, branches, employees, costCenterMappingConfig, auth } = usePage<PageProps>().props;
+    const { irpsTables, inssRates, minimumWages, labourPolicy, legalSettings, complianceSnapshot, complianceAlerts, costCenters, departments, branches, employees, costCenterMappingConfig, auth } = usePage<PageProps>().props;
     const canEdit = auth.user?.permissions?.includes('edit-payrolls') ?? false;
     const triggeredItems = (complianceSnapshot?.items ?? []).filter((item) => item.count > 0);
     const payrollObligations = complianceSnapshot?.payroll_obligations;
@@ -253,6 +277,9 @@ export default function MozambiquePayrollComplianceIndex() {
         }
     };
 
+    const legalError = (key: string): string | undefined =>
+        (legalSettingsForm.errors as Record<string, string | undefined>)[key];
+
     const irpsTableForm = useForm({
         name: '',
         effective_from: '',
@@ -298,6 +325,16 @@ export default function MozambiquePayrollComplianceIndex() {
         leave_count_holidays: labourPolicy.leave_count_holidays,
     });
 
+    const legalSettingsForm = useForm<LegalSettings>({
+        foreign_quota: { ...legalSettings.foreign_quota },
+        probation_limits_days: { ...legalSettings.probation_limits_days },
+        probation_alert_days: { ...legalSettings.probation_alert_days },
+    });
+
+    const workforceImportForm = useForm<{ csv_file: File | null }>({
+        csv_file: null,
+    });
+
     const costCenterMappingForm = useForm<CostCenterMappingConfig>({
         mode: costCenterMappingConfig?.mode ?? 'configured_with_heuristic',
         mappings: {
@@ -325,6 +362,27 @@ export default function MozambiquePayrollComplianceIndex() {
     const mappingValue = (type: 'employee' | 'department' | 'branch', sourceId: number): string => {
         const value = costCenterMappingForm.data.mappings[type][String(sourceId)];
         return value ? String(value) : '';
+    };
+
+    const setForeignQuotaField = (field: keyof LegalSettings['foreign_quota'], value: string) => {
+        legalSettingsForm.setData('foreign_quota', {
+            ...legalSettingsForm.data.foreign_quota,
+            [field]: Number(value),
+        });
+    };
+
+    const setProbationLimitField = (field: keyof LegalSettings['probation_limits_days'], value: string) => {
+        legalSettingsForm.setData('probation_limits_days', {
+            ...legalSettingsForm.data.probation_limits_days,
+            [field]: Number(value),
+        });
+    };
+
+    const setProbationAlertField = (field: keyof LegalSettings['probation_alert_days'], value: string) => {
+        legalSettingsForm.setData('probation_alert_days', {
+            ...legalSettingsForm.data.probation_alert_days,
+            [field]: Number(value),
+        });
     };
 
     const handleDelete = (routeName: string, id: number) => {
@@ -485,21 +543,64 @@ export default function MozambiquePayrollComplianceIndex() {
                     <Card>
                         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <CardTitle>{t('Payroll Legal Obligations (INSS / IRPS)')}</CardTitle>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() =>
-                                    window.open(
-                                        route('hrm.mozambique-payroll-compliance.reports.expatriates.export'),
-                                        '_blank'
-                                    )
-                                }
-                            >
-                                {t('Expatriates Report')}
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.workforce-register.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Workforce Register')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.expatriates.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Expatriates Report')}
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <form
+                                className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    workforceImportForm.post(
+                                        route('hrm.mozambique-payroll-compliance.reports.workforce-register.import'),
+                                        {
+                                            forceFormData: true,
+                                            preserveScroll: true,
+                                            onSuccess: () => workforceImportForm.reset('csv_file'),
+                                        }
+                                    );
+                                }}
+                            >
+                                <div>
+                                    <Label>{t('Import Workforce Register (CSV)')}</Label>
+                                    <Input
+                                        type="file"
+                                        accept=".csv,text/csv"
+                                        onChange={(e) => workforceImportForm.setData('csv_file', e.target.files?.[0] ?? null)}
+                                    />
+                                    <InputError message={workforceImportForm.errors.csv_file} />
+                                </div>
+                                <Button type="submit" disabled={!canEdit || workforceImportForm.processing || !workforceImportForm.data.csv_file}>
+                                    {t('Import CSV')}
+                                </Button>
+                            </form>
+
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                 <div className="rounded-lg border p-3">
                                     <p className="text-xs text-muted-foreground">{t('Overdue INSS Submissions')}</p>
@@ -998,6 +1099,192 @@ export default function MozambiquePayrollComplianceIndex() {
                                     </tbody>
                                 </table>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('Mozambique Legal Settings')}</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <form
+                                className="space-y-6"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    legalSettingsForm.put(route('hrm.mozambique-payroll-compliance.legal-settings.update'));
+                                }}
+                            >
+                                <div className="space-y-3">
+                                    <h4 className="font-medium">{t('Foreign Worker Quota Rules')}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                        <div>
+                                            <Label>{t('Micro Max Workers')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.foreign_quota.micro_max_workers}
+                                                onChange={(e) => setForeignQuotaField('micro_max_workers', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.micro_max_workers')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Small Max Workers')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="2"
+                                                value={legalSettingsForm.data.foreign_quota.small_max_workers}
+                                                onChange={(e) => setForeignQuotaField('small_max_workers', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.small_max_workers')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Medium Max Workers')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="3"
+                                                value={legalSettingsForm.data.foreign_quota.medium_max_workers}
+                                                onChange={(e) => setForeignQuotaField('medium_max_workers', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.medium_max_workers')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Micro Quota %')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.01"
+                                                value={legalSettingsForm.data.foreign_quota.micro_quota_percent}
+                                                onChange={(e) => setForeignQuotaField('micro_quota_percent', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.micro_quota_percent')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Small Quota %')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.01"
+                                                value={legalSettingsForm.data.foreign_quota.small_quota_percent}
+                                                onChange={(e) => setForeignQuotaField('small_quota_percent', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.small_quota_percent')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Medium Quota %')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.01"
+                                                value={legalSettingsForm.data.foreign_quota.medium_quota_percent}
+                                                onChange={(e) => setForeignQuotaField('medium_quota_percent', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.medium_quota_percent')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Large Quota %')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                step="0.01"
+                                                value={legalSettingsForm.data.foreign_quota.large_quota_percent}
+                                                onChange={(e) => setForeignQuotaField('large_quota_percent', e.target.value)}
+                                            />
+                                            <InputError message={legalError('foreign_quota.large_quota_percent')} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <h4 className="font-medium">{t('Probation Legal Limits (days)')}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                        <div>
+                                            <Label>{t('Base Indefinite')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_limits_days.base_indefinite}
+                                                onChange={(e) => setProbationLimitField('base_indefinite', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_limits_days.base_indefinite')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('General')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_limits_days.general}
+                                                onChange={(e) => setProbationLimitField('general', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_limits_days.general')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Technician Mid')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_limits_days.technician_mid}
+                                                onChange={(e) => setProbationLimitField('technician_mid', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_limits_days.technician_mid')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Technician High')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_limits_days.technician_high}
+                                                onChange={(e) => setProbationLimitField('technician_high', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_limits_days.technician_high')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Leadership')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_limits_days.leadership}
+                                                onChange={(e) => setProbationLimitField('leadership', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_limits_days.leadership')} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <h4 className="font-medium">{t('Probation Alert Days')}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <Label>{t('Primary Alert (days)')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.probation_alert_days.primary}
+                                                onChange={(e) => setProbationAlertField('primary', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_alert_days.primary')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Secondary Alert (days)')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={legalSettingsForm.data.probation_alert_days.secondary}
+                                                onChange={(e) => setProbationAlertField('secondary', e.target.value)}
+                                            />
+                                            <InputError message={legalError('probation_alert_days.secondary')} />
+                                        </div>
+                                        <div className="flex items-end">
+                                            <Button type="submit" disabled={!canEdit || legalSettingsForm.processing} className="w-full">
+                                                {t('Save Legal Settings')}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
                         </CardContent>
                     </Card>
 
