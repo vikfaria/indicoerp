@@ -68,6 +68,10 @@ class AwardTypeController extends Controller
     public function update(UpdateAwardTypeRequest $request, AwardType $awardtype)
     {
         if(Auth::user()->can('edit-award-types')){
+            if ((int) $awardtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.award-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -89,6 +93,10 @@ class AwardTypeController extends Controller
     public function destroy(AwardType $awardtype)
     {
         if(Auth::user()->can('delete-award-types')){
+            if ((int) $awardtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.award-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAwardType::dispatch($awardtype);
             $awardtype->delete();
 

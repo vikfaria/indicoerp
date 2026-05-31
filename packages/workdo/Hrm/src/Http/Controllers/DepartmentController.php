@@ -66,6 +66,10 @@ class DepartmentController extends Controller
     public function update(UpdateDepartmentRequest $request, Department $department)
     {
         if (Auth::user()->can('edit-departments')) {
+            if ((int) $department->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.departments.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -86,6 +90,10 @@ class DepartmentController extends Controller
     public function destroy(Department $department)
     {
         if (Auth::user()->can('delete-departments')) {
+            if ((int) $department->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.departments.index')->with('error', __('Permission denied'));
+            }
+
             DestroyDepartment::dispatch($department);
             $department->delete();
 

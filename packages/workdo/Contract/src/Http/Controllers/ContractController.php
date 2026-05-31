@@ -110,10 +110,10 @@ class ContractController extends Controller
     public function update(UpdateContractRequest $request, $id)
     {
         if (Auth::user()->can('edit-contracts')) {
-            $contract = Contract::find($id);
+            $contract = $this->resolveScopedContractForAction((int) $id);
 
             if (!$contract) {
-                return redirect()->route('contract.index')->with('error', __('Contract not found.'));
+                return redirect()->route('contract.index')->with('error', __('Permission denied'));
             }
 
             $validated = $request->validated();
@@ -132,10 +132,10 @@ class ContractController extends Controller
     public function updateStatus(Request $request, $id)
     {
         if (Auth::user()->can('edit-contracts')) {
-            $contract = Contract::find($id);
+            $contract = $this->resolveScopedContractForAction((int) $id);
 
             if (!$contract) {
-                return redirect()->route('contract.index')->with('error', __('Contract not found.'));
+                return redirect()->route('contract.index')->with('error', __('Permission denied'));
             }
 
             $request->validate([
@@ -156,10 +156,10 @@ class ContractController extends Controller
     public function destroy($id)
     {
         if (Auth::user()->can('delete-contracts')) {
-            $contract = Contract::find($id);
+            $contract = $this->resolveScopedContractForAction((int) $id);
 
             if (!$contract) {
-                return redirect()->route('contract.index')->with('error', __('Contract not found.'));
+                return redirect()->route('contract.index')->with('error', __('Permission denied'));
             }
 
             DestroyContract::dispatch($contract);
@@ -297,19 +297,10 @@ class ContractController extends Controller
     public function duplicate(DuplicateContractRequest $request, $id)
     {
         if (Auth::user()->can('duplicate-contracts')) {
-            $originalContract = Contract::where('source_type', 'contract')
-                ->where(function ($q) {
-                    if (Auth::user()->can('manage-any-contracts')) {
-                        $q->where('created_by', creatorId());
-                    } elseif (Auth::user()->can('manage-own-contracts')) {
-                        $q->where('user_id', Auth::id())->orWhere('creator_id', Auth::id());
-                    } else {
-                        $q->whereRaw('1 = 0');
-                    }
-                })->find($id);
+            $originalContract = $this->resolveScopedContractForAction((int) $id);
 
             if (!$originalContract) {
-                return redirect()->route('contract.index')->with('error', __('Contract not found.'));
+                return redirect()->route('contract.index')->with('error', __('Permission denied'));
             }
 
             $validated = $request->validated();
@@ -325,5 +316,30 @@ class ContractController extends Controller
         } else {
             return redirect()->route('contract.index')->with('error', __('Permission denied'));
         }
+    }
+
+    private function resolveScopedContractForAction(int $id): ?Contract
+    {
+        $contract = Contract::query()
+            ->where('id', $id)
+            ->where('source_type', 'contract')
+            ->where('created_by', creatorId())
+            ->first();
+
+        if (!$contract) {
+            return null;
+        }
+
+        if (Auth::user()->can('manage-any-contracts')) {
+            return $contract;
+        }
+
+        if (Auth::user()->can('manage-own-contracts')) {
+            if ((int) $contract->user_id === (int) Auth::id() || (int) $contract->creator_id === (int) Auth::id()) {
+                return $contract;
+            }
+        }
+
+        return null;
     }
 }

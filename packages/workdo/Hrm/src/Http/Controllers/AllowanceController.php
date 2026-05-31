@@ -20,10 +20,15 @@ class AllowanceController extends Controller
     {
         if (Auth::user()->can('create-allowances')) {
             $validated = $request->validated();
-            $employee = Employee::find($validated['employee_id']);
+            $employee = Employee::query()
+                ->where('id', (int) $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             if ($employee) {
-                $existingAllowance = Allowance::where('employee_id', $employee->user_id)
+                $existingAllowance = Allowance::query()
+                    ->where('created_by', creatorId())
+                    ->where('employee_id', $employee->user_id)
                     ->where('allowance_type_id', $validated['allowance_type_id'])
                     ->first();
 
@@ -54,9 +59,15 @@ class AllowanceController extends Controller
     public function update(UpdateAllowanceRequest $request, Allowance $allowance)
     {
         if (Auth::user()->can('edit-allowances')) {
+            if (!$this->canAccessAllowance($allowance)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
-            $existingAllowance = Allowance::where('employee_id', $allowance->employee_id)
+            $existingAllowance = Allowance::query()
+                ->where('created_by', creatorId())
+                ->where('employee_id', $allowance->employee_id)
                 ->where('allowance_type_id', $validated['allowance_type_id'])
                 ->where('id', '!=', $allowance->id)
                 ->first();
@@ -82,6 +93,10 @@ class AllowanceController extends Controller
     public function destroy(Allowance $allowance, Request $request)
     {
         if (Auth::user()->can('delete-allowances')) {
+            if (!$this->canAccessAllowance($allowance)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             DestroyAllowance::dispatch($allowance);
             $allowance->delete();
 
@@ -89,5 +104,10 @@ class AllowanceController extends Controller
         } else {
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessAllowance(Allowance $allowance): bool
+    {
+        return (int) $allowance->created_by === (int) creatorId();
     }
 }

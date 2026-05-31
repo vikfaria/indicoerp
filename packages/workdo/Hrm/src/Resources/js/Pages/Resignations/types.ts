@@ -7,6 +7,25 @@ export interface Resignation {
     employee_id: any;
     employee?: { id: number; name: string };
     last_working_date: any;
+    legal_notice_required_days?: number;
+    legal_notice_provided_days?: number;
+    legal_notice_missing_days?: number;
+    legal_notice_compliant?: boolean;
+    settlement_base_salary_amount?: number;
+    settlement_daily_salary_amount?: number;
+    settlement_salary_until_exit_amount?: number;
+    settlement_unused_leave_days?: number;
+    settlement_unused_leave_amount?: number;
+    settlement_other_earnings_amount?: number;
+    settlement_other_deductions_amount?: number;
+    settlement_apply_indemnity?: boolean;
+    settlement_indemnity_days_per_year?: number;
+    settlement_indemnity_years?: number;
+    settlement_indemnity_amount?: number;
+    settlement_gross_amount?: number;
+    settlement_total_deductions_amount?: number;
+    settlement_net_amount?: number;
+    settlement_generated_at?: string;
     reason: any;
     description?: any;
     status: any;
@@ -24,6 +43,11 @@ export interface CreateResignationFormData {
     reason: any;
     description: any;
     document: any;
+    settlement_unused_leave_days: string;
+    settlement_other_earnings_amount: string;
+    settlement_other_deductions_amount: string;
+    settlement_apply_indemnity: boolean;
+    settlement_indemnity_days_per_year: string;
 }
 
 export interface EditResignationFormData {
@@ -32,6 +56,11 @@ export interface EditResignationFormData {
     reason: any;
     description: any;
     document: any;
+    settlement_unused_leave_days: string;
+    settlement_other_earnings_amount: string;
+    settlement_other_deductions_amount: string;
+    settlement_apply_indemnity: boolean;
+    settlement_indemnity_days_per_year: string;
 }
 
 export interface ResignationFilters {

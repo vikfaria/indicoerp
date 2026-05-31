@@ -21,6 +21,7 @@ use Workdo\Hrm\Http\Controllers\AttendanceController;
 use Workdo\Hrm\Http\Controllers\ShiftController;
 
 use Workdo\Hrm\Http\Controllers\LeaveApplicationController;
+use Workdo\Hrm\Http\Controllers\AnnualLeavePlanController;
 
 use Workdo\Hrm\Http\Controllers\LeaveTypeController;
 
@@ -336,6 +337,13 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::delete('/{leaveapplication}', [LeaveApplicationController::class, 'destroy'])->name('destroy');
     });
 
+    Route::prefix('hrm/annual-leave-plans')->name('hrm.annual-leave-plans.')->group(function () {
+        Route::post('/', [AnnualLeavePlanController::class, 'store'])->name('store');
+        Route::put('/{annualLeavePlan}', [AnnualLeavePlanController::class, 'update'])->name('update');
+        Route::put('/{annualLeavePlan}/status', [AnnualLeavePlanController::class, 'updateStatus'])->name('update-status');
+        Route::delete('/{annualLeavePlan}', [AnnualLeavePlanController::class, 'destroy'])->name('destroy');
+    });
+
     Route::prefix('hrm/leave-balance')->name('hrm.leave-balance.')->group(function () {
         Route::get('/', [\Workdo\Hrm\Http\Controllers\LeaveBalanceController::class, 'index'])->name('index');
     });
@@ -428,8 +436,28 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
             ->name('reports.inss-guide.export');
         Route::get('/reports/bank-payment-file', [MozambiquePayrollComplianceController::class, 'exportBankPaymentFile'])
             ->name('reports.bank-payment-file.export');
+        Route::get('/reports/annual-fiscal-history', [MozambiquePayrollComplianceController::class, 'exportAnnualFiscalHistory'])
+            ->name('reports.annual-fiscal-history.export');
+        Route::get('/reports/annual-fiscal-history.json', [MozambiquePayrollComplianceController::class, 'exportAnnualFiscalHistoryJson'])
+            ->name('reports.annual-fiscal-history.json');
         Route::get('/reports/expatriates', [MozambiquePayrollComplianceController::class, 'exportExpatriatesReport'])
             ->name('reports.expatriates.export');
+        Route::get('/reports/disciplinary-cases', [MozambiquePayrollComplianceController::class, 'exportDisciplinaryCasesReport'])
+            ->name('reports.disciplinary-cases.export');
+        Route::get('/reports/disciplinary-cases.json', [MozambiquePayrollComplianceController::class, 'exportDisciplinaryCasesReportJson'])
+            ->name('reports.disciplinary-cases.json');
+        Route::get('/reports/annual-leave-compliance', [MozambiquePayrollComplianceController::class, 'exportLeaveComplianceReport'])
+            ->name('reports.annual-leave-compliance.export');
+        Route::get('/reports/annual-leave-compliance.json', [MozambiquePayrollComplianceController::class, 'exportLeaveComplianceReportJson'])
+            ->name('reports.annual-leave-compliance.json');
+        Route::get('/reports/attendance-compliance', [MozambiquePayrollComplianceController::class, 'exportAttendanceComplianceReport'])
+            ->name('reports.attendance-compliance.export');
+        Route::get('/reports/attendance-compliance.json', [MozambiquePayrollComplianceController::class, 'exportAttendanceComplianceReportJson'])
+            ->name('reports.attendance-compliance.json');
+        Route::get('/reports/training-compliance', [MozambiquePayrollComplianceController::class, 'exportTrainingComplianceReport'])
+            ->name('reports.training-compliance.export');
+        Route::get('/reports/training-compliance.json', [MozambiquePayrollComplianceController::class, 'exportTrainingComplianceReportJson'])
+            ->name('reports.training-compliance.json');
         Route::get('/reports/cost-allocation', [MozambiquePayrollComplianceController::class, 'exportCostAllocationReport'])
             ->name('reports.cost-allocation.export');
         Route::get('/reports/accounting-journal-lines', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLines'])
@@ -477,6 +505,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
     Route::prefix('hrm/overtimes')->name('hrm.overtimes.')->group(function () {
         Route::post('/', [\Workdo\Hrm\Http\Controllers\OvertimeController::class, 'store'])->name('store');
         Route::put('/{overtime}', [\Workdo\Hrm\Http\Controllers\OvertimeController::class, 'update'])->name('update');
+        Route::put('/{overtime}/status', [\Workdo\Hrm\Http\Controllers\OvertimeController::class, 'updateStatus'])->name('update-status');
         Route::delete('/{overtime}/{employee}', [\Workdo\Hrm\Http\Controllers\OvertimeController::class, 'destroy'])->name('destroy');
     });
 

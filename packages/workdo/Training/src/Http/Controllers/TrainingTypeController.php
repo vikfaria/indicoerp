@@ -59,8 +59,15 @@ class TrainingTypeController extends Controller
             $trainingType                = new TrainingType();
             $trainingType->name          = $validated['name'];
             $trainingType->description   = $validated['description'];
+            $trainingType->is_mandatory  = (bool) ($validated['is_mandatory'] ?? false);
+            $trainingType->compliance_code = $trainingType->is_mandatory
+                ? ($validated['compliance_code'] ?? null)
+                : null;
+            $trainingType->certificate_validity_days = $trainingType->is_mandatory
+                ? ($validated['certificate_validity_days'] ?? null)
+                : null;
             $trainingType->branch_id     = $validated['branch_id'];
-            $trainingType->department_id = $validated['department_id'] ?? [];
+            $trainingType->department_id = $validated['department_id'];
             $trainingType->creator_id    = Auth::id();
             $trainingType->created_by    = creatorId();
             $trainingType->save();
@@ -81,8 +88,15 @@ class TrainingTypeController extends Controller
 
             $trainingType->name          = $validated['name'];
             $trainingType->description   = $validated['description'];
+            $trainingType->is_mandatory  = (bool) ($validated['is_mandatory'] ?? false);
+            $trainingType->compliance_code = $trainingType->is_mandatory
+                ? ($validated['compliance_code'] ?? null)
+                : null;
+            $trainingType->certificate_validity_days = $trainingType->is_mandatory
+                ? ($validated['certificate_validity_days'] ?? null)
+                : null;
             $trainingType->branch_id     = $validated['branch_id'];
-            $trainingType->department_id = $validated['department_id'] ?? [];
+            $trainingType->department_id = $validated['department_id'];
             $trainingType->save();
 
             UpdateTrainingType::dispatch($request, $trainingType);

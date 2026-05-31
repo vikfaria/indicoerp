@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAllowanceRequest extends FormRequest
 {
@@ -13,9 +14,23 @@ class StoreAllowanceRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
-            'employee_id' => 'required|integer|exists:employees,id',
-            'allowance_type_id' => 'required|integer|exists:allowance_types,id',
+            'employee_id' => [
+                'required',
+                'integer',
+                Rule::exists('employees', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'allowance_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('allowance_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'type' => 'required|in:fixed,percentage',
             'amount' => 'required|numeric|min:0'
         ];

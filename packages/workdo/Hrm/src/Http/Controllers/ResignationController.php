@@ -2,7 +2,9 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueTerminationSettlementService;
 use App\Models\User;
+use Carbon\Carbon;
 use Workdo\Hrm\Models\Resignation;
 use Workdo\Hrm\Http\Requests\StoreResignationRequest;
 use Workdo\Hrm\Http\Requests\UpdateResignationRequest;
@@ -15,21 +17,31 @@ use Workdo\Hrm\Models\Employee;
 
 class ResignationController extends Controller
 {
+    public function __construct(
+        private readonly MozambiqueTerminationSettlementService $settlementService
+    ) {}
+
     public function index()
     {
         if (Auth::user()->can('manage-resignations')) {
             $resignations = Resignation::with([
                 'employee:id,name',
-                'approvedBy:id,name'
+                'approvedBy:id,name',
+                'cancelledBy:id,name',
             ])->where(function ($q) {
                 if (Auth::user()->can('manage-any-resignations')) {
                     $q->where('created_by', creatorId());
                 } elseif (Auth::user()->can('manage-own-resignations')) {
-                    $q->where('creator_id', Auth::id())->orWhere('employee_id', Auth::id());
+                    $q->where('created_by', creatorId())
+                        ->where(function ($ownQuery): void {
+                            $ownQuery->where('creator_id', Auth::id())
+                                ->orWhere('employee_id', Auth::id());
+                        });
                 } else {
                     $q->whereRaw('1 = 0');
                 }
             })
+                ->active()
                 ->when(request('name'), function ($q) {
                     $q->whereHas('employee', function ($query) {
                         $query->where('name', 'like', '%' . request('name') . '%');
@@ -59,8 +71,9 @@ class ResignationController extends Controller
             $resignation->employee_id = $validated['employee_id'];
             $resignation->last_working_date = $validated['last_working_date'];
             $resignation->reason = $validated['reason'];
-            $resignation->description = $validated['description'];
-            $resignation->document = $validated['document'];
+            $resignation->description = $validated['description'] ?? null;
+            $resignation->document = $validated['document'] ?? null;
+            $this->applySettlement($resignation, $validated, now()->toDateString(), false);
 
             $resignation->creator_id = Auth::id();
             $resignation->created_by = creatorId();
@@ -75,6 +88,14 @@ class ResignationController extends Controller
     public function update(UpdateResignationRequest $request, Resignation $resignation)
     {
         if (Auth::user()->can('edit-resignations')) {
+            if (!$this->canAccessResignation($resignation)) {
+                return redirect()->route('hrm.resignations.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($resignation->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled resignations cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
 
@@ -82,10 +103,15 @@ class ResignationController extends Controller
             $resignation->employee_id = $validated['employee_id'];
             $resignation->last_working_date = $validated['last_working_date'];
             $resignation->reason = $validated['reason'];
-            $resignation->description = $validated['description'];
-            $resignation->document = $validated['document'];
+            $resignation->description = $validated['description'] ?? null;
+            $resignation->document = $validated['document'] ?? null;
+            $noticeDate = optional($resignation->created_at)->toDateString() ?? now()->toDateString();
+            $this->applySettlement($resignation, $validated, $noticeDate, false);
 
             $resignation->save();
+            if ((string) $resignation->status === 'accepted') {
+                $this->syncForeignWorkerCessationFromResignation($resignation);
+            }
 
             return redirect()->back()->with('success', __('The resignation details are updated successfully.'));
         } else {
@@ -96,9 +122,26 @@ class ResignationController extends Controller
     public function destroy(Resignation $resignation)
     {
         if (Auth::user()->can('delete-resignations')) {
-            $resignation->delete();
+            if (!$this->canAccessResignation($resignation)) {
+                return redirect()->route('hrm.resignations.index')->with('error', __('Permission denied'));
+            }
 
-            return redirect()->back()->with('success', __('The resignation has been deleted.'));
+            if ((bool) ($resignation->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Resignation is already cancelled.'));
+            }
+
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            $resignation->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Resignation cancelled successfully.'));
         } else {
             return redirect()->route('hrm.resignations.index')->with('error', __('Permission denied'));
         }
@@ -107,9 +150,24 @@ class ResignationController extends Controller
     public function updateStatus(Request $request, Resignation $resignation, $status)
     {
         if (Auth::user()->can('manage-resignation-status')) {
+            if (!$this->canAccessResignation($resignation)) {
+                return redirect()->route('hrm.resignations.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($resignation->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled resignations cannot be processed.'));
+            }
+
+             if (!in_array((string) $status, ['pending', 'accepted', 'rejected'], true)) {
+                 return redirect()->back()->with('error', __('Invalid resignation status.'));
+             }
+
             $resignation->status = $status;
             $resignation->approved_by = Auth::id();
             $resignation->save();
+            if ($status === 'accepted') {
+                $this->syncForeignWorkerCessationFromResignation($resignation);
+            }
             UpdateResignaionStatus::dispatch($request, $resignation);
 
             return redirect()->back()->with('success', __('The resignation status has been updated.'));
@@ -131,6 +189,48 @@ class ResignationController extends Controller
             ->select('id', 'name')->get();
     }
 
+    private function canAccessResignation(Resignation $resignation): bool
+    {
+        if ((int) $resignation->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-resignations')) {
+            return true;
+        }
+
+        return (int) $resignation->creator_id === (int) Auth::id()
+            || (int) $resignation->employee_id === (int) Auth::id();
+    }
+
+    private function applySettlement(
+        Resignation $resignation,
+        array $validated,
+        string $noticeDate,
+        bool $defaultApplyIndemnity
+    ): void {
+        $effectiveDate = (string) ($validated['last_working_date'] ?? $resignation->last_working_date?->toDateString());
+
+        if ($effectiveDate === '') {
+            return;
+        }
+
+        $employeeProfile = $this->resolveScopedEmployee((int) $validated['employee_id']);
+        $companyId = (int) creatorId();
+        $settlement = $this->settlementService->build(
+            $employeeProfile,
+            $noticeDate,
+            $effectiveDate,
+            $validated,
+            $defaultApplyIndemnity,
+            $companyId
+        );
+
+        foreach ($settlement as $field => $value) {
+            $resignation->{$field} = $value;
+        }
+    }
+
 
     private function getFilteredEmployees()
     {
@@ -145,5 +245,35 @@ class ResignationController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function resolveScopedEmployee(int $employeeUserId): ?Employee
+    {
+        return Employee::query()
+            ->where('created_by', creatorId())
+            ->where('user_id', $employeeUserId)
+            ->first();
+    }
+
+    private function syncForeignWorkerCessationFromResignation(Resignation $resignation): void
+    {
+        $employee = $this->resolveScopedEmployee((int) $resignation->employee_id);
+        if (!$employee) {
+            return;
+        }
+
+        $profile = $employee->foreignWorkerProfile;
+        if (!$profile || !(bool) $profile->is_foreign_worker) {
+            return;
+        }
+
+        $effectiveDate = $resignation->last_working_date?->toDateString();
+        if (!$effectiveDate) {
+            return;
+        }
+
+        $profile->cessation_effective_date = $effectiveDate;
+        $profile->cessation_notification_due_at = Carbon::parse($effectiveDate)->addDays(5)->toDateString();
+        $profile->save();
     }
 }

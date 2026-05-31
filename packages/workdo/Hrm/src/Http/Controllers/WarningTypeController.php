@@ -67,6 +67,10 @@ class WarningTypeController extends Controller
     public function update(UpdateWarningTypeRequest $request, WarningType $warningtype)
     {
         if(Auth::user()->can('edit-warning-types')){
+            if ((int) $warningtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.warning-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -87,6 +91,10 @@ class WarningTypeController extends Controller
     public function destroy(WarningType $warningtype)
     {
         if(Auth::user()->can('delete-warning-types')){
+            if ((int) $warningtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.warning-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyWarningType::dispatch($warningtype);
             $warningtype->delete();
 

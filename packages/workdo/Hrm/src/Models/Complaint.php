@@ -28,6 +28,10 @@ class Complaint extends Model
         'resolution_date',
         'investigation_started_at',
         'investigation_closed_at',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'creator_id',
         'created_by',
     ];
@@ -39,7 +43,16 @@ class Complaint extends Model
         'investigation_closed_at' => 'date',
         'is_confidential' => 'boolean',
         'is_harassment_report' => 'boolean',
+        'is_cancelled' => 'boolean',
+        'cancelled_at' => 'datetime',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
+    }
 
     public function employee()
     {
@@ -64,5 +77,10 @@ class Complaint extends Model
     public function handlingOwner()
     {
         return $this->belongsTo(User::class, 'handling_owner_id');
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 }

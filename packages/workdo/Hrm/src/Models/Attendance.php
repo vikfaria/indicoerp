@@ -23,6 +23,8 @@ class Attendance extends Model
         'overtime_hours',
         'overtime_amount',
         'status',
+        'is_justified',
+        'absence_category',
         'notes',
         'creator_id',
         'created_by',
@@ -37,7 +39,8 @@ class Attendance extends Model
             'break_hour' => 'decimal:2',
             'total_hour' => 'decimal:2',
             'overtime_hours' => 'decimal:2',
-            'overtime_amount' => 'decimal:2'
+            'overtime_amount' => 'decimal:2',
+            'is_justified' => 'boolean',
         ];
     }
 

@@ -12,7 +12,7 @@ import InputError from '@/components/ui/input-error';
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, UserIcon, Edit, Save, X, Plus, Trash2, Eye } from "lucide-react";
+import { DollarSign, UserIcon, Edit, Save, X, Plus, Trash2, Eye, CheckCircle2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { getImagePath, getCurrencySymbol , formatCurrency, formatDate} from '@/utils/helpers';
@@ -26,6 +26,7 @@ import ViewLoan from './Loans/View';
 import CreateOvertime from './Overtimes/Create';
 import EditOvertime from './Overtimes/Edit';
 import ViewOvertime from './Overtimes/View';
+import OvertimeStatusUpdate from './Overtimes/StatusUpdate';
 
 interface Allowance {
     id: number;
@@ -89,6 +90,10 @@ interface Overtime {
     end_date?: string;
     notes?: string;
     status: string;
+    approval_status?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    rejection_reason?: string | null;
 }
 
 interface SetSalaryShowProps {
@@ -205,6 +210,24 @@ export default function Show() {
 
     const closeOvertimeModal = () => {
         setOvertimeModalState({ isOpen: false, mode: '', data: null });
+    };
+
+    const getOvertimeApprovalStatus = (overtime: Overtime): string => {
+        if (overtime.approval_status) {
+            return overtime.approval_status;
+        }
+
+        return overtime.status === 'active' ? 'approved' : 'rejected';
+    };
+
+    const overtimeStatusBadgeClass = (status: string): string => {
+        const classes: Record<string, string> = {
+            pending: 'bg-yellow-100 text-yellow-800',
+            approved: 'bg-green-100 text-green-800',
+            rejected: 'bg-red-100 text-red-800',
+        };
+
+        return classes[status] ?? 'bg-gray-100 text-gray-800';
     };
 
 
@@ -745,13 +768,17 @@ export default function Show() {
                                         key: 'status',
                                         header: t('Status'),
                                         sortable: false,
-                                        render: (_: any, row: Overtime) => (
+                                        render: (_: any, row: Overtime) => {
+                                            const status = getOvertimeApprovalStatus(row);
+
+                                            return (
                                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-                                                row.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                overtimeStatusBadgeClass(status)
                                             }`}>
-                                                {t(row.status === 'active' ? 'Active' : 'Expired')}
+                                                {t(status.charAt(0).toUpperCase() + status.slice(1))}
                                             </span>
-                                        )
+                                            );
+                                        }
                                     },
                                     ...(auth.user?.permissions?.some((p: string) => ['edit-overtimes', 'delete-overtimes'].includes(p)) ? [{
                                         key: 'actions',
@@ -774,6 +801,23 @@ export default function Show() {
                                                             <p>{t('View')}</p>
                                                         </TooltipContent>
                                                     </Tooltip>
+                                                    {auth.user?.permissions?.includes('edit-overtimes') && (
+                                                        <Tooltip delayDuration={0}>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => openOvertimeModal('status', overtime)}
+                                                                    className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700"
+                                                                >
+                                                                    <CheckCircle2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>{t('Update Status')}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    )}
                                                     {auth.user?.permissions?.includes('edit-overtimes') && (
                                                         <Tooltip delayDuration={0}>
                                                             <TooltipTrigger asChild>
@@ -901,6 +945,12 @@ export default function Show() {
                 {overtimeModalState.mode === 'view' && overtimeModalState.data && (
                     <ViewOvertime
                         overtime={overtimeModalState.data}
+                    />
+                )}
+                {overtimeModalState.mode === 'status' && overtimeModalState.data && (
+                    <OvertimeStatusUpdate
+                        overtime={overtimeModalState.data}
+                        onSuccess={closeOvertimeModal}
                     />
                 )}
             </Dialog>

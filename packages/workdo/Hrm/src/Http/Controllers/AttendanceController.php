@@ -2,6 +2,7 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueLabourComplianceService;
 use App\Models\User;
 use Carbon\Carbon;
 use Workdo\Hrm\Models\Attendance;
@@ -21,6 +22,10 @@ use Workdo\Hrm\Models\IpRestrict;
 
 class AttendanceController extends Controller
 {
+    public function __construct(private readonly MozambiqueLabourComplianceService $labourComplianceService)
+    {
+    }
+
     public function index()
     {
         if (Auth::user()->can('manage-attendances')) {
@@ -30,15 +35,23 @@ class AttendanceController extends Controller
                     if (Auth::user()->can('manage-any-attendances')) {
                         $q->where('created_by', creatorId());
                     } elseif (Auth::user()->can('manage-own-attendances')) {
-                        $q->where('creator_id', Auth::id())->orWhere('employee_id', Auth::id());
+                        $q->where('created_by', creatorId())
+                            ->where(function ($ownQuery): void {
+                                $ownQuery->where('creator_id', Auth::id())
+                                    ->orWhere('employee_id', Auth::id());
+                            });
                     } else {
                         $q->whereRaw('1 = 0');
                     }
                 })
                 ->when(request('search'), function ($q) {
-                    $q->whereHas('user', function ($query) {
-                        $query->where('name', 'like', '%' . request('search') . '%');
-                    })->orWhere('date', 'like', '%' . request('search') . '%');
+                    $q->where(function ($searchQuery): void {
+                        $searchQuery
+                            ->whereHas('user', function ($query) {
+                                $query->where('name', 'like', '%' . request('search') . '%');
+                            })
+                            ->orWhere('date', 'like', '%' . request('search') . '%');
+                    });
                 })
                 ->when(request('status') !== null && request('status') !== '', fn($q) => $q->where('status', request('status')))
                 ->when(request('employee_id'), fn($q) => $q->where('employee_id', request('employee_id')))
@@ -64,6 +77,12 @@ class AttendanceController extends Controller
     {
         if (Auth::user()->can('create-attendances')) {
             $validated = $request->validated();
+            $employee = $this->resolveScopedEmployee((int) $validated['employee_id']);
+            if (!$employee) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee is invalid for this company.')])
+                    ->withInput();
+            }
 
             // Check if attendance already exists for this employee and date
             $exists = Attendance::where('employee_id', $validated['employee_id'])
@@ -77,16 +96,19 @@ class AttendanceController extends Controller
 
             $attendanceDateError = $this->validateAttendanceDateRules(
                 (int) $validated['employee_id'],
-                $validated['date']
+                $validated['date'],
+                null
             );
             if ($attendanceDateError !== null) {
                 return redirect()->back()->with('error', $attendanceDateError);
             }
 
-            $employee = Employee::where('user_id', $validated['employee_id'])
-                ->where('created_by', creatorId())
-                ->first();
-            $shiftId = $employee?->shift;
+            $shiftId = $this->resolveShiftId($employee?->shift);
+            if (!$shiftId) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee does not have a valid shift configured.')])
+                    ->withInput();
+            }
 
             // Calculate attendance data first
             $calculatedData = $this->calculateAttendanceData(
@@ -97,6 +119,13 @@ class AttendanceController extends Controller
                 $employee
             );
 
+            [$isJustified, $absenceCategory] = $this->resolveAbsenceClassification(
+                $calculatedData['status'],
+                (int) $validated['employee_id'],
+                $validated['date'],
+                $validated['is_justified'] ?? null,
+                $validated['absence_category'] ?? null
+            );
 
             $attendance = new Attendance();
             $attendance->employee_id = $validated['employee_id'];
@@ -109,6 +138,8 @@ class AttendanceController extends Controller
             $attendance->overtime_hours = $calculatedData['overtime_hours'];
             $attendance->overtime_amount = $calculatedData['overtime_amount'];
             $attendance->status = $calculatedData['status'];
+            $attendance->is_justified = $isJustified;
+            $attendance->absence_category = $absenceCategory;
             $attendance->notes = $validated['notes'];
             $attendance->creator_id = Auth::id();
             $attendance->created_by = creatorId();
@@ -128,7 +159,17 @@ class AttendanceController extends Controller
     public function update(UpdateAttendanceRequest $request, Attendance $attendance)
     {
         if (Auth::user()->can('edit-attendances')) {
+            if (!$this->canAccessAttendance($attendance)) {
+                return redirect()->route('hrm.attendances.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
+            $employee = $this->resolveScopedEmployee((int) $validated['employee_id']);
+            if (!$employee) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee is invalid for this company.')])
+                    ->withInput();
+            }
 
 
             // Check if employee or date changed and if duplicate exists
@@ -147,16 +188,19 @@ class AttendanceController extends Controller
 
             $attendanceDateError = $this->validateAttendanceDateRules(
                 (int) $validated['employee_id'],
-                $validated['date']
+                $validated['date'],
+                (int) $attendance->id
             );
             if ($attendanceDateError !== null) {
                 return redirect()->back()->with('error', $attendanceDateError);
             }
 
-            $employee = Employee::where('user_id', $validated['employee_id'])
-                ->where('created_by', creatorId())
-                ->first();
-            $shiftId = $employee?->shift;
+            $shiftId = $this->resolveShiftId($employee?->shift);
+            if (!$shiftId) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee does not have a valid shift configured.')])
+                    ->withInput();
+            }
 
             // Calculate attendance data first
             $calculatedData = $this->calculateAttendanceData(
@@ -165,6 +209,14 @@ class AttendanceController extends Controller
                 $validated['break_hour'] ?? 0,
                 $shiftId,
                 $employee
+            );
+
+            [$isJustified, $absenceCategory] = $this->resolveAbsenceClassification(
+                $calculatedData['status'],
+                (int) $validated['employee_id'],
+                $validated['date'],
+                $validated['is_justified'] ?? null,
+                $validated['absence_category'] ?? null
             );
 
             $attendance->update([
@@ -178,6 +230,8 @@ class AttendanceController extends Controller
                 'overtime_hours' => $calculatedData['overtime_hours'],
                 'overtime_amount' => $calculatedData['overtime_amount'],
                 'status' => $calculatedData['status'],
+                'is_justified' => $isJustified,
+                'absence_category' => $absenceCategory,
                 'notes' => $validated['notes'],
             ]);
 
@@ -192,6 +246,10 @@ class AttendanceController extends Controller
     public function destroy(Attendance $attendance)
     {
         if (Auth::user()->can('delete-attendances')) {
+            if (!$this->canAccessAttendance($attendance)) {
+                return redirect()->route('hrm.attendances.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAttendance::dispatch($attendance);
             $attendance->delete();
 
@@ -283,7 +341,8 @@ class AttendanceController extends Controller
 
     private function calculateAttendanceData($clockIn, $clockOut, $breakHour, $shift, $employee)
     {
-        $shift = Shift::where('id', $shift)->where('created_by', creatorId())->first();
+        $shiftId = $this->resolveShiftId($shift);
+        $shift = $shiftId ? Shift::where('id', $shiftId)->where('created_by', creatorId())->first() : null;
         // Step 1: Calculate total working hours
         $totalHourData = $this->calculateTotalHours($clockIn, $clockOut, $shift);
         $totalHour = $totalHourData['total_working_hours'];
@@ -340,6 +399,11 @@ class AttendanceController extends Controller
             $today = now()->toDateString();
             $employeeId = Auth::id();
 
+            $attendanceDateError = $this->validateAttendanceDateRules($employeeId, $today, null);
+            if ($attendanceDateError !== null) {
+                return redirect()->back()->with('error', $attendanceDateError);
+            }
+
             // First check for any pending clock out and complete it
             $pendingClockOuts = Attendance::where('employee_id', $employeeId)
                 ->whereNull('clock_out')
@@ -349,7 +413,8 @@ class AttendanceController extends Controller
             if ($pendingClockOuts) {
                 foreach ($pendingClockOuts as $pendingClockOut) {
                     $employee = Employee::where('user_id', $employeeId)->where('created_by', creatorId())->first();
-                    $shift = $employee ? Shift::find($employee->shift) : null;
+                    $shiftId = $this->resolveShiftId($employee?->shift);
+                    $shift = $shiftId ? Shift::find($shiftId) : null;
 
                     if ($shift) {
                         $clockInDate = \Carbon\Carbon::parse($pendingClockOut->clock_in)->format('Y-m-d');
@@ -402,11 +467,11 @@ class AttendanceController extends Controller
                 $existingAttendance->update(['clock_in' => $clockInTime]);
             } else {
                 $employee = Employee::where('user_id', $employeeId)->where('created_by', creatorId())->first();
-                $shift = $employee ? $employee->shift : null;
+                $shiftId = $this->resolveShiftId($employee?->shift);
 
                 Attendance::create([
                     'employee_id' => $employeeId,
-                    'shift_id' => $shift,
+                    'shift_id' => $shiftId,
                     'date' => $today,
                     'clock_in' => $clockInTime,
                     'creator_id' => Auth::id(),
@@ -464,14 +529,14 @@ class AttendanceController extends Controller
             // $clockOutTime = now()->format('H:i:s');
             $clockOutTime = now();
             $employee = Employee::with('shift')->where('user_id', $employeeId)->where('created_by', creatorId())->first();
-            $shift = $employee ? $employee->shift : null;
+            $shiftId = $this->resolveShiftId($employee?->shift);
 
             // Calculate attendance data using existing logic
             $calculatedData = $this->calculateAttendanceData(
                 $attendance->clock_in,
                 $clockOutTime,
                 0, // break_hour
-                $shift,
+                $shiftId,
                 $employee
             );
 
@@ -508,7 +573,7 @@ class AttendanceController extends Controller
         ]);
     }
 
-    private function validateAttendanceDateRules(int $employeeUserId, string $date): ?string
+    private function validateAttendanceDateRules(int $employeeUserId, string $date, ?int $excludeAttendanceId = null): ?string
     {
         $attendanceDate = Carbon::parse($date)->startOfDay();
 
@@ -544,6 +609,17 @@ class AttendanceController extends Controller
             return __('Attendance cannot be created on holidays.');
         }
 
+        $weeklyRestValidation = $this->labourComplianceService->validateWeeklyRestForAttendanceDate(
+            creatorId(),
+            $employeeUserId,
+            $attendanceDate->toDateString(),
+            $excludeAttendanceId
+        );
+
+        if (!($weeklyRestValidation['valid'] ?? false)) {
+            return (string) ($weeklyRestValidation['message'] ?? __('Weekly rest rule violated.'));
+        }
+
         return null;
     }
 
@@ -560,5 +636,108 @@ class AttendanceController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function resolveShiftId($shift): ?int
+    {
+        if ($shift instanceof Shift) {
+            return (int) $shift->id;
+        }
+
+        if (is_numeric($shift)) {
+            return (int) $shift;
+        }
+
+        return null;
+    }
+
+    private function resolveScopedEmployee(int $employeeUserId): ?Employee
+    {
+        return Employee::query()
+            ->where('created_by', creatorId())
+            ->where('user_id', $employeeUserId)
+            ->first();
+    }
+
+    private function canAccessAttendance(Attendance $attendance): bool
+    {
+        if ((int) $attendance->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-attendances')) {
+            return true;
+        }
+
+        return (int) $attendance->creator_id === (int) Auth::id()
+            || (int) $attendance->employee_id === (int) Auth::id();
+    }
+
+    private function resolveAbsenceClassification(
+        string $status,
+        int $employeeUserId,
+        string $attendanceDate,
+        ?bool $isJustifiedInput,
+        ?string $absenceCategoryInput
+    ): array {
+        if ($status !== 'absent') {
+            return [null, null];
+        }
+
+        $normalizedCategory = $absenceCategoryInput !== null ? strtolower(trim($absenceCategoryInput)) : null;
+
+        if ($normalizedCategory !== null && $normalizedCategory !== '') {
+            if ($normalizedCategory === 'unjustified') {
+                return [false, 'unjustified'];
+            }
+
+            if ($isJustifiedInput === false) {
+                return [false, 'unjustified'];
+            }
+
+            if ($isJustifiedInput === null) {
+                return [true, $normalizedCategory];
+            }
+
+            return [$isJustifiedInput, $normalizedCategory];
+        }
+
+        if ($isJustifiedInput !== null) {
+            return [$isJustifiedInput, $isJustifiedInput ? 'manager_authorized' : 'unjustified'];
+        }
+
+        if ($this->hasApprovedLeaveOnDate($employeeUserId, $attendanceDate)) {
+            return [true, 'legal_leave'];
+        }
+
+        if ($this->isHolidayOnDate($attendanceDate)) {
+            return [true, 'legal_leave'];
+        }
+
+        return [false, 'unjustified'];
+    }
+
+    private function hasApprovedLeaveOnDate(int $employeeUserId, string $date): bool
+    {
+        $targetDate = Carbon::parse($date)->toDateString();
+
+        return LeaveApplication::query()
+            ->where('created_by', creatorId())
+            ->where('employee_id', $employeeUserId)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $targetDate)
+            ->whereDate('end_date', '>=', $targetDate)
+            ->exists();
+    }
+
+    private function isHolidayOnDate(string $date): bool
+    {
+        $targetDate = Carbon::parse($date)->toDateString();
+
+        return Holiday::query()
+            ->where('created_by', creatorId())
+            ->whereDate('start_date', '<=', $targetDate)
+            ->whereDate('end_date', '>=', $targetDate)
+            ->exists();
     }
 }

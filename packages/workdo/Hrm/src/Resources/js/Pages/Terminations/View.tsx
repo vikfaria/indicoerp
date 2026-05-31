@@ -43,6 +43,52 @@ export default function View({ termination }: ViewProps) {
                         <p className="mt-1 font-medium">{termination.termination_type?.termination_type || '-'}</p>
                     </div>
                 </div>
+
+                {(termination.legal_notice_required_days !== undefined ||
+                    termination.legal_notice_provided_days !== undefined ||
+                    termination.legal_notice_missing_days !== undefined) && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Legal Notice Required (days)')}</label>
+                            <p className="mt-1 font-medium">{termination.legal_notice_required_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Provided (days)')}</label>
+                            <p className="mt-1 font-medium">{termination.legal_notice_provided_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Missing (days)')}</label>
+                            <p className="mt-1 font-medium">{termination.legal_notice_missing_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Compliance')}</label>
+                            <p className="mt-1 font-medium">
+                                {termination.legal_notice_compliant === undefined || termination.legal_notice_compliant === null
+                                    ? '-'
+                                    : termination.legal_notice_compliant ? t('Compliant') : t('Non-compliant')}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {(termination.settlement_salary_until_exit_amount !== undefined ||
+                    termination.settlement_gross_amount !== undefined ||
+                    termination.settlement_net_amount !== undefined) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Salary Until Exit')}</label>
+                            <p className="mt-1 font-medium">{termination.settlement_salary_until_exit_amount !== undefined ? formatCurrency(termination.settlement_salary_until_exit_amount) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Settlement Gross')}</label>
+                            <p className="mt-1 font-medium">{termination.settlement_gross_amount !== undefined ? formatCurrency(termination.settlement_gross_amount) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Settlement Net')}</label>
+                            <p className="mt-1 font-medium">{termination.settlement_net_amount !== undefined ? formatCurrency(termination.settlement_net_amount) : '-'}</p>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -76,12 +122,13 @@ export default function View({ termination }: ViewProps) {
                         </label>
                         <div className="mt-1">
                             <span className={`px-2 py-1 rounded-full text-sm ${
+                                termination.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                 termination.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                 termination.status === 'approved' ? 'bg-green-100 text-green-800' :
                                 termination.status === 'rejected' ? 'bg-red-100 text-red-800' :
                                 'bg-gray-100 text-gray-800'
                             }`}>
-                                {t(termination.status?.charAt(0).toUpperCase() + termination.status?.slice(1) || 'Pending')}
+                                {termination.is_cancelled ? t('Cancelled') : t(termination.status?.charAt(0).toUpperCase() + termination.status?.slice(1) || 'Pending')}
                             </span>
                         </div>
                     </div>
@@ -168,6 +215,15 @@ export default function View({ termination }: ViewProps) {
                         </label>
                         <div className="mt-2 p-3 bg-gray-50 rounded-lg">
                             <p className="text-sm">{termination.offboarding_notes}</p>
+                        </div>
+                    </div>
+                )}
+
+                {termination.is_cancelled && termination.cancellation_reason && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Cancellation Reason')}</label>
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg">
+                            <p className="text-sm">{termination.cancellation_reason}</p>
                         </div>
                     </div>
                 )}

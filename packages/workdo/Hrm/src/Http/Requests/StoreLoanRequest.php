@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreLoanRequest extends FormRequest
 {
@@ -13,10 +14,24 @@ class StoreLoanRequest extends FormRequest
 
     public function rules()
     {
+        $companyId = creatorId();
+
         return [
-            'employee_id' => 'required|exists:employees,id',
+            'employee_id' => [
+                'required',
+                'integer',
+                Rule::exists('employees', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'title' => 'required|string|max:255',
-            'loan_type_id' => 'required|exists:loan_types,id',
+            'loan_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('loan_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'type' => 'required|in:fixed,percentage',
             'amount' => 'required|numeric|min:0',
             'start_date' => 'required|date',

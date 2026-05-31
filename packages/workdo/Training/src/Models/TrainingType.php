@@ -14,11 +14,22 @@ class TrainingType extends Model
     protected $fillable = [
         'name',
         'description',
+        'is_mandatory',
+        'compliance_code',
+        'certificate_validity_days',
         'branch_id',
         'department_id',
         'creator_id',
         'created_by',
-    ];    
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_mandatory' => 'boolean',
+            'certificate_validity_days' => 'integer',
+        ];
+    }
 
     public function branch()
     {

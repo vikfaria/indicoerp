@@ -67,6 +67,10 @@ class EventTypeController extends Controller
     public function update(UpdateEventTypeRequest $request, EventType $eventtype)
     {
         if(Auth::user()->can('edit-event-types')){
+            if ((int) $eventtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.event-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -87,6 +91,10 @@ class EventTypeController extends Controller
     public function destroy(EventType $eventtype)
     {
         if(Auth::user()->can('delete-event-types')){
+            if ((int) $eventtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.event-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyEventType::dispatch($eventtype);
             $eventtype->delete();
 

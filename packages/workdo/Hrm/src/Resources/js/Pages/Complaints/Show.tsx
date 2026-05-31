@@ -68,6 +68,7 @@ export default function Show({ complaint, onClose }: ShowComplaintProps) {
                         </label>
                         <div className="mt-1">
                             <span className={`px-2 py-1 rounded-full text-sm ${
+                                complaint.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                 complaint.status?.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                 complaint.status?.toLowerCase() === 'in review' ? 'bg-blue-100 text-blue-800' :
                                 complaint.status?.toLowerCase() === 'assigned' ? 'bg-purple-100 text-purple-800' :
@@ -75,7 +76,7 @@ export default function Show({ complaint, onClose }: ShowComplaintProps) {
                                 complaint.status?.toLowerCase() === 'resolved' ? 'bg-green-100 text-green-800' :
                                 'bg-gray-100 text-gray-800'
                             }`}>
-                                {t(complaint.status?.charAt(0).toUpperCase() + complaint.status?.slice(1) || '-')}
+                                {complaint.is_cancelled ? t('Cancelled') : t(complaint.status?.charAt(0).toUpperCase() + complaint.status?.slice(1) || '-')}
                             </span>
                         </div>
                     </div>
@@ -175,6 +176,15 @@ export default function Show({ complaint, onClose }: ShowComplaintProps) {
                             >
                                 {t('View Document')}
                             </a>
+                        </div>
+                    </div>
+                )}
+
+                {complaint.is_cancelled && complaint.cancellation_reason && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Cancellation Reason')}</label>
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg">
+                            <p className="text-sm">{complaint.cancellation_reason}</p>
                         </div>
                     </div>
                 )}

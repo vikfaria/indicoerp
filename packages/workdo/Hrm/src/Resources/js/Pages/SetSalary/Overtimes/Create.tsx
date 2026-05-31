@@ -4,7 +4,6 @@ import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/ui/input-error';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -26,7 +25,6 @@ export default function Create({ employeeId, onSuccess }: CreateOvertimeProps) {
         start_date: '',
         end_date: '',
         notes: '',
-        status: 'active',
     });
 
     const submit = (e: React.FormEvent) => {
@@ -131,19 +129,9 @@ export default function Create({ employeeId, onSuccess }: CreateOvertimeProps) {
                     </div>
                 </div>
 
-                <div>
-                    <Label htmlFor="status" required>{t('Status')}</Label>
-                    <Select value={data.status} onValueChange={(value) => setData('status', value)} required>
-                        <SelectTrigger>
-                            <SelectValue placeholder={t('Select status')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="active">{t('Active')}</SelectItem>
-                            <SelectItem value="expired">{t('Expired')}</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <InputError message={errors.status} />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                    {t('Overtime entries are submitted as pending and require approval before payroll processing.')}
+                </p>
 
                 <div>
                     <Label htmlFor="notes">{t('Notes')}</Label>

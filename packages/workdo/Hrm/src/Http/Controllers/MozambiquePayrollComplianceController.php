@@ -3,11 +3,15 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Models\CostCenter;
+use App\Services\MozambiqueHrDisciplinaryReportService;
 use App\Services\MozambiqueForeignWorkerComplianceReportService;
 use App\Services\MozambiqueHrComplianceAlertService;
 use App\Services\MozambiquePayrollAccountingExportService;
 use App\Services\MozambiqueHrComplianceDashboardService;
 use App\Services\MozambiqueHrLegalSettingsService;
+use App\Services\MozambiqueHrAttendanceComplianceReportService;
+use App\Services\MozambiqueHrLeaveComplianceReportService;
+use App\Services\MozambiqueHrTrainingComplianceReportService;
 use App\Services\MozambiqueHrWorkforceExportService;
 use App\Services\MozambiqueLabourComplianceService;
 use App\Services\MozambiquePayrollSubmissionReportService;
@@ -32,6 +36,10 @@ class MozambiquePayrollComplianceController extends Controller
         private readonly MozambiqueHrComplianceAlertService $complianceAlertService,
         private readonly MozambiquePayrollSubmissionReportService $payrollSubmissionReportService,
         private readonly MozambiqueForeignWorkerComplianceReportService $foreignWorkerComplianceReportService,
+        private readonly MozambiqueHrDisciplinaryReportService $disciplinaryReportService,
+        private readonly MozambiqueHrAttendanceComplianceReportService $attendanceComplianceReportService,
+        private readonly MozambiqueHrLeaveComplianceReportService $leaveComplianceReportService,
+        private readonly MozambiqueHrTrainingComplianceReportService $trainingComplianceReportService,
         private readonly MozambiqueHrLegalSettingsService $legalSettingsService,
         private readonly MozambiquePayrollAccountingExportService $payrollAccountingExportService,
         private readonly MozambiqueHrWorkforceExportService $workforceExportService,
@@ -186,6 +194,11 @@ class MozambiquePayrollComplianceController extends Controller
             'leave_max_consecutive_days' => 'nullable|integer|min:1|max:366',
             'leave_count_non_working_days' => 'required|boolean',
             'leave_count_holidays' => 'required|boolean',
+            'leave_entitlement_first_year_days' => 'nullable|integer|min:1|max:366',
+            'leave_entitlement_following_year_days' => 'nullable|integer|min:1|max:366',
+            'leave_entitlement_prorate_first_year' => 'nullable|boolean',
+            'leave_unjustified_absence_penalty_per_day' => 'nullable|integer|min:0|max:60',
+            'leave_unjustified_absence_max_penalty_days' => 'nullable|integer|min:0|max:366',
         ]);
 
         setSetting('mz_overtime_daily_limit_hours', $validated['overtime_daily_limit_hours'] ?? '');
@@ -197,6 +210,21 @@ class MozambiquePayrollComplianceController extends Controller
         setSetting('mz_leave_max_consecutive_days', $validated['leave_max_consecutive_days'] ?? '');
         setSetting('mz_leave_count_non_working_days', $validated['leave_count_non_working_days'] ? '1' : '0');
         setSetting('mz_leave_count_holidays', $validated['leave_count_holidays'] ? '1' : '0');
+        if (array_key_exists('leave_entitlement_first_year_days', $validated)) {
+            setSetting('mz_leave_entitlement_first_year_days', $validated['leave_entitlement_first_year_days'] ?? '');
+        }
+        if (array_key_exists('leave_entitlement_following_year_days', $validated)) {
+            setSetting('mz_leave_entitlement_following_year_days', $validated['leave_entitlement_following_year_days'] ?? '');
+        }
+        if (array_key_exists('leave_entitlement_prorate_first_year', $validated)) {
+            setSetting('mz_leave_entitlement_prorate_first_year', !empty($validated['leave_entitlement_prorate_first_year']) ? '1' : '0');
+        }
+        if (array_key_exists('leave_unjustified_absence_penalty_per_day', $validated)) {
+            setSetting('mz_leave_unjustified_absence_penalty_per_day', $validated['leave_unjustified_absence_penalty_per_day'] ?? '');
+        }
+        if (array_key_exists('leave_unjustified_absence_max_penalty_days', $validated)) {
+            setSetting('mz_leave_unjustified_absence_max_penalty_days', $validated['leave_unjustified_absence_max_penalty_days'] ?? '');
+        }
 
         return back()->with('success', __('Mozambique labour policy updated successfully.'));
     }
@@ -692,6 +720,100 @@ class MozambiquePayrollComplianceController extends Controller
         return $this->exportCsv($filename, $headers, $rows);
     }
 
+    public function exportAnnualFiscalHistory(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'fiscal_year' => 'nullable|digits:4|integer|min:2000|max:2100',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildAnnualFiscalHistoryDataset(
+            creatorId(),
+            isset($validated['fiscal_year']) ? (string) $validated['fiscal_year'] : null
+        );
+
+        $filename = sprintf(
+            'payroll-annual-fiscal-history-%s-%s.csv',
+            $dataset['fiscal_year'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Fiscal Year',
+            'Period Start',
+            'Period End',
+            'Employee Internal ID',
+            'Employee',
+            'Employee NUIT',
+            'Residency Status',
+            'Payroll Runs',
+            'Payroll Entries',
+            'Latest Pay Date',
+            'Gross Pay Total',
+            'Taxable Income Total',
+            'Taxable Benefits Total',
+            'IRPS Withheld Total',
+            'INSS Employee Total',
+            'INSS Employer Total',
+            'Net Pay Total',
+            'Eligible Dependents Total',
+            'Effective Dependents Total',
+            'Average Effective Dependents',
+            'Dependent Deduction Total',
+            'Adjusted Taxable Income Total',
+        ];
+
+        $rows = collect($dataset['rows'])->map(function (array $row) use ($dataset): array {
+            return [
+                $row['fiscal_year'],
+                $dataset['period_start'],
+                $dataset['period_end'],
+                $row['employee_internal_id'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['residency_status'],
+                $row['payroll_runs'],
+                $row['payroll_entries'],
+                $row['latest_pay_date'],
+                $row['gross_pay_total'],
+                $row['taxable_income_total'],
+                $row['taxable_benefits_total'],
+                $row['irps_withheld_total'],
+                $row['inss_employee_total'],
+                $row['inss_employer_total'],
+                $row['net_pay_total'],
+                $row['eligible_dependents_total'],
+                $row['effective_dependents_total'],
+                $row['average_effective_dependents'],
+                $row['dependent_deduction_total'],
+                $row['adjusted_taxable_income_total'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportAnnualFiscalHistoryJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'fiscal_year' => 'nullable|digits:4|integer|min:2000|max:2100',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildAnnualFiscalHistoryDataset(
+            creatorId(),
+            isset($validated['fiscal_year']) ? (string) $validated['fiscal_year'] : null
+        );
+
+        return response()->json($dataset);
+    }
+
     public function exportExpatriatesReport(Request $request)
     {
         if (!Auth::user()->can('view-payrolls')) {
@@ -831,6 +953,390 @@ class MozambiquePayrollComplianceController extends Controller
         })->all();
 
         return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportDisciplinaryCasesReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->disciplinaryReportService->buildDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'disciplinary-cases-report-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Case Type',
+            'Case ID',
+            'Case Reference',
+            'Opened At',
+            'Employee',
+            'Employee NUIT',
+            'Against Employee',
+            'Category',
+            'Severity',
+            'Status',
+            'Harassment Case',
+            'Confidential',
+            'Confidentiality Level',
+            'Assigned Owner',
+            'Warning Issued By',
+            'Disciplinary Sanction',
+            'Response Deadline',
+            'Decision Deadline',
+            'Decision / Resolution Date',
+            'Response Deadline Overdue',
+            'Decision Deadline Overdue',
+            'Subject',
+            'Description',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'] ?? '',
+                $row['case_type'] ?? '',
+                $row['case_id'] ?? '',
+                $row['case_reference'] ?? '',
+                $row['case_opened_at'] ?? '',
+                $row['employee_name'] ?? '',
+                $row['employee_nuit'] ?? '',
+                $row['against_employee_name'] ?? '',
+                $row['category_name'] ?? '',
+                $row['severity'] ?? '',
+                $row['status'] ?? '',
+                !empty($row['is_harassment_case']) ? 'yes' : 'no',
+                !empty($row['is_confidential']) ? 'yes' : 'no',
+                $row['confidentiality_level'] ?? '',
+                $row['assigned_owner'] ?? '',
+                $row['warning_issued_by'] ?? '',
+                $row['disciplinary_sanction'] ?? '',
+                $row['response_deadline_at'] ?? '',
+                $row['decision_deadline_at'] ?? '',
+                $row['decision_or_resolution_date'] ?? '',
+                !empty($row['response_deadline_overdue']) ? 'yes' : 'no',
+                !empty($row['decision_deadline_overdue']) ? 'yes' : 'no',
+                $row['subject'] ?? '',
+                $row['description'] ?? '',
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportDisciplinaryCasesReportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->disciplinaryReportService->buildDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportLeaveComplianceReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+        ]);
+
+        $dataset = $this->leaveComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null
+        );
+
+        $filename = sprintf(
+            'annual-leave-compliance-%s-%s.csv',
+            $dataset['reference_date'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Date',
+            'Reference Year',
+            'Employee Record ID',
+            'Employee Internal ID',
+            'Employee',
+            'Employee NUIT',
+            'Date of Joining',
+            'Branch',
+            'Department',
+            'Annual Leave Entitlement',
+            'Annual Leave Taken',
+            'Annual Leave Compensated',
+            'Annual Leave Effective Rest',
+            'Annual Leave Balance',
+            'Annual Leave Overdue (Previous Year)',
+            'Annual Leave Due by Year End',
+            'Annual Leave Scheduled (Future)',
+            'Annual Leave Planned (Year)',
+            'Annual Leave Planned Approved',
+            'Annual Leave Planned Pending',
+            'Annual Leave Planned Rejected',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_date'] ?? '',
+                $row['reference_year'] ?? '',
+                $row['employee_record_id'] ?? '',
+                $row['employee_internal_id'] ?? '',
+                $row['employee_name'] ?? '',
+                $row['employee_nuit'] ?? '',
+                $row['date_of_joining'] ?? '',
+                $row['branch'] ?? '',
+                $row['department'] ?? '',
+                $row['annual_leave_entitlement_days'] ?? 0,
+                $row['annual_leave_taken_days'] ?? 0,
+                $row['annual_leave_compensated_days'] ?? 0,
+                $row['annual_leave_effective_rest_days'] ?? 0,
+                $row['annual_leave_balance_days'] ?? 0,
+                $row['annual_leave_overdue_days_previous_year'] ?? 0,
+                $row['annual_leave_due_by_year_end_days'] ?? 0,
+                $row['annual_leave_scheduled_future_days'] ?? 0,
+                $row['annual_leave_planned_days_current_year'] ?? 0,
+                $row['annual_leave_planned_approved_days_current_year'] ?? 0,
+                $row['annual_leave_planned_pending_days_current_year'] ?? 0,
+                $row['annual_leave_planned_rejected_days_current_year'] ?? 0,
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportLeaveComplianceReportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+        ]);
+
+        $dataset = $this->leaveComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportTrainingComplianceReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+            'window_days' => 'nullable|integer|min:1|max:365',
+        ]);
+
+        $dataset = $this->trainingComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null,
+            (int) ($validated['window_days'] ?? 30)
+        );
+
+        $filename = sprintf(
+            'mandatory-training-compliance-%s-%s.csv',
+            $dataset['report_date'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Report Date',
+            'Window Days',
+            'Employee Record ID',
+            'Employee Internal ID',
+            'Employee',
+            'Employee NUIT',
+            'Training Type ID',
+            'Training Type',
+            'Training Compliance Code',
+            'Certificate Validity Days',
+            'Last Training ID',
+            'Last Training Title',
+            'Last Completion Date',
+            'Certificate Expires At',
+            'Days Until Expiry',
+            'Compliance Status',
+            'Status Reason',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['report_date'] ?? '',
+                $row['window_days'] ?? 30,
+                $row['employee_record_id'] ?? '',
+                $row['employee_internal_id'] ?? '',
+                $row['employee_name'] ?? '',
+                $row['employee_nuit'] ?? '',
+                $row['training_type_id'] ?? '',
+                $row['training_type_name'] ?? '',
+                $row['training_compliance_code'] ?? '',
+                $row['certificate_validity_days'] ?? '',
+                $row['last_training_id'] ?? '',
+                $row['last_training_title'] ?? '',
+                $row['last_completion_date'] ?? '',
+                $row['certificate_expires_at'] ?? '',
+                $row['days_until_expiry'] ?? '',
+                $row['compliance_status'] ?? '',
+                $row['status_reason'] ?? '',
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportTrainingComplianceReportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_date' => 'nullable|date_format:Y-m-d',
+            'window_days' => 'nullable|integer|min:1|max:365',
+        ]);
+
+        $dataset = $this->trainingComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_date'] ?? null,
+            (int) ($validated['window_days'] ?? 30)
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportAttendanceComplianceReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->attendanceComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'attendance-compliance-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Period Start',
+            'Period End',
+            'Attendance ID',
+            'Attendance Date',
+            'Employee',
+            'Shift',
+            'Status',
+            'Absence Category',
+            'Justified Absence',
+            'Unjustified Absence',
+            'Worked Hours',
+            'Break Hours',
+            'Overtime Hours',
+            'Overtime Amount',
+            'Late Minutes',
+            'Early Exit Minutes',
+            'Night Work',
+            'Night Work Minutes',
+            'Weekly Rest Breach Risk',
+            'Anomaly Late Entry',
+            'Anomaly Early Exit',
+            'Anomaly Missing Clock Out',
+            'Anomaly Excessive Hours',
+            'Anomaly Clock Order',
+            'Anomaly Weekly Rest',
+            'Has Attendance Anomaly',
+            'Notes',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'] ?? '',
+                $row['period_start'] ?? '',
+                $row['period_end'] ?? '',
+                $row['attendance_id'] ?? '',
+                $row['attendance_date'] ?? '',
+                $row['employee_name'] ?? '',
+                $row['shift_name'] ?? '',
+                $row['status'] ?? '',
+                $row['absence_category'] ?? '',
+                !empty($row['justified_absence']) ? 'yes' : 'no',
+                !empty($row['unjustified_absence']) ? 'yes' : 'no',
+                $row['worked_hours'] ?? 0,
+                $row['break_hours'] ?? 0,
+                $row['overtime_hours'] ?? 0,
+                $row['overtime_amount'] ?? 0,
+                $row['late_minutes'] ?? 0,
+                $row['early_exit_minutes'] ?? 0,
+                !empty($row['night_work']) ? 'yes' : 'no',
+                $row['night_work_minutes'] ?? 0,
+                !empty($row['weekly_rest_breach_risk']) ? 'yes' : 'no',
+                !empty($row['anomaly_late_entry']) ? 'yes' : 'no',
+                !empty($row['anomaly_early_exit']) ? 'yes' : 'no',
+                !empty($row['anomaly_missing_clock_out']) ? 'yes' : 'no',
+                !empty($row['anomaly_excessive_hours']) ? 'yes' : 'no',
+                !empty($row['anomaly_clock_order']) ? 'yes' : 'no',
+                !empty($row['anomaly_weekly_rest']) ? 'yes' : 'no',
+                !empty($row['has_attendance_anomaly']) ? 'yes' : 'no',
+                $row['notes'] ?? '',
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportAttendanceComplianceReportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->attendanceComplianceReportService->buildDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
     }
 
     public function exportCostAllocationReport(Request $request)

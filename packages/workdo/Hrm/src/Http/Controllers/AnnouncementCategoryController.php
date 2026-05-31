@@ -67,6 +67,10 @@ class AnnouncementCategoryController extends Controller
     public function update(UpdateAnnouncementCategoryRequest $request, AnnouncementCategory $announcementcategory)
     {
         if(Auth::user()->can('edit-announcement-categories')){
+            if ((int) $announcementcategory->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.announcement-categories.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -87,6 +91,10 @@ class AnnouncementCategoryController extends Controller
     public function destroy(AnnouncementCategory $announcementcategory)
     {
         if(Auth::user()->can('delete-announcement-categories')){
+            if ((int) $announcementcategory->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.announcement-categories.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAnnouncementCategory::dispatch($announcementcategory);
             $announcementcategory->delete();
 

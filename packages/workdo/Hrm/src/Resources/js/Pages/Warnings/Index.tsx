@@ -54,7 +54,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.warnings.destroy',
-        defaultMessage: t('Are you sure you want to delete this warning?')
+        defaultMessage: t('Are you sure you want to cancel this warning?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        }
     });
 
     const handleFilter = () => {
@@ -141,15 +151,17 @@ export default function Index() {
             key: 'status',
             header: t('Warning Status'),
             sortable: false,
-            render: (value: string) => {
+            render: (value: string, row: Warning) => {
                 const statusColors = {
                     'pending': 'bg-yellow-100 text-yellow-800',
                     'approved': 'bg-green-100 text-green-800',
-                    'rejected': 'bg-red-100 text-red-800'
+                    'rejected': 'bg-red-100 text-red-800',
+                    'cancelled': 'bg-slate-200 text-slate-800'
                 };
+                const displayStatus = row?.is_cancelled ? 'cancelled' : (value || 'pending');
                 return (
-                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[value as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
-                        {t(value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Pending')}
+                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[displayStatus as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
+                        {t(displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1))}
                     </span>
                 );
             }
@@ -173,7 +185,7 @@ export default function Index() {
                 <div className="flex gap-1">
                     <TooltipProvider>
 
-                        {auth.user?.permissions?.includes('manage-warning-response') && (
+                        {auth.user?.permissions?.includes('manage-warning-response') && !warning.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('response', warning)} className="h-8 w-8 p-0 text-purple-600 hover:text-purple-700">
@@ -185,7 +197,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('view-warnings') && (warning.status === 'approved' || warning.status === 'rejected') && (
+                        {auth.user?.permissions?.includes('view-warnings') && (warning.status === 'approved' || warning.status === 'rejected' || warning.is_cancelled) && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('view', warning)} className="h-8 w-8 p-0 text-green-600 hover:text-green-700">
@@ -197,7 +209,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('edit-warnings') && (
+                        {auth.user?.permissions?.includes('edit-warnings') && !warning.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('edit', warning)} className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700">
@@ -209,7 +221,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('delete-warnings') && (
+                        {auth.user?.permissions?.includes('delete-warnings') && !warning.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button
@@ -408,12 +420,13 @@ export default function Index() {
                                                     <div className="text-xs min-w-0">
                                                         <p className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">{t('Status')}</p>
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block ${
+                                                            warning.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                                             warning.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                             warning.status === 'approved' ? 'bg-green-100 text-green-800' :
                                                             warning.status === 'rejected' ? 'bg-red-100 text-red-800' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>
-                                                            {t(warning.status ? warning.status.charAt(0).toUpperCase() + warning.status.slice(1) : 'Pending')}
+                                                            {warning.is_cancelled ? t('Cancelled') : t(warning.status ? warning.status.charAt(0).toUpperCase() + warning.status.slice(1) : 'Pending')}
                                                         </span>
                                                     </div>
                                                     <div className="text-xs min-w-0">
@@ -434,7 +447,7 @@ export default function Index() {
                                             {/* Actions Footer */}
                                             <div className="flex justify-end gap-2 p-3 border-t bg-gray-50/50 flex-shrink-0 mt-auto">
                                                 <TooltipProvider>
-                                                    {auth.user?.permissions?.includes('manage-warning-response') && (
+                                                    {auth.user?.permissions?.includes('manage-warning-response') && !warning.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('response', warning)} className="h-9 w-9 p-0 text-purple-600 hover:text-purple-700">
@@ -446,7 +459,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('view-warnings') && (warning.status === 'approved' || warning.status === 'rejected') && (
+                                                    {auth.user?.permissions?.includes('view-warnings') && (warning.status === 'approved' || warning.status === 'rejected' || warning.is_cancelled) && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('view', warning)} className="h-9 w-9 p-0 text-green-600 hover:text-green-700">
@@ -458,7 +471,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('edit-warnings') && (
+                                                    {auth.user?.permissions?.includes('edit-warnings') && !warning.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('edit', warning)} className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700">
@@ -470,7 +483,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('delete-warnings') && (
+                                                    {auth.user?.permissions?.includes('delete-warnings') && !warning.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button
@@ -547,9 +560,9 @@ export default function Index() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Warning')}
+                title={t('Cancel Warning')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

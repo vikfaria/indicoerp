@@ -4,7 +4,6 @@ import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/ui/input-error';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -19,6 +18,7 @@ interface Overtime {
     end_date: string;
     notes: string;
     status: string;
+    approval_status?: string | null;
 }
 
 interface EditOvertimeProps {
@@ -37,7 +37,6 @@ export default function Edit({ overtime, onSuccess }: EditOvertimeProps) {
         start_date: overtime.start_date ? new Date(overtime.start_date).toISOString().split('T')[0] : '',
         end_date: overtime.end_date ? new Date(overtime.end_date).toISOString().split('T')[0] : '',
         notes: overtime.notes || '',
-        status: overtime.status,
     });
 
     const submit = (e: React.FormEvent) => {
@@ -142,19 +141,9 @@ export default function Edit({ overtime, onSuccess }: EditOvertimeProps) {
                     </div>
                 </div>
 
-                <div>
-                    <Label htmlFor="status" required>{t('Status')}</Label>
-                    <Select value={data.status} onValueChange={(value) => setData('status', value)} required>
-                        <SelectTrigger>
-                            <SelectValue placeholder={t('Select status')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="active">{t('Active')}</SelectItem>
-                            <SelectItem value="expired">{t('Expired')}</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <InputError message={errors.status} />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                    {t('Any change will return this overtime to pending approval.')}
+                </p>
 
                 <div>
                     <Label htmlFor="notes">{t('Notes')}</Label>

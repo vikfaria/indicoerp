@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Workdo\Hrm\Models\Warning;
 
 class AuditTrailTest extends TestCase
 {
@@ -100,6 +101,52 @@ class AuditTrailTest extends TestCase
         $this->assertSame($company->id, $entry->company_id);
         $this->assertSame($company->id, $entry->user_id);
         $this->assertSame('Payroll Janeiro 2026', $entry->new_values['title']);
+    }
+
+    public function test_warning_cancellation_update_is_logged_when_hrm_module_is_available(): void
+    {
+        if (! class_exists(Warning::class)) {
+            $this->markTestSkipped('HRM warning model is not available.');
+        }
+
+        $company = $this->makeCompany();
+        $employee = User::factory()->create([
+            'type' => 'staff',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+
+        $this->actingAs($company);
+
+        $warning = Warning::query()->create([
+            'employee_id' => $employee->id,
+            'subject' => 'Teste de auditoria disciplinar',
+            'severity' => 'Minor',
+            'warning_date' => now()->toDateString(),
+            'status' => 'pending',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $warning->update([
+            'is_cancelled' => true,
+            'cancelled_at' => now(),
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => 'Registo duplicado.',
+        ]);
+
+        $entries = AuditTrail::query()
+            ->where('auditable_type', Warning::class)
+            ->where('auditable_id', $warning->id)
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount(2, $entries);
+        $this->assertSame(['created', 'updated'], $entries->pluck('event')->all());
+        $this->assertSame($company->id, $entries[0]->company_id);
+        $this->assertSame($company->id, $entries[1]->user_id);
+        $this->assertTrue((bool) ($entries[1]->new_values['is_cancelled'] ?? false));
+        $this->assertSame('Registo duplicado.', $entries[1]->new_values['cancellation_reason'] ?? null);
     }
 
     private function makeCompany(): User

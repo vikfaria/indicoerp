@@ -20,6 +20,7 @@ use Workdo\Hrm\Models\Shift;
 use Workdo\Hrm\Events\CreateEmployee;
 use Workdo\Hrm\Events\DestroyEmployee;
 use Workdo\Hrm\Events\UpdateEmployee;
+use Illuminate\Support\Collection;
 
 class EmployeeController extends Controller
 {
@@ -205,6 +206,10 @@ class EmployeeController extends Controller
     public function update(UpdateEmployeeRequest $request, Employee $employee)
     { 
         if (Auth::user()->can('edit-employees')) {
+            if (!$this->checkEmployeeAccess($employee)) {
+                return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
             $employee->date_of_birth = $validated['date_of_birth'];
             $employee->gender = $validated['gender'];
@@ -272,6 +277,10 @@ class EmployeeController extends Controller
     public function destroy(Employee $employee)
     {
         if (Auth::user()->can('delete-employees')) {
+            if (!$this->checkEmployeeAccess($employee)) {
+                return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));
+            }
+
             DestroyEmployee::dispatch($employee);
             $employee->delete();
 
@@ -298,6 +307,11 @@ class EmployeeController extends Controller
                 'foreignWorkerProfile',
                 'probationProfile',
             ]);
+
+            $canViewSensitiveEmployeeData = $this->canViewSensitiveEmployeeData($employee);
+            if (!$canViewSensitiveEmployeeData) {
+                $this->maskSensitiveEmployeeData($employee);
+            }
             
             $documents = EmployeeDocument::where('user_id', $employee->id)
                 ->with('documentType')
@@ -320,6 +334,7 @@ class EmployeeController extends Controller
                     (int) creatorId()
                 ),
                 'probationCategoryLimits' => $this->probationPolicyService->allCategoryLimits((int) creatorId()),
+                'canViewSensitiveEmployeeData' => $canViewSensitiveEmployeeData,
             ]);
         } else {
             return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));
@@ -329,7 +344,13 @@ class EmployeeController extends Controller
     public function deleteDocument($employeeId, EmployeeDocument $document)
     {
         if (Auth::user()->can('edit-employees')) {
-            if ($document->user_id != $employeeId) {
+            $employee = Employee::query()->find($employeeId);
+
+            if (!$employee || !$this->checkEmployeeAccess($employee)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
+            if ((int) $document->user_id !== (int) $employeeId || (int) $document->created_by !== (int) creatorId()) {
                 return redirect()->back()->with('error', __('Document not found'));
             }
 
@@ -340,5 +361,37 @@ class EmployeeController extends Controller
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function canViewSensitiveEmployeeData(Employee $employee): bool
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return false;
+        }
+
+        if ((int) $employee->user_id === (int) $user->id) {
+            return true;
+        }
+
+        return $user->can('view-sensitive-employee-data')
+            || $user->can('edit-employees');
+    }
+
+    private function maskSensitiveEmployeeData(Employee $employee): void
+    {
+        $employee->emergency_contact_name = null;
+        $employee->emergency_contact_relationship = null;
+        $employee->emergency_contact_number = null;
+        $employee->bank_name = null;
+        $employee->account_holder_name = null;
+        $employee->account_number = null;
+        $employee->bank_identifier_code = null;
+        $employee->bank_branch = null;
+        $employee->tax_payer_id = null;
+
+        $employee->setRelation('dependents', new Collection());
+        $employee->setRelation('socialSecurityProfile', null);
+        $employee->setRelation('foreignWorkerProfile', null);
     }
 }

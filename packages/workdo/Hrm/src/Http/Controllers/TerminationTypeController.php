@@ -64,6 +64,10 @@ class TerminationTypeController extends Controller
     public function update(UpdateTerminationTypeRequest $request, TerminationType $terminationtype)
     {
         if(Auth::user()->can('edit-termination-types')){
+            if ((int) $terminationtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.termination-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -84,6 +88,10 @@ class TerminationTypeController extends Controller
     public function destroy(TerminationType $terminationtype)
     {
         if(Auth::user()->can('delete-termination-types')){
+            if ((int) $terminationtype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.termination-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyTerminationType::dispatch($terminationtype);
             $terminationtype->delete();
 

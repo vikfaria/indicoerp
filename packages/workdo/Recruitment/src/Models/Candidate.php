@@ -20,6 +20,17 @@ class Candidate extends Model
         'phone',
         'gender',
         'dob',
+        'nationality',
+        'identification_document_type',
+        'identification_document_number',
+        'nuit',
+        'desired_professional_category',
+        'is_regulated_profession',
+        'professional_license_type',
+        'professional_license_number',
+        'professional_license_expiry_date',
+        'minor_work_authorization_path',
+        'legal_exception_notes',
         'country',
         'state',
         'city',
@@ -54,7 +65,9 @@ class Candidate extends Model
             'expected_salary' => 'decimal:2',
             'status' => 'string',
             'application_date' => 'date',
-            'dob' => 'date'
+            'dob' => 'date',
+            'professional_license_expiry_date' => 'date',
+            'is_regulated_profession' => 'boolean',
         ];
     }
 

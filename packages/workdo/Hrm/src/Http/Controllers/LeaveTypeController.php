@@ -91,6 +91,10 @@ class LeaveTypeController extends Controller
     public function update(UpdateLeaveTypeRequest $request, LeaveType $leavetype)
     {
         if(Auth::user()->can('edit-leave-types')){
+            if ((int) $leavetype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.leave-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $this->applyMozambiqueLegalDefaults($request->validated());
 
             $validated['is_paid'] = $request->boolean('is_paid', false);
@@ -124,6 +128,10 @@ class LeaveTypeController extends Controller
     public function destroy(LeaveType $leavetype)
     {
         if(Auth::user()->can('delete-leave-types')){
+            if ((int) $leavetype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.leave-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyLeaveType::dispatch($leavetype);
             $leavetype->delete();
 
@@ -155,6 +163,14 @@ class LeaveTypeController extends Controller
 
         if ($legalCode === 'sick_leave') {
             $validated['requires_supporting_document'] = true;
+        }
+
+        if (in_array($legalCode, ['adoption', 'foster_care', 'work_accident', 'family_assistance', 'public_service'], true)) {
+            $validated['requires_supporting_document'] = true;
+        }
+
+        if ($legalCode === 'annual' && !empty($validated['allow_cash_out']) && empty($validated['min_effective_rest_days'])) {
+            $validated['min_effective_rest_days'] = 6;
         }
 
         return $validated;

@@ -59,6 +59,11 @@ interface LabourPolicy {
     leave_max_consecutive_days: number | null;
     leave_count_non_working_days: boolean;
     leave_count_holidays: boolean;
+    leave_entitlement_first_year_days: number;
+    leave_entitlement_following_year_days: number;
+    leave_entitlement_prorate_first_year: boolean;
+    leave_unjustified_absence_penalty_per_day: number;
+    leave_unjustified_absence_max_penalty_days: number | null;
 }
 
 interface LegalSettings {
@@ -323,6 +328,11 @@ export default function MozambiquePayrollComplianceIndex() {
         leave_max_consecutive_days: labourPolicy.leave_max_consecutive_days?.toString() ?? '',
         leave_count_non_working_days: labourPolicy.leave_count_non_working_days,
         leave_count_holidays: labourPolicy.leave_count_holidays,
+        leave_entitlement_first_year_days: labourPolicy.leave_entitlement_first_year_days?.toString() ?? '12',
+        leave_entitlement_following_year_days: labourPolicy.leave_entitlement_following_year_days?.toString() ?? '30',
+        leave_entitlement_prorate_first_year: labourPolicy.leave_entitlement_prorate_first_year ?? true,
+        leave_unjustified_absence_penalty_per_day: labourPolicy.leave_unjustified_absence_penalty_per_day?.toString() ?? '0',
+        leave_unjustified_absence_max_penalty_days: labourPolicy.leave_unjustified_absence_max_penalty_days?.toString() ?? '',
     });
 
     const legalSettingsForm = useForm<LegalSettings>({
@@ -569,6 +579,58 @@ export default function MozambiquePayrollComplianceIndex() {
                                     }
                                 >
                                     {t('Expatriates Report')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.disciplinary-cases.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Disciplinary Report')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.annual-leave-compliance.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Annual Leave Report')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.attendance-compliance.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Attendance Report')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.training-compliance.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Training Compliance Report')}
                                 </Button>
                             </div>
                         </CardHeader>
@@ -1400,6 +1462,57 @@ export default function MozambiquePayrollComplianceIndex() {
                                         />
                                         {t('Count Holidays')}
                                     </label>
+                                </div>
+                                <div>
+                                    <Label>{t('Annual Leave Entitlement (1st Service Year)')}</Label>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        value={labourPolicyForm.data.leave_entitlement_first_year_days}
+                                        onChange={(e) => labourPolicyForm.setData('leave_entitlement_first_year_days', e.target.value)}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.leave_entitlement_first_year_days} />
+                                </div>
+                                <div>
+                                    <Label>{t('Annual Leave Entitlement (Following Years)')}</Label>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        value={labourPolicyForm.data.leave_entitlement_following_year_days}
+                                        onChange={(e) => labourPolicyForm.setData('leave_entitlement_following_year_days', e.target.value)}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.leave_entitlement_following_year_days} />
+                                </div>
+                                <div className="flex items-end">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={labourPolicyForm.data.leave_entitlement_prorate_first_year}
+                                            onChange={(e) => labourPolicyForm.setData('leave_entitlement_prorate_first_year', e.target.checked)}
+                                        />
+                                        {t('Prorate First Service Year by Month Joined')}
+                                    </label>
+                                </div>
+                                <div>
+                                    <Label>{t('Unjustified Absence Penalty (days)')}</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        value={labourPolicyForm.data.leave_unjustified_absence_penalty_per_day}
+                                        onChange={(e) => labourPolicyForm.setData('leave_unjustified_absence_penalty_per_day', e.target.value)}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.leave_unjustified_absence_penalty_per_day} />
+                                </div>
+                                <div>
+                                    <Label>{t('Max Annual Leave Penalty (days)')}</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        value={labourPolicyForm.data.leave_unjustified_absence_max_penalty_days}
+                                        onChange={(e) => labourPolicyForm.setData('leave_unjustified_absence_max_penalty_days', e.target.value)}
+                                        placeholder={t('Disabled when empty')}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.leave_unjustified_absence_max_penalty_days} />
                                 </div>
                                 <div className="flex items-end">
                                     <Button type="submit" disabled={!canEdit || labourPolicyForm.processing} className="w-full">

@@ -21,10 +21,16 @@ use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Overtime;
 use Workdo\Hrm\Models\Attendance;
+use Workdo\Hrm\Models\Acknowledgment;
 use Workdo\Hrm\Models\Shift;
 use Workdo\Hrm\Models\Termination;
 use Workdo\Hrm\Models\Warning;
 use Workdo\Hrm\Models\Payroll;
+use Workdo\Hrm\Models\Resignation;
+use Workdo\Hrm\Models\HrmDocument;
+use Workdo\Training\Models\Training;
+use Workdo\Training\Models\TrainingTask;
+use Workdo\Training\Models\TrainingType;
 
 class MozambiqueHrComplianceDashboardServiceTest extends TestCase
 {
@@ -163,6 +169,8 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
     {
         $company = $this->makeCompany();
         $employeeUser = $this->makeEmployeeUser($company, 'Worker Legal');
+        $absenceConsecutiveUser = $this->makeEmployeeUser($company, 'Worker Absence Consecutive');
+        $absenceMonthlyUser = $this->makeEmployeeUser($company, 'Worker Absence Monthly');
 
         $employee = Employee::query()->create([
             'employee_id' => 'CMP-EMP-LEGAL-001',
@@ -170,6 +178,26 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
             'employment_type' => 'GENERAL',
             'tax_payer_id' => '400123999',
             'basic_salary' => 12000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'CMP-EMP-LEGAL-ABS-001',
+            'user_id' => $absenceConsecutiveUser->id,
+            'employment_type' => 'GENERAL',
+            'tax_payer_id' => '400124000',
+            'basic_salary' => 9500,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'CMP-EMP-LEGAL-ABS-002',
+            'user_id' => $absenceMonthlyUser->id,
+            'employment_type' => 'GENERAL',
+            'tax_payer_id' => '400124111',
+            'basic_salary' => 9600,
             'creator_id' => $company->id,
             'created_by' => $company->id,
         ]);
@@ -217,6 +245,17 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
             'notice_date' => now()->subDays(15)->toDateString(),
             'termination_date' => now()->subDays(7)->toDateString(),
             'status' => 'approved',
+            'legal_notice_compliant' => false,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Resignation::query()->create([
+            'employee_id' => $absenceMonthlyUser->id,
+            'last_working_date' => now()->subDays(5)->toDateString(),
+            'reason' => 'Demissão',
+            'status' => 'accepted',
+            'legal_notice_compliant' => false,
             'creator_id' => $company->id,
             'created_by' => $company->id,
         ]);
@@ -344,6 +383,35 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
             ]);
         }
 
+        $monthStart = now()->startOfMonth();
+        for ($i = 0; $i < 4; $i++) {
+            $absenceDate = $monthStart->copy()->addDays(2 + $i);
+            Attendance::query()->create([
+                'employee_id' => $absenceConsecutiveUser->id,
+                'shift_id' => $shift->id,
+                'date' => $absenceDate->toDateString(),
+                'clock_in' => $absenceDate->copy()->setTime(8, 0),
+                'clock_out' => $absenceDate->copy()->setTime(8, 30),
+                'status' => 'absent',
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        foreach ([8, 10, 12, 14, 16, 18] as $dayOffset) {
+            $absenceDate = $monthStart->copy()->addDays($dayOffset);
+            Attendance::query()->create([
+                'employee_id' => $absenceMonthlyUser->id,
+                'shift_id' => $shift->id,
+                'date' => $absenceDate->toDateString(),
+                'clock_in' => $absenceDate->copy()->setTime(8, 0),
+                'clock_out' => $absenceDate->copy()->setTime(8, 30),
+                'status' => 'absent',
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
         $snapshot = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
 
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'disciplinary_response_overdue'));
@@ -353,12 +421,16 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'harassment_reports_without_owner'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'offboarding_checklist_pending'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'foreign_offboarding_migration_pending'));
+        $this->assertSame(1, $this->countByKey($snapshot['items'], 'termination_notice_non_compliant'));
+        $this->assertSame(1, $this->countByKey($snapshot['items'], 'resignation_notice_non_compliant'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'leave_missing_supporting_document'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'legal_leave_missing_reference_date'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'leave_cash_out_below_min_rest'));
         $this->assertSame(2, $this->countByKey($snapshot['items'], 'overtime_daily_limit_breaches'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'overtime_weekly_limit_breaches'));
         $this->assertSame(1, $this->countByKey($snapshot['items'], 'weekly_rest_breach_risk'));
+        $this->assertSame(1, $this->countByKey($snapshot['items'], 'unjustified_absence_consecutive_risk'));
+        $this->assertSame(1, $this->countByKey($snapshot['items'], 'unjustified_absence_monthly_risk'));
     }
 
     public function test_snapshot_reports_overdue_inss_and_irps_submissions_from_completed_payrolls(): void
@@ -561,9 +633,166 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
         $this->assertSame(1, $this->panelCountByKey($indicators, 'foreign_documents_expired'));
         $this->assertSame(2, $this->panelCountByKey($indicators, 'accumulated_annual_leave_risk'));
         $this->assertSame(1, $this->panelCountByKey($indicators, 'disciplinary_cases_pending'));
+        $this->assertSame(0, $this->panelCountByKey($indicators, 'unjustified_absence_disciplinary_risk'));
+        $this->assertSame(0, $this->panelCountByKey($indicators, 'code_of_conduct_missing_required_document'));
+        $this->assertSame(0, $this->panelCountByKey($indicators, 'code_of_conduct_acknowledgments_pending'));
+        $this->assertSame(0, $this->panelCountByKey($indicators, 'termination_notice_non_compliant'));
+        $this->assertSame(0, $this->panelCountByKey($indicators, 'resignation_notice_non_compliant'));
         $this->assertSame(2, $this->panelCountByKey($indicators, 'payroll_fiscal_obligations_pending'));
         $this->assertSame(1, $this->panelCountByKey($indicators, 'foreign_workers_at_compliance_risk'));
-        $this->assertSame(9, (int) data_get($snapshot, 'compliance_panel.metrics.total_indicators'));
+        $this->assertSame(15, (int) data_get($snapshot, 'compliance_panel.metrics.total_indicators'));
+    }
+
+    public function test_snapshot_reports_code_of_conduct_document_and_acknowledgment_gaps_for_seven_plus_workers(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUsers = [];
+
+        for ($i = 1; $i <= 7; $i++) {
+            $employeeUser = $this->makeEmployeeUser($company, "Conduct Worker {$i}");
+            $employeeUsers[] = $employeeUser;
+
+            Employee::query()->create([
+                'employee_id' => sprintf('CMP-COD-%03d', $i),
+                'user_id' => $employeeUser->id,
+                'employment_type' => 'GENERAL',
+                'tax_payer_id' => '400100' . str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+                'date_of_joining' => now()->subMonths(18)->toDateString(),
+                'basic_salary' => 13000,
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $snapshotWithoutDocument = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+
+        $this->assertSame(1, $this->countByKey($snapshotWithoutDocument['items'], 'code_of_conduct_missing_required_document'));
+        $this->assertSame(0, $this->countByKey($snapshotWithoutDocument['items'], 'code_of_conduct_acknowledgments_pending'));
+
+        $document = HrmDocument::query()->create([
+            'title' => 'Código de Conduta',
+            'description' => 'Política interna obrigatória',
+            'status' => 'approve',
+            'uploaded_by' => $company->id,
+            'approved_by' => $company->id,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        foreach (array_slice($employeeUsers, 0, 3) as $employeeUser) {
+            Acknowledgment::query()->create([
+                'employee_id' => $employeeUser->id,
+                'document_id' => $document->id,
+                'status' => 'acknowledged',
+                'acknowledged_at' => now(),
+                'assigned_by' => $company->id,
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $snapshotWithDocument = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+
+        $this->assertSame(0, $this->countByKey($snapshotWithDocument['items'], 'code_of_conduct_missing_required_document'));
+        $this->assertSame(4, $this->countByKey($snapshotWithDocument['items'], 'code_of_conduct_acknowledgments_pending'));
+    }
+
+    public function test_snapshot_reports_mandatory_training_overdue_and_expiring_risks(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUserA = $this->makeEmployeeUser($company, 'Training Worker A');
+        $employeeUserB = $this->makeEmployeeUser($company, 'Training Worker B');
+
+        Employee::query()->create([
+            'employee_id' => 'CMP-TRN-001',
+            'user_id' => $employeeUserA->id,
+            'employment_type' => 'GENERAL',
+            'tax_payer_id' => '400777001',
+            'basic_salary' => 12000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'CMP-TRN-002',
+            'user_id' => $employeeUserB->id,
+            'employment_type' => 'GENERAL',
+            'tax_payer_id' => '400777002',
+            'basic_salary' => 12000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $expiredType = TrainingType::query()->create([
+            'name' => 'Segurança e Saúde',
+            'description' => 'Obrigatória',
+            'is_mandatory' => true,
+            'compliance_code' => 'safety_health',
+            'certificate_validity_days' => 365,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $expiringSoonType = TrainingType::query()->create([
+            'name' => 'Protecção de Dados',
+            'description' => 'Obrigatória',
+            'is_mandatory' => true,
+            'compliance_code' => 'data_protection',
+            'certificate_validity_days' => 60,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $expiredTraining = Training::query()->create([
+            'title' => 'SST 2025',
+            'description' => 'Sessão anual',
+            'training_type_id' => $expiredType->id,
+            'start_date' => now()->subDays(405)->toDateString(),
+            'end_date' => now()->subDays(400)->toDateString(),
+            'start_time' => '08:00:00',
+            'end_time' => '12:00:00',
+            'status' => 'completed',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $expiringSoonTraining = Training::query()->create([
+            'title' => 'LGPD 2026',
+            'description' => 'Sessão de reciclagem',
+            'training_type_id' => $expiringSoonType->id,
+            'start_date' => now()->subDays(41)->toDateString(),
+            'end_date' => now()->subDays(40)->toDateString(),
+            'start_time' => '09:00:00',
+            'end_time' => '11:00:00',
+            'status' => 'completed',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        TrainingTask::query()->create([
+            'training_id' => $expiredTraining->id,
+            'title' => 'Conclusão SST',
+            'status' => 'completed',
+            'assigned_to' => $employeeUserA->id,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        TrainingTask::query()->create([
+            'training_id' => $expiringSoonTraining->id,
+            'title' => 'Conclusão LGPD',
+            'status' => 'completed',
+            'assigned_to' => $employeeUserA->id,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $snapshot = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+        $indicators = (array) data_get($snapshot, 'compliance_panel.indicators', []);
+
+        $this->assertSame(2, $this->countByKey($snapshot['items'], 'mandatory_training_overdue_workers'));
+        $this->assertSame(1, $this->countByKey($snapshot['items'], 'mandatory_training_expiring_30d_workers'));
+        $this->assertSame(2, $this->panelCountByKey($indicators, 'mandatory_training_overdue_workers'));
     }
 
     private function countByKey(array $items, string $key): int

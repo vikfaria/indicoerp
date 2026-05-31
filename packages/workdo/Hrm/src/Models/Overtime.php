@@ -19,6 +19,12 @@ class Overtime extends Model
         'end_date',
         'notes',
         'status',
+        'approval_status',
+        'approved_by',
+        'approved_at',
+        'rejected_by',
+        'rejected_at',
+        'rejection_reason',
         'creator_id',
         'created_by',
     ];
@@ -29,6 +35,8 @@ class Overtime extends Model
         'rate' => 'decimal:2',
         'start_date' => 'date',
         'end_date' => 'date',
+        'approved_at' => 'datetime',
+        'rejected_at' => 'datetime',
     ];
 
     public function employee()

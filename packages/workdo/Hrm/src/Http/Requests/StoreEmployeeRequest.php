@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreEmployeeRequest extends FormRequest
 {
@@ -13,11 +14,19 @@ class StoreEmployeeRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
             'employee_id' => 'required|max:50',
             'date_of_birth' => 'required|date',
             'gender' => 'required',
-            'shift_id' => 'required|exists:shifts,id',
+            'shift_id' => [
+                'required',
+                'integer',
+                Rule::exists('shifts', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'date_of_joining' => 'required|date',
             'employment_type' => 'required',
             'address_line_1' => 'required|max:255',
@@ -39,12 +48,54 @@ class StoreEmployeeRequest extends FormRequest
             'hours_per_day' => 'required|numeric|min:0|max:24',
             'days_per_week' => 'required|numeric|min:0|max:7',
             'rate_per_hour' => 'required|numeric|min:0',
-            'user_id' => 'required|exists:users,id',
-            'branch_id' => 'required|exists:branches,id',
-            'department_id' => 'required|exists:departments,id',
-            'designation_id' => 'required|exists:designations,id',
+            'user_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'branch_id' => [
+                'required',
+                'integer',
+                Rule::exists('branches', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'department_id' => [
+                'required',
+                'integer',
+                Rule::exists('departments', 'id')->where(function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+
+                    if ($this->filled('branch_id')) {
+                        $query->where('branch_id', $this->input('branch_id'));
+                    }
+                }),
+            ],
+            'designation_id' => [
+                'required',
+                'integer',
+                Rule::exists('designations', 'id')->where(function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+
+                    if ($this->filled('branch_id')) {
+                        $query->where('branch_id', $this->input('branch_id'));
+                    }
+
+                    if ($this->filled('department_id')) {
+                        $query->where('department_id', $this->input('department_id'));
+                    }
+                }),
+            ],
             'documents' => 'required|array|min:1',
-            'documents.*.document_type_id' => 'required|exists:employee_document_types,id',
+            'documents.*.document_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('employee_document_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'documents.*.file' => 'required|file|mimes:pdf,doc,docx,jpg,jpeg,png|max:2048'
         ];
     }

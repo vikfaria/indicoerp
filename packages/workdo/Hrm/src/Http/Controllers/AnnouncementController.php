@@ -105,6 +105,10 @@ class AnnouncementController extends Controller
     public function update(UpdateAnnouncementRequest $request, Announcement $announcement)
     {
         if (Auth::user()->can('edit-announcements')) {
+            if (!$this->canAccessAnnouncement($announcement)) {
+                return redirect()->route('hrm.announcements.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -141,6 +145,10 @@ class AnnouncementController extends Controller
     public function updateStatus(\Illuminate\Http\Request $request, Announcement $announcement)
     {
         if (Auth::user()->can('manage-announcements-status')) {
+            if (!$this->canAccessAnnouncement($announcement)) {
+                return redirect()->route('hrm.announcements.index')->with('error', __('Permission denied'));
+            }
+
             $request->validate([
                 'status' => 'required|in:draft,active,inactive'
             ]);
@@ -158,6 +166,10 @@ class AnnouncementController extends Controller
     public function destroy(Announcement $announcement)
     {
         if (Auth::user()->can('delete-announcements')) {
+            if (!$this->canAccessAnnouncement($announcement)) {
+                return redirect()->route('hrm.announcements.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAnnouncement::dispatch($announcement);
             $announcement->delete();
 
@@ -165,6 +177,11 @@ class AnnouncementController extends Controller
         } else {
             return redirect()->route('hrm.announcements.index')->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessAnnouncement(Announcement $announcement): bool
+    {
+        return (int) $announcement->created_by === (int) creatorId();
     }
 
 }

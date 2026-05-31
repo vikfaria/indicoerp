@@ -67,6 +67,10 @@ class HolidayTypeController extends Controller
     public function update(UpdateHolidayTypeRequest $request, HolidayType $holidaytype)
     {
         if(Auth::user()->can('edit-holiday-types')){
+            if ((int) $holidaytype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.holiday-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -87,6 +91,10 @@ class HolidayTypeController extends Controller
     public function destroy(HolidayType $holidaytype)
     {
         if(Auth::user()->can('delete-holiday-types')){
+            if ((int) $holidaytype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.holiday-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyHolidayType::dispatch($holidaytype);
             $holidaytype->delete();
 

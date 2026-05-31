@@ -15,11 +15,28 @@ class StoreContractRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
             'subject' => 'required|max:255',
-            'user_id' => 'required|exists:users,id',
+            'user_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where(static function ($tenantQuery) use ($companyId): void {
+                        $tenantQuery->where('id', $companyId)
+                            ->orWhere('created_by', $companyId);
+                    });
+                }),
+            ],
             'value' => 'required',
-            'type_id' => 'required|exists:contract_types,id',
+            'type_id' => [
+                'required',
+                'integer',
+                Rule::exists('contract_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'start_date' => 'required|date',
             'end_date' => 'required|date|after:start_date',
             'description' => 'nullable|string',

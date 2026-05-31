@@ -66,6 +66,10 @@ class AllowanceTypeController extends Controller
     public function update(UpdateAllowanceTypeRequest $request, AllowanceType $allowancetype)
     {
         if (Auth::user()->can('edit-allowance-types')) {
+            if ((int) $allowancetype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.allowance-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -86,6 +90,10 @@ class AllowanceTypeController extends Controller
     public function destroy(AllowanceType $allowancetype)
     {
         if (Auth::user()->can('delete-allowance-types')) {
+            if ((int) $allowancetype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.allowance-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAllowanceType::dispatch($allowancetype);
             $allowancetype->delete();
 

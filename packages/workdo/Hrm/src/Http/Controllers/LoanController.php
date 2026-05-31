@@ -20,11 +20,16 @@ class LoanController extends Controller
         if (Auth::user()->can('create-loans')) {
             $validated = $request->validated();
 
-            $employee = Employee::find($validated['employee_id']);
+            $employee = Employee::query()
+                ->where('id', (int) $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             if ($employee) {
                 // Check if employee already has a loan
-                $existingLoan = Loan::where('employee_id', $employee->user_id)
+                $existingLoan = Loan::query()
+                    ->where('created_by', creatorId())
+                    ->where('employee_id', $employee->user_id)
                     ->where('loan_type_id', $validated['loan_type_id'])
                     ->first();
 
@@ -59,11 +64,16 @@ class LoanController extends Controller
     public function update(UpdateLoanRequest $request, Loan $loan)
     {
         if (Auth::user()->can('edit-loans')) {
+            if (!$this->canAccessLoan($loan)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
 
             $validated = $request->validated();
 
             // Check if another employee already has a loan (excluding current loan)
-            $existingLoan = Loan::where('employee_id', $loan->employee_id)
+            $existingLoan = Loan::query()
+                ->where('created_by', creatorId())
+                ->where('employee_id', $loan->employee_id)
                 ->where('loan_type_id', $validated['loan_type_id'])
                 ->where('id', '!=', $loan->id)
                 ->first();
@@ -92,6 +102,10 @@ class LoanController extends Controller
     public function destroy(Loan $loan, Employee $employee)
     {
         if (Auth::user()->can('delete-loans')) {
+            if (!$this->canAccessLoan($loan)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             DestroyLoan::dispatch($loan);
             $loan->delete();
 
@@ -99,5 +113,10 @@ class LoanController extends Controller
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessLoan(Loan $loan): bool
+    {
+        return (int) $loan->created_by === (int) creatorId();
     }
 }

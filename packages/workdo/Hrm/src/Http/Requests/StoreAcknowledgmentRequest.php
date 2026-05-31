@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAcknowledgmentRequest extends FormRequest
 {
@@ -13,9 +14,23 @@ class StoreAcknowledgmentRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
-            'employee_id' => 'required|exists:users,id',
-            'document_id' => 'required|exists:hrm_documents,id',
+            'employee_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'document_id' => [
+                'required',
+                'integer',
+                Rule::exists('hrm_documents', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'acknowledgment_note' => 'nullable|string'
         ];
     }

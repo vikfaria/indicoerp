@@ -14,10 +14,30 @@ class StoreWarningRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
-            'employee_id' => 'required|exists:users,id',
-            'warning_by' => 'required|exists:users,id',
-            'warning_type_id' => 'required|exists:warning_types,id',
+            'employee_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'warning_by' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'warning_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('warning_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'subject' => 'required|max:255',
             'severity' => 'required',
             'warning_date' => 'required|date',

@@ -88,6 +88,10 @@ class HolidayController extends Controller
     public function update(UpdateHolidayRequest $request, Holiday $holiday)
     {
         if(Auth::user()->can('edit-holidays')){
+            if (!$this->canAccessHoliday($holiday)) {
+                return redirect()->route('hrm.holidays.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             $validated['is_paid'] = $request->boolean('is_paid', false);
@@ -117,6 +121,10 @@ class HolidayController extends Controller
     public function destroy(Holiday $holiday)
     {
         if(Auth::user()->can('delete-holidays')){
+            if (!$this->canAccessHoliday($holiday)) {
+                return redirect()->route('hrm.holidays.index')->with('error', __('Permission denied'));
+            }
+
             DestroyHoliday::dispatch($holiday);
             $holiday->delete();
 
@@ -127,6 +135,10 @@ class HolidayController extends Controller
         }
     }
 
+    private function canAccessHoliday(Holiday $holiday): bool
+    {
+        return (int) $holiday->created_by === (int) creatorId();
+    }
 
 
 

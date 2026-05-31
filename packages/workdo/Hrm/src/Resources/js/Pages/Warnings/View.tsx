@@ -83,12 +83,13 @@ export default function WarningView({ warning, onClose }: WarningViewProps) {
                         </label>
                         <div className="mt-1">
                             <span className={`px-2 py-1 rounded-full text-sm ${
+                                warning.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                 warning.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                 warning.status === 'approved' ? 'bg-green-100 text-green-800' :
                                 warning.status === 'rejected' ? 'bg-red-100 text-red-800' :
                                 'bg-gray-100 text-gray-800'
                             }`}>
-                                {t(warning.status ? warning.status.charAt(0).toUpperCase() + warning.status.slice(1) : 'Pending')}
+                                {warning.is_cancelled ? t('Cancelled') : t(warning.status ? warning.status.charAt(0).toUpperCase() + warning.status.slice(1) : 'Pending')}
                             </span>
                         </div>
                     </div>
@@ -170,6 +171,15 @@ export default function WarningView({ warning, onClose }: WarningViewProps) {
                         </label>
                         <div className="mt-2 p-3 bg-blue-50 rounded-lg">
                             <p className="text-sm">{warning.employee_response}</p>
+                        </div>
+                    </div>
+                )}
+
+                {warning.is_cancelled && warning.cancellation_reason && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">{t('Cancellation Reason')}</label>
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg">
+                            <p className="text-sm">{warning.cancellation_reason}</p>
                         </div>
                     </div>
                 )}

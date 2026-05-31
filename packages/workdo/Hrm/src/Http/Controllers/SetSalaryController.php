@@ -42,9 +42,12 @@ class SetSalaryController extends Controller
                     }
                 })
                 ->when(request('search'), function ($q) {
-                    $q->whereHas('user', function ($query) {
-                        $query->where('name', 'like', '%' . request('search') . '%');
-                    })->orWhere('employee_id', 'like', '%' . request('search') . '%');
+                    $search = (string) request('search');
+                    $q->where(function ($query) use ($search): void {
+                        $query->whereHas('user', function ($userQuery) use ($search): void {
+                            $userQuery->where('name', 'like', '%' . $search . '%');
+                        })->orWhere('employee_id', 'like', '%' . $search . '%');
+                    });
                 })
                 ->when(request('employee_id'), fn($q) => $q->where('id', request('employee_id')))
                 ->when(request('sort'), fn($q) => $q->orderBy(request('sort'), request('direction', 'asc')), fn($q) => $q->latest())
@@ -149,6 +152,10 @@ class SetSalaryController extends Controller
     public function update(Employee $employee)
     {
         if (Auth::user()->can('edit-set-salary')) {
+            if(!$this->checkEmployeeAccess($employee)) {
+                return redirect()->route('hrm.set-salary.index')->with('error', __('Permission denied'));
+            }
+
             request()->validate([
                 'basic_salary' => 'required|numeric|min:0',
             ]);

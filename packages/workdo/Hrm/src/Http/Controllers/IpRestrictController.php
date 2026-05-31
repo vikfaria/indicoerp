@@ -66,6 +66,10 @@ class IpRestrictController extends Controller
     public function update(UpdateIpRestrictRequest $request, IpRestrict $iprestrict)
     {
         if(Auth::user()->can('edit-ip-restricts')){
+            if (!$this->canAccessIpRestrict($iprestrict)) {
+                return redirect()->route('hrm.ip-restricts.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -84,6 +88,10 @@ class IpRestrictController extends Controller
     public function destroy(IpRestrict $iprestrict)
     {
         if(Auth::user()->can('delete-ip-restricts')){
+            if (!$this->canAccessIpRestrict($iprestrict)) {
+                return redirect()->route('hrm.ip-restricts.index')->with('error', __('Permission denied'));
+            }
+
             $iprestrict->delete();
 
             return redirect()->route('hrm.ip-restricts.index')->with('success', __('The ip restrict has been deleted.'));
@@ -102,6 +110,11 @@ class IpRestrictController extends Controller
         else{
             return redirect()->route('hrm.ip-restricts.index')->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessIpRestrict(IpRestrict $iprestrict): bool
+    {
+        return (int) $iprestrict->created_by === (int) creatorId();
     }
 
 

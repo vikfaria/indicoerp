@@ -102,6 +102,7 @@ class DashboardController extends Controller
 
         // Terminations (current month with accepted status)
         $terminations = Termination::where('created_by', $creatorId)
+            ->active()
             ->where('status', 'approved')
             ->whereMonth('termination_date', $today->month)
             ->whereYear('termination_date', $today->year)
@@ -352,12 +353,14 @@ class DashboardController extends Controller
 
         // Total Warnings (this year)
         $totalWarnings = Warning::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->whereYear('warning_date', $currentYear)
             ->count();
 
         // Total Complaints (this year)
         $totalComplaints = Complaint::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->whereYear('complaint_date', $currentYear)
             ->count();
@@ -468,6 +471,7 @@ class DashboardController extends Controller
 
         // Recent Warnings for Employee
         $recentWarnings = Warning::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->with('warningType')
             ->latest()

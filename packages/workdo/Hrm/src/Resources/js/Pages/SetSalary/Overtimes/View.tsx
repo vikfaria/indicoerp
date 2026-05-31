@@ -1,7 +1,6 @@
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTranslation } from 'react-i18next';
-import { Clock, FileText, Calendar, Tag, User, AlertCircle, Hash } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Clock, FileText, Calendar, Tag, AlertCircle, Hash } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/utils/helpers';
 
 interface Overtime {
@@ -14,6 +13,10 @@ interface Overtime {
     end_date?: string;
     notes?: string;
     status: string;
+    approval_status?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    rejection_reason?: string | null;
 }
 
 interface ViewOvertimeProps {
@@ -22,6 +25,13 @@ interface ViewOvertimeProps {
 
 export default function View({ overtime }: ViewOvertimeProps) {
     const { t } = useTranslation();
+    const approvalStatus = overtime.approval_status ?? (overtime.status === 'active' ? 'approved' : 'rejected');
+
+    const badgeClassByStatus: Record<string, string> = {
+        pending: 'bg-yellow-100 text-yellow-800',
+        approved: 'bg-green-100 text-green-800',
+        rejected: 'bg-red-100 text-red-800',
+    };
 
     return (
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -103,14 +113,32 @@ export default function View({ overtime }: ViewOvertimeProps) {
                             </label>
                             <div className="mt-1">
                                 <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-                                    overtime.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                    badgeClassByStatus[approvalStatus] ?? 'bg-gray-100 text-gray-800'
                                 }`}>
-                                    {t(overtime.status === 'active' ? 'Active' : 'Expired')}
+                                    {t(approvalStatus.charAt(0).toUpperCase() + approvalStatus.slice(1))}
                                 </span>
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {overtime.approved_at && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">
+                            {t('Approved At')}
+                        </label>
+                        <p className="mt-1 text-sm">{formatDate(overtime.approved_at)}</p>
+                    </div>
+                )}
+
+                {overtime.rejected_at && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500">
+                            {t('Rejected At')}
+                        </label>
+                        <p className="mt-1 text-sm">{formatDate(overtime.rejected_at)}</p>
+                    </div>
+                )}
                 
                 {overtime.notes && (
                     <div>
@@ -120,6 +148,18 @@ export default function View({ overtime }: ViewOvertimeProps) {
                         </label>
                         <div className="mt-2 p-3 bg-gray-50 rounded-lg">
                             <p className="text-sm">{overtime.notes}</p>
+                        </div>
+                    </div>
+                )}
+
+                {overtime.rejection_reason && (
+                    <div>
+                        <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            {t('Rejection Reason')}
+                        </label>
+                        <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-100">
+                            <p className="text-sm">{overtime.rejection_reason}</p>
                         </div>
                     </div>
                 )}

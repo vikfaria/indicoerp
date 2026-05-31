@@ -23,7 +23,9 @@ class DocumentCategoryController extends Controller
                     if(Auth::user()->can('manage-any-document-categories')) {
                         $q->where('created_by', creatorId());
                     } elseif(Auth::user()->can('manage-own-document-categories')) {
-                        $q->where('creator_id', Auth::id());
+                        $q
+                            ->where('created_by', creatorId())
+                            ->where('creator_id', Auth::id());
                     } else {
                         $q->whereRaw('1 = 0');
                     }
@@ -68,6 +70,10 @@ class DocumentCategoryController extends Controller
     public function update(UpdateDocumentCategoryRequest $request, DocumentCategory $documentcategory)
     {
         if(Auth::user()->can('edit-document-categories')){
+            if (!$this->canAccessDocumentCategory($documentcategory)) {
+                return redirect()->route('hrm.document-categories.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             $validated['status'] = $request->boolean('status', true);
@@ -89,6 +95,10 @@ class DocumentCategoryController extends Controller
     public function destroy(DocumentCategory $documentcategory)
     {
         if(Auth::user()->can('delete-document-categories')){
+            if (!$this->canAccessDocumentCategory($documentcategory)) {
+                return redirect()->route('hrm.document-categories.index')->with('error', __('Permission denied'));
+            }
+
             DestroyDocumentCategory::dispatch($documentcategory);
             $documentcategory->delete();
 
@@ -99,5 +109,20 @@ class DocumentCategoryController extends Controller
         }
     }
 
+    private function canAccessDocumentCategory(DocumentCategory $documentCategory): bool
+    {
+        if ((int) $documentCategory->created_by !== (int) creatorId()) {
+            return false;
+        }
 
+        if (Auth::user()->can('manage-any-document-categories')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-document-categories')) {
+            return (int) $documentCategory->creator_id === (int) Auth::id();
+        }
+
+        return false;
+    }
 }

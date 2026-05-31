@@ -19,11 +19,16 @@ class DeductionController extends Controller
     {
         if (Auth::user()->can('create-deductions')) {
             $validated = $request->validated();
-            $employee = Employee::find($validated['employee_id']);
+            $employee = Employee::query()
+                ->where('id', (int) $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             if ($employee) {
 
-                $existingDeduction = Deduction::where('employee_id', $employee->user_id)
+                $existingDeduction = Deduction::query()
+                    ->where('created_by', creatorId())
+                    ->where('employee_id', $employee->user_id)
                     ->where('deduction_type_id', $validated['deduction_type_id'])
                     ->first();
 
@@ -54,9 +59,15 @@ class DeductionController extends Controller
     public function update(UpdateDeductionRequest $request, Deduction $deduction)
     {
         if (Auth::user()->can('edit-deductions')) {
+            if (!$this->canAccessDeduction($deduction)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
-            $existingDeduction = Deduction::where('employee_id', $deduction->employee_id)
+            $existingDeduction = Deduction::query()
+                ->where('created_by', creatorId())
+                ->where('employee_id', $deduction->employee_id)
                 ->where('deduction_type_id', $validated['deduction_type_id'])
                 ->where('id', '!=', $deduction->id)
                 ->first();
@@ -82,6 +93,10 @@ class DeductionController extends Controller
     public function destroy(Deduction $deduction, Employee $employee)
     {
         if (Auth::user()->can('delete-deductions')) {
+            if (!$this->canAccessDeduction($deduction)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             DestroyDeduction::dispatch($deduction);
             $deduction->delete();
 
@@ -89,5 +104,10 @@ class DeductionController extends Controller
         } else {
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessDeduction(Deduction $deduction): bool
+    {
+        return (int) $deduction->created_by === (int) creatorId();
     }
 }

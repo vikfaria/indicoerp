@@ -2,6 +2,7 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueLabourComplianceService;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -12,6 +13,10 @@ use Workdo\Hrm\Models\Employee;
 
 class LeaveBalanceController extends Controller
 {
+    public function __construct(private readonly MozambiqueLabourComplianceService $labourComplianceService)
+    {
+    }
+
     public function index()
     {
         if (Auth::user()->can('manage-leave-balance')) {
@@ -43,13 +48,22 @@ class LeaveBalanceController extends Controller
 
                 foreach ($leaveTypes as $leaveType) {
                     $usedLeaves = LeaveApplication::where('employee_id', $employee->id)->where('leave_type_id', $leaveType->id)->where('status', 'approved')->whereYear('start_date', $currentYear)->sum('total_days');
+                    $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
+                        creatorId(),
+                        (int) $employee->id,
+                        $leaveType,
+                        (int) $currentYear
+                    );
+                    $totalDays = (int) ($entitlement['final_entitlement_days'] ?? 0);
 
                     $employeeBalance['leave_types'][] = [
                         'leave_type_name' => $leaveType->name,
                         'leave_type_color' => $leaveType->color,
-                        'total_days' => $leaveType->max_days_per_year,
+                        'total_days' => $totalDays,
+                        'base_entitlement_days' => (int) ($entitlement['base_entitlement_days'] ?? $totalDays),
+                        'absence_penalty_days' => (int) ($entitlement['absence_penalty_days'] ?? 0),
                         'used_days' => $usedLeaves,
-                        'available_days' => $leaveType->max_days_per_year - $usedLeaves,
+                        'available_days' => $totalDays - $usedLeaves,
                     ];
                 }
 

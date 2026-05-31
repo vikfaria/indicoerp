@@ -32,6 +32,11 @@ export default function EditTermination({ termination, onSuccess }: EditTerminat
         offboarding_archive_completed_at: termination.offboarding_archive_completed_at || '',
         offboarding_completed_at: termination.offboarding_completed_at || '',
         offboarding_notes: termination.offboarding_notes || '',
+        settlement_unused_leave_days: termination.settlement_unused_leave_days?.toString() || '',
+        settlement_other_earnings_amount: termination.settlement_other_earnings_amount?.toString() || '',
+        settlement_other_deductions_amount: termination.settlement_other_deductions_amount?.toString() || '',
+        settlement_apply_indemnity: termination.settlement_apply_indemnity ?? true,
+        settlement_indemnity_days_per_year: termination.settlement_indemnity_days_per_year?.toString() || '45',
         reason: termination.reason ?? '',
         description: termination.description ?? '',
         document: termination.document || '',
@@ -170,6 +175,68 @@ export default function EditTermination({ termination, onSuccess }: EditTerminat
                             rows={2}
                         />
                         <InputError message={errors.offboarding_notes} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border rounded-md p-3">
+                    <div className="md:col-span-2">
+                        <p className="text-sm font-medium">{t('Final Settlement Inputs')}</p>
+                        <p className="text-xs text-muted-foreground">{t('Used to recompute legal pre-notice and final settlement.')}</p>
+                    </div>
+                    <div>
+                        <Label>{t('Unused Leave Days')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_unused_leave_days}
+                            onChange={(e) => setData('settlement_unused_leave_days', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_unused_leave_days} />
+                    </div>
+                    <div>
+                        <Label>{t('Other Earnings')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_other_earnings_amount}
+                            onChange={(e) => setData('settlement_other_earnings_amount', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_other_earnings_amount} />
+                    </div>
+                    <div>
+                        <Label>{t('Other Deductions')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_other_deductions_amount}
+                            onChange={(e) => setData('settlement_other_deductions_amount', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_other_deductions_amount} />
+                    </div>
+                    <div>
+                        <Label>{t('Indemnity Days / Year')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_indemnity_days_per_year}
+                            onChange={(e) => setData('settlement_indemnity_days_per_year', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_indemnity_days_per_year} />
+                    </div>
+                    <div className="md:col-span-2 flex items-center gap-2">
+                        <input
+                            id="settlement_apply_indemnity"
+                            type="checkbox"
+                            checked={data.settlement_apply_indemnity}
+                            onChange={(e) => setData('settlement_apply_indemnity', e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="settlement_apply_indemnity">{t('Apply indemnity calculation')}</Label>
+                        <InputError message={errors.settlement_apply_indemnity} />
                     </div>
                 </div>
                 

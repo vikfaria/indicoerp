@@ -67,6 +67,10 @@ class ComplaintTypeController extends Controller
     public function update(UpdateComplaintTypeRequest $request, ComplaintType $complainttype)
     {
         if(Auth::user()->can('edit-complaint-types')){
+            if ((int) $complainttype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.complaint-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -87,6 +91,10 @@ class ComplaintTypeController extends Controller
     public function destroy(ComplaintType $complainttype)
     {
         if(Auth::user()->can('delete-complaint-types')){
+            if ((int) $complainttype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.complaint-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyComplaintType::dispatch($complainttype);
             $complainttype->delete();
 

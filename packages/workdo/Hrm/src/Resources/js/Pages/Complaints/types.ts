@@ -17,6 +17,10 @@ export interface Complaint {
     resolution_date?: string;
     investigation_started_at?: string;
     investigation_closed_at?: string;
+    is_cancelled?: boolean;
+    cancelled_at?: string;
+    cancelled_by?: number;
+    cancellation_reason?: string;
     creator_id: number;
     created_by: number;
     employee?: {

@@ -33,6 +33,8 @@ export interface Attendance {
     overtime_hours?: number;
     overtime_amount?: number;
     status: 'present' | 'half_day' | 'absent';
+    is_justified?: boolean | null;
+    absence_category?: string | null;
     notes?: string;
     user?: User;
     employee?: Employee;
@@ -46,6 +48,8 @@ export interface CreateAttendanceFormData {
     clock_in: string;
     clock_out: string;
     break_hour: string;
+    is_justified: string;
+    absence_category: string;
     notes: string;
 }
 
@@ -55,6 +59,8 @@ export interface EditAttendanceFormData {
     clock_in: string;
     clock_out: string;
     break_hour: string;
+    is_justified: string;
+    absence_category: string;
     notes: string;
 }
 

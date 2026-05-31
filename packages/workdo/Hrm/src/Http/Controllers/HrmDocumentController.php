@@ -24,7 +24,9 @@ class HrmDocumentController extends Controller
                     if(Auth::user()->can('manage-any-hrm-documents')) {
                         $q->where('created_by', creatorId());
                     } elseif(Auth::user()->can('manage-own-hrm-documents')) {
-                        $q->where('creator_id', Auth::id());
+                        $q
+                            ->where('created_by', creatorId())
+                            ->where('creator_id', Auth::id());
                     } else {
                         $q->whereRaw('1 = 0');
                     }
@@ -53,6 +55,14 @@ class HrmDocumentController extends Controller
         if(Auth::user()->can('create-hrm-documents')){
             $validated = $request->validated();
 
+            $categoryExists = DocumentCategory::query()
+                ->where('created_by', creatorId())
+                ->where('id', (int) $validated['document_category_id'])
+                ->exists();
+            if (!$categoryExists) {
+                return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
+            }
+
             $document = new HrmDocument();
             $document->title = $validated['title'];
             $document->description = $validated['description'];
@@ -75,7 +85,19 @@ class HrmDocumentController extends Controller
     public function update(UpdateHrmDocumentRequest $request, HrmDocument $hrmDocument)
     {
         if(Auth::user()->can('edit-hrm-documents')){
+            if (!$this->canAccessDocument($hrmDocument)) {
+                return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
+
+            $categoryExists = DocumentCategory::query()
+                ->where('created_by', creatorId())
+                ->where('id', (int) $validated['document_category_id'])
+                ->exists();
+            if (!$categoryExists) {
+                return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
+            }
 
             $hrmDocument->title = $validated['title'];
             $hrmDocument->description = $validated['description'];
@@ -95,6 +117,10 @@ class HrmDocumentController extends Controller
     public function updateStatus(HrmDocument $hrmDocument)
     {
         if(Auth::user()->can('manage-hrm-documents-status')){
+            if (!$this->canAccessDocument($hrmDocument)) {
+                return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
+            }
+
             $validated = request()->validate([
                 'status' => 'required|in:pending,approve,reject',
             ]);
@@ -118,6 +144,10 @@ class HrmDocumentController extends Controller
     public function destroy(HrmDocument $hrmDocument)
     {
         if(Auth::user()->can('delete-hrm-documents')){
+            if (!$this->canAccessDocument($hrmDocument)) {
+                return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
+            }
+
             DestroyDocument::dispatch($hrmDocument);
             $hrmDocument->delete();
             return redirect()->back()->with('success', __('The document has been deleted.'));
@@ -125,5 +155,22 @@ class HrmDocumentController extends Controller
         else{
             return redirect()->route('hrm.documents.index')->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessDocument(HrmDocument $document): bool
+    {
+        if ((int) $document->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-hrm-documents')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-hrm-documents')) {
+            return (int) $document->creator_id === (int) Auth::id();
+        }
+
+        return false;
     }
 }

@@ -68,6 +68,10 @@ class LoanTypeController extends Controller
     public function update(UpdateLoanTypeRequest $request, LoanType $loantype)
     {
         if(Auth::user()->can('edit-loan-types')){
+            if ((int) $loantype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.loan-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -89,6 +93,10 @@ class LoanTypeController extends Controller
     public function destroy(LoanType $loantype)
     {
         if(Auth::user()->can('delete-loan-types')){
+            if ((int) $loantype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.loan-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyLoanType::dispatch($loantype);
             $loantype->delete();
 

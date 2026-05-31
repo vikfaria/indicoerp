@@ -2,6 +2,9 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueTerminationSettlementService;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Workdo\Hrm\Models\Termination;
 use Workdo\Hrm\Http\Requests\StoreTerminationRequest;
 use Workdo\Hrm\Http\Requests\UpdateTerminationRequest;
@@ -18,6 +21,10 @@ use Workdo\Hrm\Events\UpdateTerminationStatus;
 
 class TerminationController extends Controller
 {
+    public function __construct(
+        private readonly MozambiqueTerminationSettlementService $settlementService
+    ) {}
+
     public function index()
     {
         if (Auth::user()->can('manage-terminations')) {
@@ -27,7 +34,11 @@ class TerminationController extends Controller
                     if (Auth::user()->can('manage-any-terminations')) {
                         $q->where('created_by', creatorId());
                     } elseif (Auth::user()->can('manage-own-terminations')) {
-                        $q->where('creator_id', Auth::id())->orWhere('employee_id', Auth::id());
+                        $q->where('created_by', creatorId())
+                            ->where(function ($ownQuery): void {
+                                $ownQuery->where('creator_id', Auth::id())
+                                    ->orWhere('employee_id', Auth::id());
+                            });
                     } else {
                         $q->whereRaw('1 = 0');
                     }
@@ -57,7 +68,18 @@ class TerminationController extends Controller
         if (Auth::user()->can('create-terminations')) {
             $validated = $request->validated();
 
+            $employeeProfile = $this->resolveScopedEmployee((int) $validated['employee_id']);
+            if (!$employeeProfile) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee is invalid for this company.')])
+                    ->withInput();
+            }
 
+            if (!$this->terminationTypeBelongsToCompany((int) $validated['termination_type_id'])) {
+                return redirect()->back()
+                    ->withErrors(['termination_type_id' => __('Selected termination type is invalid for this company.')])
+                    ->withInput();
+            }
 
             $termination = new Termination();
             $termination->notice_date = $validated['notice_date'];
@@ -69,6 +91,7 @@ class TerminationController extends Controller
             $termination->termination_type_id = $validated['termination_type_id'];
             $termination->status = 'pending';
             $this->applyOffboardingChecklist($termination, $validated);
+            $this->applySettlement($termination, $validated, $employeeProfile, true);
 
             $termination->creator_id = Auth::id();
             $termination->created_by = creatorId();
@@ -85,9 +108,28 @@ class TerminationController extends Controller
     public function update(UpdateTerminationRequest $request, Termination $termination)
     {
         if (Auth::user()->can('edit-terminations')) {
+            if (!$this->canAccessTermination($termination)) {
+                return redirect()->route('hrm.terminations.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($termination->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled terminations cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
+            $employeeProfile = $this->resolveScopedEmployee((int) $validated['employee_id']);
+            if (!$employeeProfile) {
+                return redirect()->back()
+                    ->withErrors(['employee_id' => __('Selected employee is invalid for this company.')])
+                    ->withInput();
+            }
 
+            if (!$this->terminationTypeBelongsToCompany((int) $validated['termination_type_id'])) {
+                return redirect()->back()
+                    ->withErrors(['termination_type_id' => __('Selected termination type is invalid for this company.')])
+                    ->withInput();
+            }
 
             $termination->notice_date = $validated['notice_date'];
             $termination->termination_date = $validated['termination_date'];
@@ -97,8 +139,12 @@ class TerminationController extends Controller
             $termination->employee_id = $validated['employee_id'];
             $termination->termination_type_id = $validated['termination_type_id'];
             $this->applyOffboardingChecklist($termination, $validated);
+            $this->applySettlement($termination, $validated, $employeeProfile, true);
 
             $termination->save();
+            if ((string) $termination->status === 'approved') {
+                $this->syncForeignWorkerCessationFromTermination($termination);
+            }
 
             UpdateTermination::dispatch($request, $termination);
 
@@ -111,18 +157,43 @@ class TerminationController extends Controller
     public function destroy(Termination $termination)
     {
         if (Auth::user()->can('delete-terminations')) {
-            DestroyTermination::dispatch($termination);
-            $termination->delete();
+            if (!$this->canAccessTermination($termination)) {
+                return redirect()->route('hrm.terminations.index')->with('error', __('Permission denied'));
+            }
 
-            return redirect()->back()->with('success', __('The termination has been deleted.'));
+            if ((bool) ($termination->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Termination is already cancelled.'));
+            }
+
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyTermination::dispatch($termination);
+            $termination->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Termination cancelled successfully.'));
         } else {
             return redirect()->route('hrm.terminations.index')->with('error', __('Permission denied'));
         }
     }
 
-    public function updateStatus(\Illuminate\Http\Request $request, Termination $termination)
+    public function updateStatus(Request $request, Termination $termination)
     {
         if (Auth::user()->can('manage-termination-status')) {
+            if (!$this->canAccessTermination($termination)) {
+                return redirect()->route('hrm.terminations.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($termination->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled terminations cannot be processed.'));
+            }
+
             $validated = $request->validate([
                 'status' => 'required|in:pending,approved,rejected'
             ]);
@@ -134,6 +205,9 @@ class TerminationController extends Controller
             }
 
             $termination->save();
+            if ($validated['status'] === 'approved') {
+                $this->syncForeignWorkerCessationFromTermination($termination);
+            }
             UpdateTerminationStatus::dispatch($request, $termination);
 
             return redirect()->back()->with('success', __('Termination status updated successfully.'));
@@ -168,5 +242,90 @@ class TerminationController extends Controller
         $termination->offboarding_archive_completed_at = $validated['offboarding_archive_completed_at'] ?? null;
         $termination->offboarding_completed_at = $validated['offboarding_completed_at'] ?? null;
         $termination->offboarding_notes = $validated['offboarding_notes'] ?? null;
+    }
+
+    private function applySettlement(
+        Termination $termination,
+        array $validated,
+        ?Employee $employeeProfile,
+        bool $defaultApplyIndemnity
+    ): void {
+        $noticeDate = (string) ($validated['notice_date'] ?? $termination->notice_date?->toDateString());
+        $effectiveDate = (string) ($validated['termination_date'] ?? $termination->termination_date?->toDateString());
+
+        if ($noticeDate === '' || $effectiveDate === '') {
+            return;
+        }
+
+        $companyId = (int) creatorId();
+        $settlement = $this->settlementService->build(
+            $employeeProfile,
+            $noticeDate,
+            $effectiveDate,
+            $validated,
+            $defaultApplyIndemnity,
+            $companyId
+        );
+
+        foreach ($settlement as $field => $value) {
+            $termination->{$field} = $value;
+        }
+    }
+
+    private function canAccessTermination(Termination $termination): bool
+    {
+        if ((int) $termination->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-terminations')) {
+            return true;
+        }
+
+        return (int) $termination->creator_id === (int) Auth::id()
+            || (int) $termination->employee_id === (int) Auth::id();
+    }
+
+    private function resolveScopedEmployee(int $employeeUserId): ?Employee
+    {
+        return Employee::query()
+            ->where('created_by', creatorId())
+            ->where('user_id', $employeeUserId)
+            ->first();
+    }
+
+    private function terminationTypeBelongsToCompany(int $terminationTypeId): bool
+    {
+        return TerminationType::query()
+            ->where('created_by', creatorId())
+            ->where('id', $terminationTypeId)
+            ->exists();
+    }
+
+    private function syncForeignWorkerCessationFromTermination(Termination $termination): void
+    {
+        $employee = $this->resolveScopedEmployee((int) $termination->employee_id);
+        if (!$employee) {
+            return;
+        }
+
+        $profile = $employee->foreignWorkerProfile;
+        if (!$profile || !(bool) $profile->is_foreign_worker) {
+            return;
+        }
+
+        $effectiveDate = $termination->termination_date?->toDateString();
+        if (!$effectiveDate) {
+            return;
+        }
+
+        $profile->cessation_effective_date = $effectiveDate;
+        $profile->cessation_notification_due_at = Carbon::parse($effectiveDate)->addDays(5)->toDateString();
+
+        if ($termination->offboarding_migration_notified_at) {
+            $profile->cessation_notified_at = Carbon::parse($termination->offboarding_migration_notified_at)->toDateString();
+        }
+
+        $profile->save();
     }
 }

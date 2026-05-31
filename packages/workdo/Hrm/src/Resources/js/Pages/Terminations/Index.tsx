@@ -62,7 +62,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.terminations.destroy',
-        defaultMessage: t('Are you sure you want to delete this termination?')
+        defaultMessage: t('Are you sure you want to cancel this termination?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        }
     });
 
     const handleFilter = () => {
@@ -132,6 +142,12 @@ export default function Index() {
             render: (value: string) => value ? formatDate(value) : '-'
         },
         {
+            key: 'settlement_net_amount',
+            header: t('Settlement Net'),
+            sortable: false,
+            render: (value: number) => value !== null && value !== undefined ? formatCurrency(value) : '-'
+        },
+        {
             key: 'document',
             header: t('Document'),
             sortable: false,
@@ -147,15 +163,17 @@ export default function Index() {
             key: 'status',
             header: t('Status'),
             sortable: false,
-            render: (value: string) => {
+            render: (value: string, row: Termination) => {
                 const statusColors = {
                     pending: 'bg-yellow-100 text-yellow-800',
                     approved: 'bg-green-100 text-green-800',
-                    rejected: 'bg-red-100 text-red-800'
+                    rejected: 'bg-red-100 text-red-800',
+                    cancelled: 'bg-slate-200 text-slate-800'
                 };
+                const displayStatus = row?.is_cancelled ? 'cancelled' : (value || 'pending');
                 return (
-                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[value as keyof typeof statusColors] || statusColors.pending}`}>
-                        {t(value?.charAt(0).toUpperCase() + value?.slice(1) || 'Pending')}
+                    <span className={`px-2 py-1 rounded-full text-sm ${statusColors[displayStatus as keyof typeof statusColors] || statusColors.pending}`}>
+                        {t(displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1))}
                     </span>
                 );
             }
@@ -172,7 +190,7 @@ export default function Index() {
             render: (_: any, termination: Termination) => (
                 <div className="flex gap-1">
                     <TooltipProvider>
-                        {auth.user?.permissions?.includes('manage-termination-status') && termination.status === 'pending' && (
+                        {auth.user?.permissions?.includes('manage-termination-status') && !termination.is_cancelled && termination.status === 'pending' && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openStatusModal(termination)} className="h-8 w-8 p-0 text-purple-600 hover:text-purple-700">
@@ -196,7 +214,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('edit-terminations') && (
+                        {auth.user?.permissions?.includes('edit-terminations') && !termination.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('edit', termination)} className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700">
@@ -208,7 +226,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('delete-terminations') && (
+                        {auth.user?.permissions?.includes('delete-terminations') && !termination.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button
@@ -393,12 +411,13 @@ export default function Index() {
                                                     <div className="text-xs min-w-0">
                                                         <p className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">{t('Status')}</p>
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block ${
+                                                            termination.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                                             termination.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                             termination.status === 'approved' ? 'bg-green-100 text-green-800' :
                                                             termination.status === 'rejected' ? 'bg-red-100 text-red-800' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>
-                                                            {t(termination.status?.charAt(0).toUpperCase() + termination.status?.slice(1) || 'Pending')}
+                                                            {termination.is_cancelled ? t('Cancelled') : t(termination.status?.charAt(0).toUpperCase() + termination.status?.slice(1) || 'Pending')}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -437,7 +456,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('manage-termination-status') && termination.status === 'pending' && (
+                                                    {auth.user?.permissions?.includes('manage-termination-status') && !termination.is_cancelled && termination.status === 'pending' && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openStatusModal(termination)} className="h-9 w-9 p-0 text-purple-600 hover:text-purple-700">
@@ -449,7 +468,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('edit-terminations') && (
+                                                    {auth.user?.permissions?.includes('edit-terminations') && !termination.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('edit', termination)} className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700">
@@ -461,7 +480,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('delete-terminations') && (
+                                                    {auth.user?.permissions?.includes('delete-terminations') && !termination.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button
@@ -526,9 +545,9 @@ export default function Index() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Termination')}
+                title={t('Cancel Termination')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

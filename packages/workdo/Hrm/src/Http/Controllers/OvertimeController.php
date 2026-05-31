@@ -7,6 +7,7 @@ use Workdo\Hrm\Models\Overtime;
 use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Http\Requests\StoreOvertimeRequest;
 use Workdo\Hrm\Http\Requests\UpdateOvertimeRequest;
+use Workdo\Hrm\Http\Requests\UpdateOvertimeStatusRequest;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Workdo\Hrm\Events\CreateOverTime;
@@ -23,8 +24,11 @@ class OvertimeController extends Controller
     {
         if (Auth::user()->can('create-overtimes')) {
             $validated = $request->validated();
-            
-            $employee = Employee::find($validated['employee_id']);
+
+            $employee = Employee::query()
+                ->where('id', (int) $validated['employee_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             if ($employee) {
                 $overtimeCheck = $this->labourComplianceService->validateOvertime(
@@ -50,7 +54,7 @@ class OvertimeController extends Controller
                 $overtime->start_date = $validated['start_date'];
                 $overtime->end_date = $validated['end_date'];
                 $overtime->notes = $validated['notes'];
-                $overtime->status = $validated['status'];
+                $this->markAsPendingApproval($overtime);
                 $overtime->creator_id = Auth::id();
                 $overtime->created_by = creatorId();
                 $overtime->save();
@@ -69,6 +73,9 @@ class OvertimeController extends Controller
     public function update(UpdateOvertimeRequest $request, Overtime $overtime)
     {
         if (Auth::user()->can('edit-overtimes')) {
+            if (!$this->canAccessOvertime($overtime)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
 
             $validated = $request->validated();
             $overtimeCheck = $this->labourComplianceService->validateOvertime(
@@ -93,7 +100,7 @@ class OvertimeController extends Controller
             $overtime->start_date = $validated['start_date'];
             $overtime->end_date = $validated['end_date'];
             $overtime->notes = $validated['notes'];
-            $overtime->status = $validated['status'];
+            $this->markAsPendingApproval($overtime);
             $overtime->save();
 
             UpdateOverTime::dispatch($request, $overtime);
@@ -107,6 +114,10 @@ class OvertimeController extends Controller
     public function destroy(Overtime $overtime, Employee $employee)
     {
         if (Auth::user()->can('delete-overtimes')) {
+            if (!$this->canAccessOvertime($overtime)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             DestroyOverTime::dispatch($overtime);
             $overtime->delete();
 
@@ -114,5 +125,58 @@ class OvertimeController extends Controller
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
+    }
+
+    public function updateStatus(UpdateOvertimeStatusRequest $request, Overtime $overtime)
+    {
+        if (Auth::user()->can('edit-overtimes')) {
+            if (!$this->canAccessOvertime($overtime)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
+            $validated = $request->validated();
+            $status = (string) $validated['status'];
+
+            if ($status === 'approved') {
+                $overtime->approval_status = 'approved';
+                $overtime->status = 'active';
+                $overtime->approved_by = Auth::id();
+                $overtime->approved_at = now();
+                $overtime->rejected_by = null;
+                $overtime->rejected_at = null;
+                $overtime->rejection_reason = null;
+            } else {
+                $overtime->approval_status = 'rejected';
+                $overtime->status = 'expired';
+                $overtime->rejected_by = Auth::id();
+                $overtime->rejected_at = now();
+                $overtime->rejection_reason = trim((string) ($validated['rejection_reason'] ?? ''));
+                $overtime->approved_by = null;
+                $overtime->approved_at = null;
+            }
+
+            $overtime->save();
+            UpdateOverTime::dispatch($request, $overtime);
+
+            return redirect()->back()->with('success', __('Overtime status updated successfully.'))->with('timestamp', time());
+        }
+
+        return redirect()->back()->with('error', __('Permission denied'));
+    }
+
+    private function canAccessOvertime(Overtime $overtime): bool
+    {
+        return (int) $overtime->created_by === (int) creatorId();
+    }
+
+    private function markAsPendingApproval(Overtime $overtime): void
+    {
+        $overtime->approval_status = 'pending';
+        $overtime->status = 'expired';
+        $overtime->approved_by = null;
+        $overtime->approved_at = null;
+        $overtime->rejected_by = null;
+        $overtime->rejected_at = null;
+        $overtime->rejection_reason = null;
     }
 }

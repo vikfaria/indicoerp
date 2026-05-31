@@ -68,6 +68,10 @@ class DeductionTypeController extends Controller
     public function update(UpdateDeductionTypeRequest $request, DeductionType $deductiontype)
     {
         if(Auth::user()->can('edit-deduction-types')){
+            if ((int) $deductiontype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.deduction-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
             $deductiontype->name = $validated['name'];
             $deductiontype->description = $validated['description'];
@@ -86,6 +90,10 @@ class DeductionTypeController extends Controller
     public function destroy(DeductionType $deductiontype)
     {
         if(Auth::user()->can('delete-deduction-types')){
+            if ((int) $deductiontype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.deduction-types.index')->with('error', __('Permission denied'));
+            }
+
             DestroyDeductionType::dispatch($deductiontype);
             $deductiontype->delete();
 

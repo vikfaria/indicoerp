@@ -50,7 +50,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.complaints.destroy',
-        defaultMessage: t('Are you sure you want to delete this complaint?')
+        defaultMessage: t('Are you sure you want to cancel this complaint?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        }
     });
 
     const handleFilter = () => {
@@ -124,16 +134,17 @@ export default function Index() {
             key: 'status',
             header: t('Status'),
             sortable: false,
-            render: (value: string) => {
+            render: (value: string, row: Complaint) => {
                 const statusColors = {
                     'pending': 'bg-yellow-100 text-yellow-800',
                     'in review': 'bg-blue-100 text-blue-800',
                     'assigned': 'bg-purple-100 text-purple-800',
                     'in progress': 'bg-orange-100 text-orange-800',
-                    'resolved': 'bg-green-100 text-green-800'
+                    'resolved': 'bg-green-100 text-green-800',
+                    'cancelled': 'bg-slate-200 text-slate-800'
                 };
-                const normalizedStatus = value?.toLowerCase() || '';
-                const displayValue = value ? value.charAt(0).toUpperCase() + value.slice(1) : '-';
+                const normalizedStatus = row?.is_cancelled ? 'cancelled' : (value?.toLowerCase() || '');
+                const displayValue = row?.is_cancelled ? 'Cancelled' : (value ? value.charAt(0).toUpperCase() + value.slice(1) : '-');
                 return (
                     <span className={`px-2 py-1 rounded-full text-sm ${statusColors[normalizedStatus as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
                         {t(displayValue)}
@@ -161,7 +172,7 @@ export default function Index() {
 
 
                     <TooltipProvider>
-                        {auth.user?.permissions?.includes('manage-complaint-status') && (
+                        {auth.user?.permissions?.includes('manage-complaint-status') && !complaint.is_cancelled && (
                             <Tooltip delayDuration={300}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('status', complaint)} className="h-9 w-9 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50">
@@ -186,7 +197,7 @@ export default function Index() {
                             </Tooltip>
                         )}
 
-                        {auth.user?.permissions?.includes('edit-complaints') && (
+                        {auth.user?.permissions?.includes('edit-complaints') && !complaint.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button variant="ghost" size="sm" onClick={() => openModal('edit', complaint)} className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700">
@@ -198,7 +209,7 @@ export default function Index() {
                                 </TooltipContent>
                             </Tooltip>
                         )}
-                        {auth.user?.permissions?.includes('delete-complaints') && (
+                        {auth.user?.permissions?.includes('delete-complaints') && !complaint.is_cancelled && (
                             <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
                                     <Button
@@ -344,6 +355,7 @@ export default function Index() {
                                         <SelectItem value="assigned">{t('Assigned')}</SelectItem>
                                         <SelectItem value="in progress">{t('In Progress')}</SelectItem>
                                         <SelectItem value="resolved">{t('Resolved')}</SelectItem>
+                                        <SelectItem value="cancelled">{t('Cancelled')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -419,6 +431,7 @@ export default function Index() {
                                                     <div className="text-xs min-w-0">
                                                         <p className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">{t('Status')}</p>
                                                         <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block ${
+                                                            complaint.is_cancelled ? 'bg-slate-200 text-slate-800' :
                                                             complaint.status?.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                             complaint.status?.toLowerCase() === 'in review' ? 'bg-blue-100 text-blue-800' :
                                                             complaint.status?.toLowerCase() === 'assigned' ? 'bg-purple-100 text-purple-800' :
@@ -426,7 +439,7 @@ export default function Index() {
                                                             complaint.status?.toLowerCase() === 'resolved' ? 'bg-green-100 text-green-800' :
                                                             'bg-gray-100 text-gray-800'
                                                         }`}>
-                                                            {t(complaint.status ? complaint.status.charAt(0).toUpperCase() + complaint.status.slice(1) : '-')}
+                                                            {complaint.is_cancelled ? t('Cancelled') : t(complaint.status ? complaint.status.charAt(0).toUpperCase() + complaint.status.slice(1) : '-')}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -459,7 +472,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('manage-complaint-status') && (
+                                                    {auth.user?.permissions?.includes('manage-complaint-status') && !complaint.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('status', complaint)} className="h-9 w-9 p-0 text-purple-600 hover:text-purple-700">
@@ -471,7 +484,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('edit-complaints') && (
+                                                    {auth.user?.permissions?.includes('edit-complaints') && !complaint.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button variant="ghost" size="sm" onClick={() => openModal('edit', complaint)} className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700">
@@ -483,7 +496,7 @@ export default function Index() {
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
-                                                    {auth.user?.permissions?.includes('delete-complaints') && (
+                                                    {auth.user?.permissions?.includes('delete-complaints') && !complaint.is_cancelled && (
                                                         <Tooltip delayDuration={300}>
                                                             <TooltipTrigger asChild>
                                                                 <Button
@@ -557,9 +570,9 @@ export default function Index() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Complaint')}
+                title={t('Cancel Complaint')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

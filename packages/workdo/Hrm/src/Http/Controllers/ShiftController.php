@@ -75,6 +75,10 @@ class ShiftController extends Controller
     public function update(UpdateShiftRequest $request, Shift $shift)
     {
         if (Auth::user()->can('edit-shifts')) {
+            if ((int) $shift->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.shifts.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
             $shift->shift_name = $validated['shift_name'];
             $shift->start_time = $validated['start_time'];
@@ -95,6 +99,10 @@ class ShiftController extends Controller
     public function destroy(Shift $shift)
     {
         if (Auth::user()->can('delete-shifts')) {
+            if ((int) $shift->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.shifts.index')->with('error', __('Permission denied'));
+            }
+
             DestroyShift::dispatch($shift);
             $shift->delete();
 

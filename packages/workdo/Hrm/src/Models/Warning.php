@@ -29,6 +29,10 @@ class Warning extends Model
         'employee_id',
         'warning_by',
         'warning_type_id',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'creator_id',
         'created_by',
     ];
@@ -44,8 +48,17 @@ class Warning extends Model
             'response_deadline_at' => 'date',
             'decision_deadline_at' => 'date',
             'disciplinary_decision_at' => 'date',
+            'is_cancelled' => 'boolean',
+            'cancelled_at' => 'datetime',
             'document' => 'string',
         ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
     }
 
 
@@ -63,5 +76,10 @@ class Warning extends Model
     public function warningType()
     {
         return $this->belongsTo(WarningType::class,);
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 }

@@ -168,6 +168,117 @@ class MozambiquePayrollSubmissionReportService
         ];
     }
 
+    public function buildAnnualFiscalHistoryDataset(int $companyId, ?string $fiscalYear = null): array
+    {
+        [$year, $periodStart, $periodEnd] = $this->resolveFiscalYear($fiscalYear);
+        $payrolls = $this->resolveCompletedPayrolls($companyId, $periodStart, $periodEnd);
+        $entries = $this->resolvePayrollEntries($companyId, $payrolls->pluck('id'))
+            ->filter(function (PayrollEntry $entry) use ($periodStart, $periodEnd): bool {
+                $payDate = $this->resolveEntryPayDate($entry);
+                if ($payDate === null) {
+                    return false;
+                }
+
+                return $payDate->betweenIncluded($periodStart, $periodEnd);
+            })
+            ->values();
+
+        $rows = $entries
+            ->groupBy(fn (PayrollEntry $entry): int => (int) $entry->employee_id)
+            ->map(function (Collection $employeeEntries) use ($year, $companyId): array {
+                $firstEntry = $employeeEntries->first();
+                $employee = $firstEntry?->employee;
+                $residencyStatus = strtolower((string) ($employee?->foreignWorkerProfile?->residency_status ?? 'resident'));
+                if (!in_array($residencyStatus, ['resident', 'non_resident'], true)) {
+                    $residencyStatus = 'resident';
+                }
+
+                $eligibleDependentsTotal = 0;
+                $effectiveDependentsTotal = 0;
+                $dependentDeductionTotal = 0.0;
+                $adjustedTaxableIncomeTotal = 0.0;
+
+                foreach ($employeeEntries as $entry) {
+                    $eligibleDependentsCount = $this->countEligibleDependents($entry);
+                    $payDate = $this->resolveEntryPayDate($entry)?->toDateString();
+                    $irpsBreakdown = $this->payrollTaxService->calculateIrps(
+                        (float) ($entry->taxable_income ?? 0),
+                        $companyId,
+                        $payDate,
+                        [
+                            'residency_status' => $residencyStatus,
+                            'eligible_dependents_count' => $eligibleDependentsCount,
+                        ]
+                    );
+
+                    $eligibleDependentsTotal += $eligibleDependentsCount;
+                    $effectiveDependentsTotal += (int) ($irpsBreakdown['effective_dependents_count'] ?? 0);
+                    $dependentDeductionTotal += (float) ($irpsBreakdown['dependent_deduction_total'] ?? 0);
+                    $adjustedTaxableIncomeTotal += (float) ($irpsBreakdown['adjusted_taxable_income'] ?? 0);
+                }
+
+                $payDates = $employeeEntries
+                    ->map(fn (PayrollEntry $entry): ?string => $this->resolveEntryPayDate($entry)?->toDateString())
+                    ->filter()
+                    ->values();
+
+                $latestPayDate = $payDates->isEmpty() ? null : $payDates->sort()->last();
+                $entryCount = max(1, $employeeEntries->count());
+
+                $taxableBenefitsTotal = $employeeEntries->sum(function (PayrollEntry $entry): float {
+                    return (float) ($entry->total_allowances ?? 0) + (float) ($entry->total_manual_overtimes ?? 0);
+                });
+
+                return [
+                    'fiscal_year' => $year,
+                    'employee_internal_id' => (string) ($employee?->employee_id ?? ''),
+                    'employee_name' => (string) ($employee?->user?->name ?? '-'),
+                    'employee_nuit' => (string) ($employee?->tax_payer_id ?? ''),
+                    'residency_status' => $residencyStatus,
+                    'payroll_runs' => $employeeEntries->pluck('payroll_id')->unique()->count(),
+                    'payroll_entries' => $employeeEntries->count(),
+                    'latest_pay_date' => $latestPayDate,
+                    'gross_pay_total' => round((float) $employeeEntries->sum('gross_pay'), 2),
+                    'taxable_income_total' => round((float) $employeeEntries->sum('taxable_income'), 2),
+                    'taxable_benefits_total' => round((float) $taxableBenefitsTotal, 2),
+                    'irps_withheld_total' => round((float) $employeeEntries->sum('irps_amount'), 2),
+                    'inss_employee_total' => round((float) $employeeEntries->sum('inss_employee_amount'), 2),
+                    'inss_employer_total' => round((float) $employeeEntries->sum('inss_employer_amount'), 2),
+                    'net_pay_total' => round((float) $employeeEntries->sum('net_pay'), 2),
+                    'eligible_dependents_total' => $eligibleDependentsTotal,
+                    'effective_dependents_total' => $effectiveDependentsTotal,
+                    'dependent_deduction_total' => round($dependentDeductionTotal, 2),
+                    'adjusted_taxable_income_total' => round($adjustedTaxableIncomeTotal, 2),
+                    'average_effective_dependents' => round($effectiveDependentsTotal / $entryCount, 2),
+                ];
+            })
+            ->sortBy('employee_name')
+            ->values();
+
+        return [
+            'fiscal_year' => $year,
+            'period_start' => $periodStart->toDateString(),
+            'period_end' => $periodEnd->toDateString(),
+            'summary' => [
+                'payroll_runs' => $payrolls->count(),
+                'workers' => $rows->count(),
+                'payroll_entries' => $entries->count(),
+                'gross_pay_total' => round((float) $rows->sum('gross_pay_total'), 2),
+                'taxable_income_total' => round((float) $rows->sum('taxable_income_total'), 2),
+                'taxable_benefits_total' => round((float) $rows->sum('taxable_benefits_total'), 2),
+                'irps_withheld_total' => round((float) $rows->sum('irps_withheld_total'), 2),
+                'inss_employee_total' => round((float) $rows->sum('inss_employee_total'), 2),
+                'inss_employer_total' => round((float) $rows->sum('inss_employer_total'), 2),
+                'net_pay_total' => round((float) $rows->sum('net_pay_total'), 2),
+                'eligible_dependents_total' => (int) $rows->sum('eligible_dependents_total'),
+                'effective_dependents_total' => (int) $rows->sum('effective_dependents_total'),
+                'dependent_deduction_total' => round((float) $rows->sum('dependent_deduction_total'), 2),
+                'adjusted_taxable_income_total' => round((float) $rows->sum('adjusted_taxable_income_total'), 2),
+            ],
+            'rows' => $rows->all(),
+        ];
+    }
+
     private function resolveCompletedPayrolls(int $companyId, Carbon $periodStart, Carbon $periodEnd): Collection
     {
         return Payroll::query()
@@ -207,8 +318,8 @@ class MozambiquePayrollSubmissionReportService
                 $query->whereNull('is_cancelled')->orWhere('is_cancelled', false);
             })
             ->with([
-                'payroll:id,title,pay_date',
-                'employee:id,user_id,tax_payer_id,account_holder_name,bank_name,bank_branch,bank_identifier_code,account_number',
+                'payroll:id,title,pay_date,pay_period_end',
+                'employee:id,user_id,employee_id,tax_payer_id,account_holder_name,bank_name,bank_branch,bank_identifier_code,account_number',
                 'employee.user:id,name',
                 'employee.foreignWorkerProfile:id,employee_id,residency_status',
                 'employee.dependents:id,employee_id,is_tax_eligible,valid_until',
@@ -227,6 +338,8 @@ class MozambiquePayrollSubmissionReportService
                 'inss_employee_amount',
                 'inss_employer_rate',
                 'inss_employer_amount',
+                'total_allowances',
+                'total_manual_overtimes',
                 'created_by',
             ]);
     }
@@ -241,6 +354,31 @@ class MozambiquePayrollSubmissionReportService
         $periodEnd = $periodStart->copy()->endOfMonth();
 
         return [$period, $periodStart, $periodEnd];
+    }
+
+    private function resolveFiscalYear(?string $fiscalYear): array
+    {
+        $year = $fiscalYear && preg_match('/^\d{4}$/', $fiscalYear)
+            ? $fiscalYear
+            : now()->format('Y');
+
+        $periodStart = Carbon::createFromFormat('Y-m-d', $year . '-01-01')->startOfDay();
+        $periodEnd = $periodStart->copy()->endOfYear();
+
+        return [$year, $periodStart, $periodEnd];
+    }
+
+    private function resolveEntryPayDate(PayrollEntry $entry): ?Carbon
+    {
+        if ($entry->payroll?->pay_date) {
+            return Carbon::parse((string) $entry->payroll->pay_date)->startOfDay();
+        }
+
+        if ($entry->payroll?->pay_period_end) {
+            return Carbon::parse((string) $entry->payroll->pay_period_end)->startOfDay();
+        }
+
+        return null;
     }
 
     private function countEligibleDependents(PayrollEntry $entry): int

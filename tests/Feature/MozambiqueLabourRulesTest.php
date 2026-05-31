@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\Setting;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
@@ -14,6 +15,8 @@ use Workdo\Hrm\Models\Holiday;
 use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Overtime;
+use Workdo\Hrm\Models\Shift;
+use Workdo\Hrm\Models\Attendance;
 
 class MozambiqueLabourRulesTest extends TestCase
 {
@@ -440,6 +443,98 @@ class MozambiqueLabourRulesTest extends TestCase
         $valid->assertRedirect(route('hrm.leave-applications.index'));
     }
 
+    public function test_adoption_leave_requires_legal_reference_date_and_cannot_start_before_event(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Adocao');
+        $this->grantPermissions($company, ['create-leave-applications']);
+
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_min_notice_days', 'created_by' => $company->id],
+            ['value' => '0', 'is_public' => 1]
+        );
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Licença de Adoção',
+            'legal_code' => 'adoption',
+            'description' => 'Dispensa por adoção',
+            'max_days_per_year' => 30,
+            'is_paid' => true,
+            'requires_supporting_document' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $missingReferenceDate = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-10-10',
+            'end_date' => '2026-10-15',
+            'reason' => 'Adoção',
+            'attachment' => 'comprovativo-adocao.pdf',
+        ]);
+        $missingReferenceDate->assertSessionHasErrors('legal_reference_date');
+
+        $invalidStartDate = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-10-10',
+            'end_date' => '2026-10-15',
+            'legal_reference_date' => '2026-10-12',
+            'reason' => 'Adoção',
+            'attachment' => 'comprovativo-adocao.pdf',
+        ]);
+        $invalidStartDate->assertSessionHasErrors('start_date');
+
+        $validRequest = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-10-12',
+            'end_date' => '2026-10-17',
+            'legal_reference_date' => '2026-10-12',
+            'reason' => 'Adoção',
+            'attachment' => 'comprovativo-adocao.pdf',
+        ]);
+        $validRequest->assertRedirect(route('hrm.leave-applications.index'));
+        $validRequest->assertSessionHasNoErrors();
+    }
+
+    public function test_cash_compensation_is_blocked_for_non_annual_leave_types(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Compensacao Nao Anual');
+        $this->grantPermissions($company, ['create-leave-applications']);
+
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_min_notice_days', 'created_by' => $company->id],
+            ['value' => '0', 'is_public' => 1]
+        );
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Licença Médica Compensável',
+            'legal_code' => 'sick_leave',
+            'description' => 'Teste de bloqueio de compensação',
+            'max_days_per_year' => 20,
+            'is_paid' => false,
+            'allow_cash_out' => true,
+            'requires_supporting_document' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-11-03',
+            'end_date' => '2026-11-07',
+            'compensated_days' => 1,
+            'reason' => 'Teste compensação',
+            'attachment' => 'atestado.pdf',
+        ]);
+
+        $response->assertSessionHasErrors('compensated_days');
+    }
+
     public function test_leave_cash_out_respects_minimum_effective_rest_days(): void
     {
         $company = $this->makeCompany();
@@ -492,6 +587,399 @@ class MozambiqueLabourRulesTest extends TestCase
             'effective_rest_days' => 6,
             'created_by' => $company->id,
         ]);
+    }
+
+    public function test_annual_leave_entitlement_is_prorated_in_first_service_year(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Primeiro Ano');
+        $this->grantPermissions($company, ['create-leave-applications', 'view-leave-applications']);
+
+        Employee::query()->create([
+            'employee_id' => 'LEAVE-Y1-001',
+            'user_id' => $employeeUser->id,
+            'date_of_joining' => '2026-07-15',
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_min_notice_days', 'created_by' => $company->id],
+            ['value' => '0', 'is_public' => 1]
+        );
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_entitlement_first_year_days', 'created_by' => $company->id],
+            ['value' => '12', 'is_public' => 1]
+        );
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_entitlement_following_year_days', 'created_by' => $company->id],
+            ['value' => '30', 'is_public' => 1]
+        );
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_entitlement_prorate_first_year', 'created_by' => $company->id],
+            ['value' => '1', 'is_public' => 1]
+        );
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Ferias Anuais',
+            'legal_code' => 'annual',
+            'description' => 'Ferias anuais',
+            'max_days_per_year' => 30,
+            'is_paid' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $balanceResponse = $this->actingAs($company)->get(route('hrm.leave-balance', [$employeeUser->id, $leaveType->id]));
+        $balanceResponse->assertOk()
+            ->assertJsonPath('total_leaves', 6)
+            ->assertJsonPath('service_year_index', 1);
+
+        $firstRequest = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-08-03',
+            'end_date' => '2026-08-08',
+            'reason' => 'Ferias no primeiro ano',
+            'attachment' => '',
+        ]);
+        $firstRequest->assertRedirect(route('hrm.leave-applications.index'));
+        $firstRequest->assertSessionHasNoErrors();
+
+        $exceedingRequest = $this->actingAs($company)->post(route('hrm.leave-applications.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'start_date' => '2026-09-07',
+            'end_date' => '2026-09-07',
+            'reason' => 'Excede saldo primeiro ano',
+            'attachment' => '',
+        ]);
+        $exceedingRequest->assertSessionHasErrors('start_date');
+    }
+
+    public function test_unjustified_absence_penalty_reduces_annual_leave_entitlement(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Penalizacao Ferias');
+        $this->grantPermissions($company, ['view-leave-applications']);
+
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Padrão',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'LEAVE-ABS-001',
+            'user_id' => $employeeUser->id,
+            'date_of_joining' => '2024-01-10',
+            'shift' => $shift->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_entitlement_following_year_days', 'created_by' => $company->id],
+            ['value' => '30', 'is_public' => 1]
+        );
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_unjustified_absence_penalty_per_day', 'created_by' => $company->id],
+            ['value' => '1', 'is_public' => 1]
+        );
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Ferias Anuais Penalizacao',
+            'legal_code' => 'annual',
+            'description' => 'Ferias anuais',
+            'max_days_per_year' => 30,
+            'is_paid' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        foreach (['2026-05-05', '2026-05-06'] as $absenceDate) {
+            $clockIn = Carbon::parse($absenceDate . ' 08:00:00');
+            $clockOut = Carbon::parse($absenceDate . ' 17:00:00');
+
+            Attendance::query()->create([
+                'employee_id' => $employeeUser->id,
+                'shift_id' => $shift->id,
+                'date' => $absenceDate,
+                'clock_in' => $clockIn,
+                'clock_out' => $clockOut,
+                'break_hour' => 1,
+                'total_hour' => 0,
+                'overtime_hours' => 0,
+                'overtime_amount' => 0,
+                'status' => 'absent',
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $balanceResponse = $this->actingAs($company)->get(route('hrm.leave-balance', [$employeeUser->id, $leaveType->id]));
+        $balanceResponse->assertOk()
+            ->assertJsonPath('base_entitlement_days', 30)
+            ->assertJsonPath('unjustified_absence_days', 2)
+            ->assertJsonPath('absence_penalty_days', 2)
+            ->assertJsonPath('total_leaves', 28);
+    }
+
+    public function test_justified_absence_records_are_not_counted_for_annual_leave_penalty(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Ausencia Justificada');
+        $this->grantPermissions($company, ['view-leave-applications']);
+
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Padrão',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'LEAVE-ABS-002',
+            'user_id' => $employeeUser->id,
+            'date_of_joining' => '2024-01-10',
+            'shift' => $shift->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_entitlement_following_year_days', 'created_by' => $company->id],
+            ['value' => '30', 'is_public' => 1]
+        );
+        Setting::updateOrCreate(
+            ['key' => 'mz_leave_unjustified_absence_penalty_per_day', 'created_by' => $company->id],
+            ['value' => '1', 'is_public' => 1]
+        );
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Ferias Anuais Penalizacao 2',
+            'legal_code' => 'annual',
+            'description' => 'Ferias anuais',
+            'max_days_per_year' => 30,
+            'is_paid' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Attendance::query()->create([
+            'employee_id' => $employeeUser->id,
+            'shift_id' => $shift->id,
+            'date' => '2026-05-05',
+            'clock_in' => Carbon::parse('2026-05-05 08:00:00'),
+            'clock_out' => Carbon::parse('2026-05-05 17:00:00'),
+            'break_hour' => 1,
+            'total_hour' => 0,
+            'overtime_hours' => 0,
+            'overtime_amount' => 0,
+            'status' => 'absent',
+            'is_justified' => true,
+            'absence_category' => 'medical',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Attendance::query()->create([
+            'employee_id' => $employeeUser->id,
+            'shift_id' => $shift->id,
+            'date' => '2026-05-06',
+            'clock_in' => Carbon::parse('2026-05-06 08:00:00'),
+            'clock_out' => Carbon::parse('2026-05-06 17:00:00'),
+            'break_hour' => 1,
+            'total_hour' => 0,
+            'overtime_hours' => 0,
+            'overtime_amount' => 0,
+            'status' => 'absent',
+            'is_justified' => false,
+            'absence_category' => 'unjustified',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $balanceResponse = $this->actingAs($company)->get(route('hrm.leave-balance', [$employeeUser->id, $leaveType->id]));
+        $balanceResponse->assertOk()
+            ->assertJsonPath('unjustified_absence_days', 1)
+            ->assertJsonPath('absence_penalty_days', 1)
+            ->assertJsonPath('total_leaves', 29);
+    }
+
+    public function test_attendance_store_defaults_absence_classification_to_unjustified(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Classificacao Falta');
+        $this->grantPermissions($company, ['create-attendances']);
+
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Classificacao',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'AT-RF025-001',
+            'user_id' => $employeeUser->id,
+            'shift' => $shift->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'working_days', 'created_by' => $company->id],
+            ['value' => json_encode([1, 2, 3, 4, 5]), 'is_public' => 1]
+        );
+
+        $response = $this->actingAs($company)->post(route('hrm.attendances.store'), [
+            'employee_id' => $employeeUser->id,
+            'date' => '2026-07-01',
+            'clock_in' => '2026-07-01 08:00',
+            'clock_out' => '2026-07-01 08:00',
+            'notes' => 'Registo de ausência',
+        ]);
+
+        $response->assertRedirect(route('hrm.attendances.index'));
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => $employeeUser->id,
+            'date' => '2026-07-01 00:00:00',
+            'status' => 'absent',
+            'is_justified' => 0,
+            'absence_category' => 'unjustified',
+            'created_by' => $company->id,
+        ]);
+    }
+
+    public function test_attendance_store_forces_unjustified_category_when_flagged_as_unjustified(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Classificacao Forcada');
+        $this->grantPermissions($company, ['create-attendances']);
+
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Classificacao 2',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'AT-RF025-002',
+            'user_id' => $employeeUser->id,
+            'shift' => $shift->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Setting::updateOrCreate(
+            ['key' => 'working_days', 'created_by' => $company->id],
+            ['value' => json_encode([1, 2, 3, 4, 5]), 'is_public' => 1]
+        );
+
+        $response = $this->actingAs($company)->post(route('hrm.attendances.store'), [
+            'employee_id' => $employeeUser->id,
+            'date' => '2026-07-02',
+            'clock_in' => '2026-07-02 08:00',
+            'clock_out' => '2026-07-02 08:00',
+            'is_justified' => false,
+            'absence_category' => 'medical',
+            'notes' => 'Ausencia nao justificada com categoria inconsistente',
+        ]);
+
+        $response->assertRedirect(route('hrm.attendances.index'));
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => $employeeUser->id,
+            'date' => '2026-07-02 00:00:00',
+            'status' => 'absent',
+            'is_justified' => 0,
+            'absence_category' => 'unjustified',
+            'created_by' => $company->id,
+        ]);
+    }
+
+    public function test_attendance_store_blocks_seventh_consecutive_work_day_to_preserve_weekly_rest(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Descanso Semanal');
+        $this->grantPermissions($company, ['create-attendances']);
+
+        Setting::updateOrCreate(
+            ['key' => 'working_days', 'created_by' => $company->id],
+            ['value' => json_encode([0, 1, 2, 3, 4, 5, 6]), 'is_public' => 1]
+        );
+
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Semanal',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Employee::query()->create([
+            'employee_id' => 'AT-RF032-001',
+            'user_id' => $employeeUser->id,
+            'shift' => $shift->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $startDate = Carbon::parse('2026-07-01');
+        for ($i = 0; $i < 6; $i++) {
+            $workDate = $startDate->copy()->addDays($i);
+
+            Attendance::query()->create([
+                'employee_id' => $employeeUser->id,
+                'shift_id' => $shift->id,
+                'date' => $workDate->toDateString(),
+                'clock_in' => $workDate->copy()->setTime(8, 0),
+                'clock_out' => $workDate->copy()->setTime(17, 0),
+                'total_hour' => 8,
+                'break_hour' => 1,
+                'overtime_hours' => 0,
+                'overtime_amount' => 0,
+                'status' => 'present',
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $seventhDate = $startDate->copy()->addDays(6);
+        $response = $this->actingAs($company)->post(route('hrm.attendances.store'), [
+            'employee_id' => $employeeUser->id,
+            'date' => $seventhDate->toDateString(),
+            'clock_in' => $seventhDate->copy()->setTime(8, 0)->format('Y-m-d H:i'),
+            'clock_out' => $seventhDate->copy()->setTime(17, 0)->format('Y-m-d H:i'),
+            'notes' => 'Attempted seventh consecutive day',
+        ]);
+
+        $response->assertSessionHas('error');
+        $this->assertStringContainsString(
+            'Weekly rest rule violated',
+            (string) session('error')
+        );
+        $this->assertSame(6, Attendance::query()->where('created_by', $company->id)->count());
     }
 
     private function settingValue(string $key, int $companyId): ?string

@@ -75,6 +75,27 @@ export default function View({ attendance, onSuccess }: ViewAttendanceProps) {
                         </div>
                     </div>
                 </div>
+
+                {attendance.status === 'absent' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Absence Justification')}</label>
+                            <p className="mt-1 font-medium">
+                                {attendance.is_justified === null || attendance.is_justified === undefined
+                                    ? t('Not Classified')
+                                    : attendance.is_justified
+                                        ? t('Justified')
+                                        : t('Unjustified')}
+                            </p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Absence Category')}</label>
+                            <p className="mt-1 font-medium">
+                                {attendance.absence_category ? t(attendance.absence_category.replaceAll('_', ' ')) : '-'}
+                            </p>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>

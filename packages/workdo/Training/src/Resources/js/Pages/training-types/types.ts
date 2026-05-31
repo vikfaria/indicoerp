@@ -2,13 +2,17 @@ export interface TrainingType {
     id: number;
     name: string;
     description?: string;
+    is_mandatory?: boolean;
+    compliance_code?: string | null;
+    certificate_validity_days?: number | null;
     branch_id: number;
+    department_id: number;
     branch?: {
         id: number;
         name: string;
     };
-    designations: string[];
-    is_active: boolean;
+    designations?: string[];
+    is_active?: boolean;
     created_at: string;
     updated_at: string;
 }

@@ -44,6 +44,9 @@ class AuditTrailServiceProvider extends ServiceProvider
             'Workdo\\Pos\\Models\\Pos',
             'Workdo\\Hrm\\Models\\Payroll',
             'Workdo\\Hrm\\Models\\PayrollEntry',
+            'Workdo\\Hrm\\Models\\Warning',
+            'Workdo\\Hrm\\Models\\Complaint',
+            'Workdo\\Hrm\\Models\\Termination',
         ];
     }
 }

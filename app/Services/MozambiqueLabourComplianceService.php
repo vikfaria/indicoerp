@@ -5,7 +5,10 @@ namespace App\Services;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
+use Workdo\Hrm\Models\Attendance;
+use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Models\Holiday;
+use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Overtime;
 
@@ -25,7 +28,39 @@ class MozambiqueLabourComplianceService
             'leave_max_consecutive_days' => $this->toNullableInt(company_setting('mz_leave_max_consecutive_days', $companyId)),
             'leave_count_non_working_days' => $this->toBool(company_setting('mz_leave_count_non_working_days', $companyId), true),
             'leave_count_holidays' => $this->toBool(company_setting('mz_leave_count_holidays', $companyId), true),
+            'leave_entitlement_first_year_days' => max(1, (int) (company_setting('mz_leave_entitlement_first_year_days', $companyId) ?? 12)),
+            'leave_entitlement_following_year_days' => max(1, (int) (company_setting('mz_leave_entitlement_following_year_days', $companyId) ?? 30)),
+            'leave_entitlement_prorate_first_year' => $this->toBool(company_setting('mz_leave_entitlement_prorate_first_year', $companyId), true),
+            'leave_unjustified_absence_penalty_per_day' => max(0, (int) (company_setting('mz_leave_unjustified_absence_penalty_per_day', $companyId) ?? 0)),
+            'leave_unjustified_absence_max_penalty_days' => $this->toNullableInt(company_setting('mz_leave_unjustified_absence_max_penalty_days', $companyId)),
         ];
+    }
+
+    public function calculateLeaveEntitlementLimit(
+        int $companyId,
+        int $employeeUserId,
+        LeaveType $leaveType,
+        int $year
+    ): array {
+        $leaveTypeMaxDays = max(0, (int) ($leaveType->max_days_per_year ?? 0));
+
+        if (!$this->isAnnualLeaveType($leaveType)) {
+            return [
+                'rule_source' => 'leave_type_max',
+                'base_entitlement_days' => $leaveTypeMaxDays,
+                'unjustified_absence_days' => 0,
+                'absence_penalty_days' => 0,
+                'final_entitlement_days' => $leaveTypeMaxDays,
+                'service_year_index' => null,
+            ];
+        }
+
+        return $this->buildAnnualLeaveEntitlement(
+            $companyId,
+            $employeeUserId,
+            $year,
+            $leaveTypeMaxDays > 0 ? $leaveTypeMaxDays : null
+        );
     }
 
     public function validateOvertime(
@@ -251,6 +286,186 @@ class MozambiqueLabourComplianceService
         ];
     }
 
+    private function buildAnnualLeaveEntitlement(
+        int $companyId,
+        int $employeeUserId,
+        int $year,
+        ?int $leaveTypeMaxDays = null
+    ): array {
+        $policy = $this->getPolicy($companyId);
+
+        $employee = Employee::query()
+            ->where('created_by', $companyId)
+            ->where('user_id', $employeeUserId)
+            ->first();
+
+        $baseEntitlementDays = (int) $policy['leave_entitlement_following_year_days'];
+        $serviceYearIndex = null;
+
+        if ($employee?->date_of_joining) {
+            $joiningDate = Carbon::parse($employee->date_of_joining)->startOfDay();
+            $joinYear = (int) $joiningDate->year;
+
+            if ($year < $joinYear) {
+                $baseEntitlementDays = 0;
+                $serviceYearIndex = 0;
+            } else {
+                $serviceYearIndex = ($year - $joinYear) + 1;
+
+                if ($serviceYearIndex === 1) {
+                    $firstYearCap = (int) $policy['leave_entitlement_first_year_days'];
+                    if ($policy['leave_entitlement_prorate_first_year']) {
+                        $monthsWorkedInJoinYear = max(0, 12 - (int) $joiningDate->month + 1);
+                        $baseEntitlementDays = min($firstYearCap, $monthsWorkedInJoinYear);
+                    } else {
+                        $baseEntitlementDays = $firstYearCap;
+                    }
+                } else {
+                    $baseEntitlementDays = (int) $policy['leave_entitlement_following_year_days'];
+                }
+            }
+        }
+
+        if ($leaveTypeMaxDays !== null && $leaveTypeMaxDays > 0) {
+            $baseEntitlementDays = min($baseEntitlementDays, $leaveTypeMaxDays);
+        }
+
+        $penaltyPerAbsenceDay = (int) $policy['leave_unjustified_absence_penalty_per_day'];
+        $unjustifiedAbsenceDays = $this->countUnjustifiedAbsenceDaysForYear($companyId, $employeeUserId, $year);
+        $absencePenaltyDays = $unjustifiedAbsenceDays * $penaltyPerAbsenceDay;
+
+        $maxPenaltyDays = $policy['leave_unjustified_absence_max_penalty_days'];
+        if ($maxPenaltyDays !== null && $maxPenaltyDays >= 0) {
+            $absencePenaltyDays = min($absencePenaltyDays, (int) $maxPenaltyDays);
+        }
+
+        $finalEntitlementDays = max(0, $baseEntitlementDays - $absencePenaltyDays);
+
+        return [
+            'rule_source' => 'mozambique_annual_leave_policy',
+            'base_entitlement_days' => $baseEntitlementDays,
+            'unjustified_absence_days' => $unjustifiedAbsenceDays,
+            'absence_penalty_days' => $absencePenaltyDays,
+            'final_entitlement_days' => $finalEntitlementDays,
+            'service_year_index' => $serviceYearIndex,
+        ];
+    }
+
+    private function countUnjustifiedAbsenceDaysForYear(int $companyId, int $employeeUserId, int $year): int
+    {
+        $absences = Attendance::query()
+            ->where('created_by', $companyId)
+            ->where('employee_id', $employeeUserId)
+            ->where('status', 'absent')
+            ->whereYear('date', $year)
+            ->get(['date', 'is_justified']);
+
+        if ($absences->isEmpty()) {
+            return 0;
+        }
+
+        $yearStart = Carbon::create($year, 1, 1)->toDateString();
+        $yearEnd = Carbon::create($year, 12, 31)->toDateString();
+
+        $approvedLeaveRanges = LeaveApplication::query()
+            ->where('created_by', $companyId)
+            ->where('employee_id', $employeeUserId)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $yearEnd)
+            ->whereDate('end_date', '>=', $yearStart)
+            ->get(['start_date', 'end_date']);
+
+        $absenceRows = $absences
+            ->map(static fn (Attendance $attendance): array => [
+                'date' => Carbon::parse($attendance->date)->toDateString(),
+                'is_justified' => $attendance->is_justified,
+            ])
+            ->sortBy('date')
+            ->unique(fn (array $row): string => $row['date'])
+            ->values();
+
+        $unjustifiedCount = 0;
+
+        foreach ($absenceRows as $absence) {
+            $date = Carbon::parse((string) $absence['date'])->startOfDay();
+
+            if ($absence['is_justified'] === true) {
+                continue;
+            }
+
+            if ($absence['is_justified'] === false) {
+                $unjustifiedCount++;
+                continue;
+            }
+
+            $isCoveredByApprovedLeave = $approvedLeaveRanges->contains(function (LeaveApplication $leave) use ($date): bool {
+                $leaveStart = Carbon::parse($leave->start_date)->startOfDay();
+                $leaveEnd = Carbon::parse($leave->end_date)->endOfDay();
+
+                return $date->betweenIncluded($leaveStart, $leaveEnd);
+            });
+
+            if (!$isCoveredByApprovedLeave) {
+                $unjustifiedCount++;
+            }
+        }
+
+        return $unjustifiedCount;
+    }
+
+    public function validateWeeklyRestForAttendanceDate(
+        int $companyId,
+        int $employeeUserId,
+        string $attendanceDate,
+        ?int $excludeAttendanceId = null
+    ): array {
+        $targetDate = Carbon::parse($attendanceDate)->startOfDay();
+        $rangeStart = $targetDate->copy()->subDays(6)->toDateString();
+        $rangeEnd = $targetDate->copy()->addDays(6)->toDateString();
+
+        $workedDates = [];
+        $attendances = Attendance::query()
+            ->where('created_by', $companyId)
+            ->where('employee_id', $employeeUserId)
+            ->whereDate('date', '>=', $rangeStart)
+            ->whereDate('date', '<=', $rangeEnd)
+            ->whereNotNull('clock_in')
+            ->when($excludeAttendanceId, fn ($query) => $query->where('id', '!=', $excludeAttendanceId))
+            ->get(['date']);
+
+        foreach ($attendances as $attendance) {
+            $workedDates[Carbon::parse($attendance->date)->toDateString()] = true;
+        }
+
+        // Candidate day will become a worked day after successful attendance creation.
+        $workedDates[$targetDate->toDateString()] = true;
+
+        $windowStart = $targetDate->copy()->subDays(6);
+        while ($windowStart->lte($targetDate)) {
+            $windowEnd = $windowStart->copy()->addDays(6);
+            $allDaysWorked = true;
+
+            for ($cursor = $windowStart->copy(); $cursor->lte($windowEnd); $cursor->addDay()) {
+                if (!isset($workedDates[$cursor->toDateString()])) {
+                    $allDaysWorked = false;
+                    break;
+                }
+            }
+
+            if ($allDaysWorked) {
+                return [
+                    'valid' => false,
+                    'field' => 'date',
+                    'message' => __('Weekly rest rule violated. Worker must have at least 24 consecutive hours of rest every 7 days.'),
+                ];
+            }
+
+            $windowStart->addDay();
+        }
+
+        return ['valid' => true];
+    }
+
     public function validateLeaveTypeCompliance(
         int $companyId,
         LeaveType $leaveType,
@@ -357,11 +572,38 @@ class MozambiqueLabourComplianceService
             }
         }
 
+        if (in_array($leaveType->legal_code, ['adoption', 'foster_care'], true)) {
+            if ($this->isBlank($legalReferenceDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'legal_reference_date',
+                    'message' => __('This leave type requires legal event date (adoption or foster care reference date).'),
+                ];
+            }
+
+            $referenceDate = Carbon::parse($legalReferenceDate)->startOfDay();
+            if ($start->lt($referenceDate)) {
+                return [
+                    'valid' => false,
+                    'field' => 'start_date',
+                    'message' => __('This leave type cannot start before legal event date.'),
+                ];
+            }
+        }
+
         if ($compensatedDays < 0) {
             return [
                 'valid' => false,
                 'field' => 'compensated_days',
                 'message' => __('Compensated days cannot be negative.'),
+            ];
+        }
+
+        if ($compensatedDays > $chargeableDays) {
+            return [
+                'valid' => false,
+                'field' => 'compensated_days',
+                'message' => __('Compensated days cannot exceed requested leave days.'),
             ];
         }
 
@@ -373,17 +615,30 @@ class MozambiqueLabourComplianceService
             ];
         }
 
+        if ($compensatedDays > 0 && !$this->isAnnualLeaveType($leaveType)) {
+            return [
+                'valid' => false,
+                'field' => 'compensated_days',
+                'message' => __('Financial compensation is only allowed for annual leave.'),
+            ];
+        }
+
         $effectiveRestDays = max(0, $chargeableDays - $compensatedDays);
+        $minimumEffectiveRestDays = $leaveType->min_effective_rest_days;
+        if ($minimumEffectiveRestDays === null && $this->isAnnualLeaveType($leaveType)) {
+            $minimumEffectiveRestDays = 6;
+        }
+
         if (
-            $leaveType->min_effective_rest_days !== null &&
+            $minimumEffectiveRestDays !== null &&
             $compensatedDays > 0 &&
-            $effectiveRestDays < (int) $leaveType->min_effective_rest_days
+            $effectiveRestDays < (int) $minimumEffectiveRestDays
         ) {
             return [
                 'valid' => false,
                 'field' => 'compensated_days',
                 'message' => __('Compensation leaves less than minimum required effective rest (:days day(s)).', [
-                    'days' => (int) $leaveType->min_effective_rest_days,
+                    'days' => (int) $minimumEffectiveRestDays,
                 ]),
             ];
         }
@@ -482,6 +737,13 @@ class MozambiqueLabourComplianceService
         return (float) Overtime::query()
             ->where('created_by', $companyId)
             ->where('employee_id', $employeeUserId)
+            ->where(function ($query): void {
+                $query->whereIn('approval_status', ['pending', 'approved'])
+                    ->orWhere(function ($legacyQuery): void {
+                        $legacyQuery->whereNull('approval_status')
+                            ->where('status', 'active');
+                    });
+            })
             ->whereDate('start_date', '<=', $rangeEnd)
             ->whereDate('end_date', '>=', $rangeStart)
             ->when($excludeOvertimeId, fn ($query) => $query->where('id', '!=', $excludeOvertimeId))
@@ -541,5 +803,15 @@ class MozambiqueLabourComplianceService
     private function isBlank(?string $value): bool
     {
         return $value === null || trim($value) === '';
+    }
+
+    private function isAnnualLeaveType(LeaveType $leaveType): bool
+    {
+        if ($leaveType->legal_code === 'annual') {
+            return true;
+        }
+
+        $name = strtolower((string) ($leaveType->name ?? ''));
+        return str_contains($name, 'ferias') || str_contains($name, 'annual');
     }
 }

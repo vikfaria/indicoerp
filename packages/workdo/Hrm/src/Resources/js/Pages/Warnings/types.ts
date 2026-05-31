@@ -28,6 +28,10 @@ export interface Warning {
     document?: string;
     status?: string;
     employee_response?: string;
+    is_cancelled?: boolean;
+    cancelled_at?: string;
+    cancelled_by?: number;
+    cancellation_reason?: string;
     employee_id?: number;
     employee?: User;
     warning_by?: number;

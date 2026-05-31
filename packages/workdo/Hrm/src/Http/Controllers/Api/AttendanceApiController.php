@@ -2,6 +2,7 @@
 
 namespace Workdo\Hrm\Http\Controllers\Api;
 
+use App\Services\MozambiqueLabourComplianceService;
 use App\Http\Controllers\Controller;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
@@ -18,6 +19,10 @@ use Workdo\Hrm\Models\IpRestrict;
 class AttendanceApiController extends Controller
 {
     use ApiResponseTrait;
+
+    public function __construct(private readonly MozambiqueLabourComplianceService $labourComplianceService)
+    {
+    }
 
     public function clockInOut(Request $request)
     {
@@ -81,6 +86,15 @@ class AttendanceApiController extends Controller
             if ($isHoliday) {
                 return $this->errorResponse('Attendance cannot be created on holidays.');
             }
+
+            $weeklyRestValidation = $this->labourComplianceService->validateWeeklyRestForAttendanceDate(
+                $creatorId,
+                $employeeId,
+                $today
+            );
+            if (!($weeklyRestValidation['valid'] ?? false)) {
+                return $this->errorResponse((string) ($weeklyRestValidation['message'] ?? 'Weekly rest rule violated.'));
+            }
             // First check for any pending clock out and complete it
             $pendingClockOuts = Attendance::where('employee_id', $employeeId)
                 ->whereNull('clock_out')
@@ -90,7 +104,8 @@ class AttendanceApiController extends Controller
             if ($pendingClockOuts) {
                 foreach ($pendingClockOuts as $pendingClockOut) {
                     $employee = Employee::where('user_id', $employeeId)->where('created_by', $creatorId)->first();
-                    $shift    = $employee ? Shift::find($employee->shift) : null;
+                    $shiftId  = $this->resolveShiftId($employee?->shift);
+                    $shift    = $shiftId ? Shift::find($shiftId) : null;
 
                     if ($shift) {
                         $clockInDate      = Carbon::parse($pendingClockOut->clock_in)->format('Y-m-d');
@@ -138,12 +153,12 @@ class AttendanceApiController extends Controller
                 $attendance = $existingAttendance;
             } else {
                 $employee = Employee::where('user_id', $employeeId)->where('created_by', $creatorId)->first();
-                $shift    = $employee ? $employee->shift : null;
+                $shiftId  = $this->resolveShiftId($employee?->shift);
 
 
                 $attendance = Attendance::create([
                     'employee_id' => $employeeId,
-                    'shift_id'    => $shift,
+                    'shift_id'    => $shiftId,
                     'date'        => $today,
                     'clock_in'    => $clockInTime,
                     'creator_id'  => Auth::id(),
@@ -206,14 +221,14 @@ class AttendanceApiController extends Controller
 
             $clockOutTime = now();
             $employee     = Employee::with('shift')->where('user_id', $employeeId)->where('created_by', $creatorId)->first();
-            $shift        = $employee ? $employee->shift : null;
+            $shiftId      = $this->resolveShiftId($employee?->shift);
 
             // Calculate attendance data using existing logic
             $calculatedData = $this->calculateAttendanceData(
                 $attendance->clock_in,
                 $clockOutTime,
                 0,  // break_hour
-                $shift,
+                $shiftId,
                 $employee
             );
 
@@ -319,7 +334,8 @@ class AttendanceApiController extends Controller
 
     private function calculateAttendanceData($clockIn, $clockOut, $breakHour, $shift, $employee)
     {
-        $shift = Shift::where('id', $shift)->where('created_by', creatorId())->first();
+        $shiftId = $this->resolveShiftId($shift);
+        $shift = $shiftId ? Shift::where('id', $shiftId)->where('created_by', creatorId())->first() : null;
         // Step 1: Calculate total working hours
         $totalHourData = $this->calculateTotalHours($clockIn, $clockOut, $shift);
         $totalHour     = $totalHourData['total_working_hours'];
@@ -378,7 +394,7 @@ class AttendanceApiController extends Controller
 
             $formattedData = [];
             $employee      = Employee::with('shift')->where('user_id', $employeeId)->where('created_by', $creatorId)->first();
-            $shift         = $employee ? $employee->shift : null;
+            $shiftId       = $this->resolveShiftId($employee?->shift);
 
             foreach ($attendances->get() as $attendance) {
                 $date = $attendance->date->format('Y-m-d');
@@ -388,7 +404,7 @@ class AttendanceApiController extends Controller
                         $attendance->clock_in,
                         now(),
                         0,
-                        $shift,
+                        $shiftId,
                         $employee
                     );
                     $totalTimeString = $calculatedData['total_hour']['total_working_hours'] . ' hours';
@@ -410,5 +426,18 @@ class AttendanceApiController extends Controller
         } catch (\Exception $e) {
             return $this->errorResponse('Something went wrong');
         }
+    }
+
+    private function resolveShiftId($shift): ?int
+    {
+        if ($shift instanceof Shift) {
+            return (int) $shift->id;
+        }
+
+        if (is_numeric($shift)) {
+            return (int) $shift;
+        }
+
+        return null;
     }
 }

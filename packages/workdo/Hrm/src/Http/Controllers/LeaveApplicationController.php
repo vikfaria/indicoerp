@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Services\MozambiqueLabourComplianceService;
+use Carbon\Carbon;
 use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Http\Requests\StoreLeaveApplicationRequest;
 use Workdo\Hrm\Http\Requests\UpdateLeaveApplicationRequest;
@@ -116,8 +117,8 @@ class LeaveApplicationController extends Controller
                 ]);
             }
 
-            // Get current year
-            $currentYear = date('Y');
+            // Use leave start year for entitlement and balance checks.
+            $currentYear = (int) Carbon::parse($validated['start_date'])->year;
 
             // Calculate used leaves for this employee, leave type and current year
             $usedLeaves = LeaveApplication::where('employee_id', $validated['employee_id'])
@@ -150,8 +151,14 @@ class LeaveApplicationController extends Controller
                     ]);
             }
 
-            // Check if requested days exceed available balance
-            $availableLeaves = $leaveType->max_days_per_year - $usedLeaves;
+            // Check if requested days exceed available balance under legal entitlement rules.
+            $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
+                creatorId(),
+                (int) $validated['employee_id'],
+                $leaveType,
+                $currentYear
+            );
+            $availableLeaves = (int) $entitlement['final_entitlement_days'] - $usedLeaves;
             if ($totalDays > $availableLeaves) {
                 return redirect()
                     ->back()
@@ -191,6 +198,10 @@ class LeaveApplicationController extends Controller
     public function update(UpdateLeaveApplicationRequest $request, LeaveApplication $leaveapplication)
     {
         if (Auth::user()->can('edit-leave-applications')) {
+            if (!$this->canAccessLeaveApplication($leaveapplication)) {
+                return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             // Get leave type details
@@ -233,8 +244,8 @@ class LeaveApplicationController extends Controller
                 ]);
             }
 
-            // Get current year
-            $currentYear = date('Y');
+            // Use leave start year for entitlement and balance checks.
+            $currentYear = (int) Carbon::parse($validated['start_date'])->year;
 
             // Calculate used leaves for this employee, leave type and current year (excluding current application)
             $usedLeaves = LeaveApplication::where('employee_id', $validated['employee_id'])
@@ -269,8 +280,14 @@ class LeaveApplicationController extends Controller
                     ]);
             }
 
-            // Check if requested days exceed available balance
-            $availableLeaves = $leaveType->max_days_per_year - $usedLeaves;
+            // Check if requested days exceed available balance under legal entitlement rules.
+            $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
+                creatorId(),
+                (int) $validated['employee_id'],
+                $leaveType,
+                $currentYear
+            );
+            $availableLeaves = (int) $entitlement['final_entitlement_days'] - $usedLeaves;
             if ($totalDays > $availableLeaves) {
                 return redirect()
                     ->back()
@@ -306,6 +323,10 @@ class LeaveApplicationController extends Controller
     public function destroy(LeaveApplication $leaveapplication)
     {
         if (Auth::user()->can('delete-leave-applications')) {
+            if (!$this->canAccessLeaveApplication($leaveapplication)) {
+                return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
+            }
+
             DestroyLeaveApplication::dispatch($leaveapplication);
             $leaveapplication->delete();
 
@@ -318,6 +339,10 @@ class LeaveApplicationController extends Controller
     public function updateStatus(Request $request, LeaveApplication $leaveapplication)
     {
         if (Auth::user()->can('manage-leave-status')) {
+            if (!$this->canAccessLeaveApplication($leaveapplication)) {
+                return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
+            }
+
             $request->validate([
                 'status' => 'required|in:pending,approved,rejected',
                 'approver_comment' => 'nullable|string',
@@ -343,13 +368,30 @@ class LeaveApplicationController extends Controller
     public function getLeaveBalance($employeeId, $leaveTypeId)
     {
         if (Auth::user()->can('view-leave-applications')) {
-            $leaveType = LeaveType::find($leaveTypeId);
+            $employeeExists = User::query()
+                ->where('id', (int) $employeeId)
+                ->where('created_by', creatorId())
+                ->exists();
+
+            if (!$employeeExists) {
+                return response()->json(['error' => 'Invalid employee'], 404);
+            }
+
+            $leaveType = LeaveType::query()
+                ->where('id', (int) $leaveTypeId)
+                ->where('created_by', creatorId())
+                ->first();
+
             if (!$leaveType) {
                 return response()->json(['error' => 'Invalid leave type'], 404);
             }
 
-            $currentYear = date('Y');
-            $baseQuery = LeaveApplication::where('employee_id', $employeeId)->where('leave_type_id', $leaveTypeId)->whereYear('start_date', $currentYear);
+            $currentYear = (int) date('Y');
+            $baseQuery = LeaveApplication::query()
+                ->where('created_by', creatorId())
+                ->where('employee_id', $employeeId)
+                ->where('leave_type_id', $leaveTypeId)
+                ->whereYear('start_date', $currentYear);
 
             // Exclude current leave application if editing
             if (request('exclude_id')) {
@@ -359,14 +401,25 @@ class LeaveApplicationController extends Controller
             $approvedLeaves = (clone $baseQuery)->where('status', 'approved')->sum('total_days');
             $pendingLeaves = (clone $baseQuery)->where('status', 'pending')->sum('total_days');
             $usedLeaves = $approvedLeaves + $pendingLeaves;
-            $availableLeaves = $leaveType->max_days_per_year - $usedLeaves;
+            $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
+                creatorId(),
+                (int) $employeeId,
+                $leaveType,
+                $currentYear
+            );
+            $totalEntitlement = (int) $entitlement['final_entitlement_days'];
+            $availableLeaves = $totalEntitlement - $usedLeaves;
 
             return response()->json([
-                'total_leaves' => $leaveType->max_days_per_year,
+                'total_leaves' => $totalEntitlement,
                 'approved_leaves' => $approvedLeaves,
                 'pending_leaves' => $pendingLeaves,
                 'used_leaves' => $usedLeaves,
                 'available_leaves' => $availableLeaves,
+                'base_entitlement_days' => (int) ($entitlement['base_entitlement_days'] ?? $totalEntitlement),
+                'absence_penalty_days' => (int) ($entitlement['absence_penalty_days'] ?? 0),
+                'unjustified_absence_days' => (int) ($entitlement['unjustified_absence_days'] ?? 0),
+                'service_year_index' => $entitlement['service_year_index'] ?? null,
             ]);
         } else {
             return response()->json([], 403);
@@ -399,5 +452,23 @@ class LeaveApplicationController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function canAccessLeaveApplication(LeaveApplication $leaveApplication): bool
+    {
+        if ((int) $leaveApplication->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-leave-applications')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-leave-applications')) {
+            return (int) $leaveApplication->creator_id === (int) Auth::id()
+                || (int) $leaveApplication->employee_id === (int) Auth::id();
+        }
+
+        return false;
     }
 }

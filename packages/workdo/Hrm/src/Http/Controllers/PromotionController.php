@@ -107,6 +107,10 @@ class PromotionController extends Controller
     public function update(UpdatePromotionRequest $request, Promotion $promotion)
     {
         if (Auth::user()->can('edit-promotions')) {
+            if (!$this->canAccessPromotion($promotion)) {
+                return redirect()->route('hrm.promotions.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             // Get employee's current position from Employee table for previous data
@@ -145,6 +149,10 @@ class PromotionController extends Controller
     public function destroy(Promotion $promotion)
     {
         if (Auth::user()->can('delete-promotions')) {
+            if (!$this->canAccessPromotion($promotion)) {
+                return redirect()->route('hrm.promotions.index')->with('error', __('Permission denied'));
+            }
+
             DestroyPromotion::dispatch($promotion);
             $promotion->delete();
 
@@ -157,6 +165,10 @@ class PromotionController extends Controller
     public function updateStatus(Promotion $promotion)
     {
         if (Auth::user()->can('manage-promotions-status')) {
+            if (!$this->canAccessPromotion($promotion)) {
+                return redirect()->route('hrm.promotions.index')->with('error', __('Permission denied'));
+            }
+
             $validated = request()->validate([
                 'status' => 'required|in:pending,approved,rejected'
             ]);
@@ -188,5 +200,23 @@ class PromotionController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function canAccessPromotion(Promotion $promotion): bool
+    {
+        if ((int) $promotion->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-promotions')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-promotions')) {
+            return (int) $promotion->creator_id === (int) Auth::id()
+                || (int) $promotion->employee_id === (int) Auth::id();
+        }
+
+        return false;
     }
 }

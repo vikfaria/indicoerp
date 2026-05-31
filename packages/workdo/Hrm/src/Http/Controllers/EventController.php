@@ -112,6 +112,10 @@ class EventController extends Controller
     public function update(UpdateEventRequest $request, Event $event)
     {
         if (Auth::user()->can('edit-events')) {
+            if (!$this->canAccessEvent($event)) {
+                return redirect()->route('hrm.events.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -150,6 +154,10 @@ class EventController extends Controller
     public function destroy(Event $event)
     {
         if (Auth::user()->can('delete-events')) {
+            if (!$this->canAccessEvent($event)) {
+                return redirect()->route('hrm.events.index')->with('error', __('Permission denied'));
+            }
+
             DestroyEvent::dispatch($event);
             $event->delete();
 
@@ -162,6 +170,10 @@ class EventController extends Controller
     public function statusUpdate(Request $request, Event $event)
     {
         if (Auth::user()->can('manage-event-status')) {
+            if (!$this->canAccessEvent($event)) {
+                return redirect()->route('hrm.events.index')->with('error', __('Permission denied'));
+            }
+
             $request->validate([
                 'status' => 'required|in:pending,approved,reject'
             ]);
@@ -222,5 +234,10 @@ class EventController extends Controller
         } else {
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessEvent(Event $event): bool
+    {
+        return (int) $event->created_by === (int) creatorId();
     }
 }

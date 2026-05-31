@@ -12,9 +12,10 @@ import { Eye } from 'lucide-react';
 import { formatDate, getImagePath, getCurrencySymbol } from '@/utils/helpers';
 
 export default function Show() {
-    const { employee, documents, foreignQuota, probationAlerts, probationCategoryLimits, auth } = usePage<any>().props;
+    const { employee, documents, foreignQuota, probationAlerts, probationCategoryLimits, auth, canViewSensitiveEmployeeData } = usePage<any>().props;
     const { t } = useTranslation();
     const canEdit = auth?.user?.permissions?.includes('edit-employees') ?? false;
+    const canViewSensitive = canViewSensitiveEmployeeData ?? false;
 
     const toDateInput = (value?: string | null) => value ? value.substring(0, 10) : '';
 
@@ -222,32 +223,38 @@ export default function Show() {
                                 </TabsContent>
 
                                 <TabsContent value="banking" className="space-y-6 mt-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Bank Name')}</p>
-                                            <p className="font-medium">{employee.bank_name}</p>
+                                    {canViewSensitive ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Bank Name')}</p>
+                                                <p className="font-medium">{employee.bank_name}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Account Holder Name')}</p>
+                                                <p className="font-medium">{employee.account_holder_name}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Account Number')}</p>
+                                                <p className="font-medium">{employee.account_number}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Bank Identifier Code')}</p>
+                                                <p className="font-medium">{employee.bank_identifier_code}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Bank Branch')}</p>
+                                                <p className="font-medium">{employee.bank_branch}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-muted-foreground mb-1">{t('Tax Payer ID')}</p>
+                                                <p className="font-medium">{employee.tax_payer_id || '-'}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Account Holder Name')}</p>
-                                            <p className="font-medium">{employee.account_holder_name}</p>
+                                    ) : (
+                                        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                            {t('Sensitive banking and fiscal data is restricted for your profile.')}
                                         </div>
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Account Number')}</p>
-                                            <p className="font-medium">{employee.account_number}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Bank Identifier Code')}</p>
-                                            <p className="font-medium">{employee.bank_identifier_code}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Bank Branch')}</p>
-                                            <p className="font-medium">{employee.bank_branch}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-sm text-muted-foreground mb-1">{t('Tax Payer ID')}</p>
-                                            <p className="font-medium">{employee.tax_payer_id || '-'}</p>
-                                        </div>
-                                    </div>
+                                    )}
                                 </TabsContent>
 
                                 <TabsContent value="hours" className="space-y-6 mt-6">
@@ -323,59 +330,62 @@ export default function Show() {
                                         </CardContent>
                                     </Card>
 
-                                    <Card>
-                                        <CardContent className="p-4 space-y-4">
-                                            <h4 className="font-semibold">{t('INSS Profile')}</h4>
-                                            <form
-                                                className="grid grid-cols-1 md:grid-cols-3 gap-3"
-                                                onSubmit={(e) => {
-                                                    e.preventDefault();
-                                                    socialProfileForm.put(route('hrm.employees.social-security-profile.upsert', employee.id), { preserveScroll: true });
-                                                }}
-                                            >
-                                                <div>
-                                                    <Label>{t('INSS Number')}</Label>
-                                                    <Input value={socialProfileForm.data.inss_number} onChange={(e) => socialProfileForm.setData('inss_number', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.inss_number} />
-                                                </div>
-                                                <div>
-                                                    <Label>{t('Registration Date')}</Label>
-                                                    <Input type="date" value={socialProfileForm.data.registration_date} onChange={(e) => socialProfileForm.setData('registration_date', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.registration_date} />
-                                                </div>
-                                                <div>
-                                                    <Label>{t('Status')}</Label>
-                                                    <Input value={socialProfileForm.data.registration_status} onChange={(e) => socialProfileForm.setData('registration_status', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.registration_status} />
-                                                </div>
-                                                <div>
-                                                    <Label>{t('ID Document Type')}</Label>
-                                                    <Input value={socialProfileForm.data.identification_document_type} onChange={(e) => socialProfileForm.setData('identification_document_type', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.identification_document_type} />
-                                                </div>
-                                                <div>
-                                                    <Label>{t('ID Document Number')}</Label>
-                                                    <Input value={socialProfileForm.data.identification_document_number} onChange={(e) => socialProfileForm.setData('identification_document_number', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.identification_document_number} />
-                                                </div>
-                                                <div>
-                                                    <Label>{t('Evidence Path')}</Label>
-                                                    <Input value={socialProfileForm.data.evidence_file_path} onChange={(e) => socialProfileForm.setData('evidence_file_path', e.target.value)} />
-                                                    <InputError message={socialProfileForm.errors.evidence_file_path} />
-                                                </div>
-                                                <div className="md:col-span-3">
-                                                    <Button type="submit" disabled={!canEdit || socialProfileForm.processing}>
-                                                        {t('Save INSS Profile')}
-                                                    </Button>
-                                                </div>
-                                            </form>
-                                        </CardContent>
-                                    </Card>
+                                    {canViewSensitive && (
+                                        <Card>
+                                            <CardContent className="p-4 space-y-4">
+                                                <h4 className="font-semibold">{t('INSS Profile')}</h4>
+                                                <form
+                                                    className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                                                    onSubmit={(e) => {
+                                                        e.preventDefault();
+                                                        socialProfileForm.put(route('hrm.employees.social-security-profile.upsert', employee.id), { preserveScroll: true });
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <Label>{t('INSS Number')}</Label>
+                                                        <Input value={socialProfileForm.data.inss_number} onChange={(e) => socialProfileForm.setData('inss_number', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.inss_number} />
+                                                    </div>
+                                                    <div>
+                                                        <Label>{t('Registration Date')}</Label>
+                                                        <Input type="date" value={socialProfileForm.data.registration_date} onChange={(e) => socialProfileForm.setData('registration_date', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.registration_date} />
+                                                    </div>
+                                                    <div>
+                                                        <Label>{t('Status')}</Label>
+                                                        <Input value={socialProfileForm.data.registration_status} onChange={(e) => socialProfileForm.setData('registration_status', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.registration_status} />
+                                                    </div>
+                                                    <div>
+                                                        <Label>{t('ID Document Type')}</Label>
+                                                        <Input value={socialProfileForm.data.identification_document_type} onChange={(e) => socialProfileForm.setData('identification_document_type', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.identification_document_type} />
+                                                    </div>
+                                                    <div>
+                                                        <Label>{t('ID Document Number')}</Label>
+                                                        <Input value={socialProfileForm.data.identification_document_number} onChange={(e) => socialProfileForm.setData('identification_document_number', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.identification_document_number} />
+                                                    </div>
+                                                    <div>
+                                                        <Label>{t('Evidence Path')}</Label>
+                                                        <Input value={socialProfileForm.data.evidence_file_path} onChange={(e) => socialProfileForm.setData('evidence_file_path', e.target.value)} />
+                                                        <InputError message={socialProfileForm.errors.evidence_file_path} />
+                                                    </div>
+                                                    <div className="md:col-span-3">
+                                                        <Button type="submit" disabled={!canEdit || socialProfileForm.processing}>
+                                                            {t('Save INSS Profile')}
+                                                        </Button>
+                                                    </div>
+                                                </form>
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
-                                    <Card>
-                                        <CardContent className="p-4 space-y-4">
-                                            <h4 className="font-semibold">{t('Foreign Worker Profile')}</h4>
-                                            <form
+                                    {canViewSensitive && (
+                                        <Card>
+                                            <CardContent className="p-4 space-y-4">
+                                                <h4 className="font-semibold">{t('Foreign Worker Profile')}</h4>
+                                                <form
                                                 className="grid grid-cols-1 md:grid-cols-3 gap-3"
                                                 onSubmit={(e) => {
                                                     e.preventDefault();
@@ -463,14 +473,15 @@ export default function Show() {
                                                     <Input type="date" value={foreignProfileForm.data.cessation_notified_at} onChange={(e) => foreignProfileForm.setData('cessation_notified_at', e.target.value)} />
                                                     <InputError message={foreignProfileForm.errors.cessation_notified_at} />
                                                 </div>
-                                                <div className="md:col-span-3">
-                                                    <Button type="submit" disabled={!canEdit || foreignProfileForm.processing}>
-                                                        {t('Save Foreign Worker Profile')}
-                                                    </Button>
-                                                </div>
-                                            </form>
-                                        </CardContent>
-                                    </Card>
+                                                    <div className="md:col-span-3">
+                                                        <Button type="submit" disabled={!canEdit || foreignProfileForm.processing}>
+                                                            {t('Save Foreign Worker Profile')}
+                                                        </Button>
+                                                    </div>
+                                                </form>
+                                            </CardContent>
+                                        </Card>
+                                    )}
 
                                     <Card>
                                         <CardContent className="p-4 space-y-3">
@@ -618,10 +629,11 @@ export default function Show() {
                                         </CardContent>
                                     </Card>
 
-                                    <Card>
-                                        <CardContent className="p-4 space-y-4">
-                                            <h4 className="font-semibold">{t('IRPS Dependents')}</h4>
-                                            <form
+                                    {canViewSensitive ? (
+                                        <Card>
+                                            <CardContent className="p-4 space-y-4">
+                                                <h4 className="font-semibold">{t('IRPS Dependents')}</h4>
+                                                <form
                                                 className="grid grid-cols-1 md:grid-cols-3 gap-3"
                                                 onSubmit={(e) => {
                                                     e.preventDefault();
@@ -699,9 +711,16 @@ export default function Show() {
                                                         )}
                                                     </div>
                                                 ))}
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ) : (
+                                        <Card>
+                                            <CardContent className="p-4 text-sm text-muted-foreground">
+                                                {t('Sensitive legal profiles (INSS, foreign worker and tax dependents) are restricted for your profile.')}
+                                            </CardContent>
+                                        </Card>
+                                    )}
                                 </TabsContent>
                             </Tabs>
                         </CardContent>

@@ -8,15 +8,20 @@ use App\Models\MozMinimumWage;
 use Carbon\Carbon;
 use Workdo\Contract\Models\Contract;
 use Workdo\Hrm\Models\Attendance;
+use Workdo\Hrm\Models\Acknowledgment;
 use Workdo\Hrm\Models\Complaint;
 use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
 use Workdo\Hrm\Models\EmployeeProbationProfile;
+use Workdo\Hrm\Models\HrmDocument;
 use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Overtime;
+use Workdo\Hrm\Models\Resignation;
 use Workdo\Hrm\Models\Termination;
 use Workdo\Hrm\Models\Warning;
+use Workdo\Training\Models\TrainingTask;
+use Workdo\Training\Models\TrainingType;
 
 class MozambiqueHrComplianceDashboardService
 {
@@ -53,6 +58,50 @@ class MozambiqueHrComplianceDashboardService
             ->map(static fn ($id): int => (int) $id)
             ->unique()
             ->values();
+
+        $codeOfConductThreshold = max(1, (int) (company_setting('mz_code_of_conduct_min_workers', $companyId) ?? 7));
+        $codeOfConductRequired = $totalWorkers >= $codeOfConductThreshold;
+        $codeOfConductPatterns = [
+            '%code of conduct%',
+            '%codigo de conduta%',
+            '%código de conduta%',
+            '%boa conduta%',
+        ];
+
+        $codeOfConductDocumentIds = HrmDocument::query()
+            ->where('created_by', $companyId)
+            ->where('status', 'approve')
+            ->where(function ($query) use ($codeOfConductPatterns): void {
+                foreach ($codeOfConductPatterns as $pattern) {
+                    $query
+                        ->orWhereRaw('LOWER(title) like ?', [$pattern])
+                        ->orWhereRaw("LOWER(COALESCE(description, '')) like ?", [$pattern]);
+                }
+            })
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->unique()
+            ->values();
+
+        $codeOfConductMissingRequiredDocument = $codeOfConductRequired && $codeOfConductDocumentIds->isEmpty() ? 1 : 0;
+        $codeOfConductAcknowledgmentsPending = 0;
+
+        if ($codeOfConductRequired && $codeOfConductDocumentIds->isNotEmpty() && $employeeUserIds->isNotEmpty()) {
+            $acknowledgedEmployeeIds = Acknowledgment::query()
+                ->where('created_by', $companyId)
+                ->whereIn('employee_id', $employeeUserIds->all())
+                ->whereIn('document_id', $codeOfConductDocumentIds->all())
+                ->where('status', 'acknowledged')
+                ->pluck('employee_id')
+                ->filter()
+                ->map(static fn ($id): int => (int) $id)
+                ->unique()
+                ->values();
+
+            $codeOfConductAcknowledgmentsPending = $employeeUserIds
+                ->diff($acknowledgedEmployeeIds)
+                ->count();
+        }
 
         $foreignProfiles = EmployeeForeignWorkerProfile::query()
             ->where('created_by', $companyId)
@@ -126,6 +175,7 @@ class MozambiqueHrComplianceDashboardService
 
         $disciplinaryResponseOverdue = Warning::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('status', 'pending')
             ->whereNotNull('response_deadline_at')
             ->whereDate('response_deadline_at', '<', $today->toDateString())
@@ -133,6 +183,7 @@ class MozambiqueHrComplianceDashboardService
 
         $disciplinaryDecisionOverdue = Warning::query()
             ->where('created_by', $companyId)
+            ->active()
             ->whereNotNull('decision_deadline_at')
             ->whereDate('decision_deadline_at', '<', $today->toDateString())
             ->where(function ($query): void {
@@ -142,6 +193,7 @@ class MozambiqueHrComplianceDashboardService
 
         $disciplinaryRefusalWithoutWitnesses = Warning::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('worker_refused_note_of_culpa', true)
             ->where(function ($query): void {
                 $query
@@ -154,12 +206,14 @@ class MozambiqueHrComplianceDashboardService
 
         $harassmentReportsPending = Complaint::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('is_harassment_report', true)
             ->whereIn('status', ['pending', 'in review', 'assigned', 'in progress'])
             ->count();
 
         $harassmentReportsWithoutOwner = Complaint::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('is_harassment_report', true)
             ->whereIn('status', ['in review', 'assigned', 'in progress'])
             ->whereNull('handling_owner_id')
@@ -167,6 +221,7 @@ class MozambiqueHrComplianceDashboardService
 
         $offboardingChecklistPending = Termination::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('status', 'approved')
             ->whereDate('termination_date', '<=', $today->toDateString())
             ->whereNull('offboarding_completed_at')
@@ -209,10 +264,27 @@ class MozambiqueHrComplianceDashboardService
 
         $foreignOffboardingMigrationPending = Termination::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('status', 'approved')
             ->whereDate('termination_date', '<=', $today->toDateString())
             ->whereNull('offboarding_migration_notified_at')
             ->whereIn('employee_id', $foreignWorkerUserIds)
+            ->count();
+
+        $terminationNoticeNonCompliant = Termination::query()
+            ->where('created_by', $companyId)
+            ->active()
+            ->where('status', 'approved')
+            ->whereDate('termination_date', '<=', $today->toDateString())
+            ->where('legal_notice_compliant', false)
+            ->count();
+
+        $resignationNoticeNonCompliant = Resignation::query()
+            ->where('created_by', $companyId)
+            ->active()
+            ->where('status', 'accepted')
+            ->whereDate('last_working_date', '<=', $today->toDateString())
+            ->where('legal_notice_compliant', false)
             ->count();
 
         $labourPolicy = $this->labourComplianceService->getPolicy($companyId);
@@ -233,6 +305,17 @@ class MozambiqueHrComplianceDashboardService
 
         $overtimeWeeklyLimitBreaches = $this->countWeeklyOvertimeBreaches($companyId, $weeklyOvertimeLimit);
         $weeklyRestBreachRisk = $this->countWeeklyRestBreachRisk($companyId, $today);
+        $unjustifiedAbsenceConsecutiveThreshold = 3;
+        $unjustifiedAbsenceMonthlyThreshold = 5;
+        $unjustifiedAbsenceRiskSummary = $this->countUnjustifiedAbsenceDisciplinaryRisks(
+            $companyId,
+            $today,
+            $unjustifiedAbsenceConsecutiveThreshold,
+            $unjustifiedAbsenceMonthlyThreshold
+        );
+        $unjustifiedAbsenceConsecutiveRisk = (int) ($unjustifiedAbsenceRiskSummary['consecutive_risk'] ?? 0);
+        $unjustifiedAbsenceMonthlyRisk = (int) ($unjustifiedAbsenceRiskSummary['monthly_risk'] ?? 0);
+        $unjustifiedAbsenceDisciplinaryRisk = (int) ($unjustifiedAbsenceRiskSummary['any_risk'] ?? 0);
 
         $labourContracts = Contract::query()
             ->where('created_by', $companyId)
@@ -322,6 +405,90 @@ class MozambiqueHrComplianceDashboardService
                 ->count();
         }
 
+        $mandatoryTrainingTypes = TrainingType::query()
+            ->where('created_by', $companyId)
+            ->where('is_mandatory', true)
+            ->get(['id', 'certificate_validity_days']);
+
+        $mandatoryTrainingOverdueWorkers = 0;
+        $mandatoryTrainingExpiringSoonWorkers = 0;
+
+        if ($employeeUserIds->isNotEmpty() && $mandatoryTrainingTypes->isNotEmpty()) {
+            $mandatoryTypeIds = $mandatoryTrainingTypes
+                ->pluck('id')
+                ->map(static fn ($id): int => (int) $id)
+                ->unique()
+                ->values();
+
+            $latestCompletionByWorkerType = [];
+
+            $completedTrainingTasks = TrainingTask::query()
+                ->where('created_by', $companyId)
+                ->where('status', 'completed')
+                ->whereIn('assigned_to', $employeeUserIds->all())
+                ->whereHas('training', function ($query) use ($companyId, $mandatoryTypeIds): void {
+                    $query
+                        ->where('created_by', $companyId)
+                        ->whereIn('training_type_id', $mandatoryTypeIds->all());
+                })
+                ->with(['training:id,training_type_id,end_date'])
+                ->get(['id', 'training_id', 'assigned_to', 'updated_at', 'created_by']);
+
+            foreach ($completedTrainingTasks as $task) {
+                $training = $task->training;
+                if (!$training || !$task->assigned_to) {
+                    continue;
+                }
+
+                $trainingTypeId = (int) $training->training_type_id;
+                $employeeUserId = (int) $task->assigned_to;
+                $completionDate = $training->end_date
+                    ? Carbon::parse((string) $training->end_date)->startOfDay()
+                    : Carbon::parse((string) ($task->updated_at ?? now()))->startOfDay();
+
+                $key = $employeeUserId . '|' . $trainingTypeId;
+                if (!isset($latestCompletionByWorkerType[$key]) || $completionDate->gt($latestCompletionByWorkerType[$key])) {
+                    $latestCompletionByWorkerType[$key] = $completionDate;
+                }
+            }
+
+            $overdueWorkers = [];
+            $expiringSoonWorkers = [];
+
+            foreach ($employeeUserIds as $employeeUserId) {
+                $employeeUserId = (int) $employeeUserId;
+
+                foreach ($mandatoryTrainingTypes as $mandatoryType) {
+                    $trainingTypeId = (int) $mandatoryType->id;
+                    $validityDays = max(0, (int) ($mandatoryType->certificate_validity_days ?? 0));
+                    $key = $employeeUserId . '|' . $trainingTypeId;
+                    $completionDate = $latestCompletionByWorkerType[$key] ?? null;
+
+                    if ($completionDate === null) {
+                        $overdueWorkers[$employeeUserId] = true;
+                        continue;
+                    }
+
+                    if ($validityDays <= 0) {
+                        continue;
+                    }
+
+                    $expiryDate = $completionDate->copy()->addDays($validityDays)->endOfDay();
+                    if ($expiryDate->lt($today->copy()->startOfDay())) {
+                        $overdueWorkers[$employeeUserId] = true;
+                        continue;
+                    }
+
+                    if ($expiryDate->lte($next30Days->copy()->endOfDay())) {
+                        $expiringSoonWorkers[$employeeUserId] = true;
+                    }
+                }
+            }
+
+            $mandatoryTrainingOverdueWorkers = count($overdueWorkers);
+            $mandatoryTrainingExpiringSoonWorkers = count($expiringSoonWorkers);
+        }
+
         $hasActiveIrpsTable = MozIrpsTable::query()
             ->where(function ($query) use ($companyId): void {
                 $query->where('created_by', $companyId)->orWhereNull('created_by');
@@ -359,6 +526,7 @@ class MozambiqueHrComplianceDashboardService
         $payrollObligations = $this->payrollObligationService->monthlySummary($companyId, 6);
         $disciplinaryCasesPending = Warning::query()
             ->where('created_by', $companyId)
+            ->active()
             ->where('status', 'pending')
             ->count();
 
@@ -427,20 +595,38 @@ class MozambiqueHrComplianceDashboardService
             $this->item('disciplinary_refusal_without_witnesses', __('Disciplinary refusals without two witnesses'), $disciplinaryRefusalWithoutWitnesses, 'high'),
             $this->item('harassment_reports_pending', __('Harassment reports pending resolution'), $harassmentReportsPending, 'high'),
             $this->item('harassment_reports_without_owner', __('Harassment reports without assigned owner'), $harassmentReportsWithoutOwner, 'high'),
+            $this->item('code_of_conduct_missing_required_document', __('Code of conduct required for 7+ workers but approved document is missing'), $codeOfConductMissingRequiredDocument, 'high'),
+            $this->item('code_of_conduct_acknowledgments_pending', __('Workers without code of conduct acknowledgment'), $codeOfConductAcknowledgmentsPending, 'high'),
             $this->item('offboarding_checklist_pending', __('Approved terminations without offboarding completion'), $offboardingChecklistPending, 'medium'),
             $this->item('foreign_offboarding_migration_pending', __('Foreign worker terminations missing migration notification'), $foreignOffboardingMigrationPending, 'high'),
+            $this->item('termination_notice_non_compliant', __('Approved terminations with legal notice non-compliance'), $terminationNoticeNonCompliant, 'high'),
+            $this->item('resignation_notice_non_compliant', __('Accepted resignations with legal notice non-compliance'), $resignationNoticeNonCompliant, 'high'),
             $this->item('leave_missing_supporting_document', __('Leave records missing required supporting documents'), $leaveMissingSupportingDocument, 'high'),
             $this->item('legal_leave_missing_reference_date', __('Legal leave records missing reference date'), $legalLeaveMissingReferenceDate, 'medium'),
             $this->item('leave_cash_out_below_min_rest', __('Leave compensation below minimum effective rest days'), $leaveCashOutBelowMinimumRest, 'high'),
             $this->item('overtime_daily_limit_breaches', __('Overtime daily legal limit breaches'), $overtimeDailyLimitBreaches, 'high'),
             $this->item('overtime_weekly_limit_breaches', __('Overtime weekly legal limit breaches'), $overtimeWeeklyLimitBreaches, 'high'),
             $this->item('weekly_rest_breach_risk', __('Workers at risk of missing 24h weekly rest'), $weeklyRestBreachRisk, 'high'),
+            $this->item(
+                'unjustified_absence_consecutive_risk',
+                __('Workers with more than :threshold consecutive unjustified absences', ['threshold' => $unjustifiedAbsenceConsecutiveThreshold]),
+                $unjustifiedAbsenceConsecutiveRisk,
+                'high'
+            ),
+            $this->item(
+                'unjustified_absence_monthly_risk',
+                __('Workers with more than :threshold unjustified absences in the current month', ['threshold' => $unjustifiedAbsenceMonthlyThreshold]),
+                $unjustifiedAbsenceMonthlyRisk,
+                'high'
+            ),
             $this->item('workers_without_signed_contract', __('Workers without signed labour contract'), $workersWithoutSignedContract, 'high'),
             $this->item('labour_contracts_missing_type', __('Labour contracts missing legal type'), $labourContractsMissingType, 'high'),
             $this->item('fixed_term_without_justification', __('Fixed-term contracts without legal justification'), $fixedTermWithoutJustification, 'high'),
             $this->item('labour_contracts_expiring_30d', __('Labour contracts expiring in 30 days'), $labourContractsExpiringSoon, 'medium'),
             $this->item('labour_contracts_expired', __('Labour contracts already expired'), $labourContractsExpired, 'high'),
             $this->item('accumulated_annual_leave_risk', __('Workers with potential accumulated annual leave'), $accumulatedAnnualLeaveRisk, 'medium'),
+            $this->item('mandatory_training_overdue_workers', __('Workers with overdue mandatory training'), $mandatoryTrainingOverdueWorkers, 'high'),
+            $this->item('mandatory_training_expiring_30d_workers', __('Workers with mandatory training expiring in 30 days'), $mandatoryTrainingExpiringSoonWorkers, 'medium'),
             $this->item('disciplinary_cases_pending', __('Disciplinary cases pending closure'), $disciplinaryCasesPending, 'medium'),
             $this->item('missing_active_irps_table', __('Active IRPS table missing'), $hasActiveIrpsTable ? 0 : 1, 'high'),
             $this->item('missing_active_inss_rate', __('Active INSS rate missing'), $hasActiveInssRate ? 0 : 1, 'high'),
@@ -480,7 +666,13 @@ class MozambiqueHrComplianceDashboardService
                 $this->panelIndicator('labour_contracts_expired', __('Labour contracts already expired'), $labourContractsExpired, 'high'),
                 $this->panelIndicator('foreign_documents_expired', __('Foreign documents expired'), $foreignDocumentsExpired, 'high'),
                 $this->panelIndicator('accumulated_annual_leave_risk', __('Workers with potential accumulated annual leave'), $accumulatedAnnualLeaveRisk, 'medium'),
+                $this->panelIndicator('mandatory_training_overdue_workers', __('Workers with overdue mandatory training'), $mandatoryTrainingOverdueWorkers, 'high'),
                 $this->panelIndicator('disciplinary_cases_pending', __('Disciplinary cases pending closure'), $disciplinaryCasesPending, 'medium'),
+                $this->panelIndicator('unjustified_absence_disciplinary_risk', __('Workers at disciplinary risk due to unjustified absences'), $unjustifiedAbsenceDisciplinaryRisk, 'high'),
+                $this->panelIndicator('code_of_conduct_missing_required_document', __('Code of conduct required for 7+ workers but approved document is missing'), $codeOfConductMissingRequiredDocument, 'high'),
+                $this->panelIndicator('code_of_conduct_acknowledgments_pending', __('Workers without code of conduct acknowledgment'), $codeOfConductAcknowledgmentsPending, 'high'),
+                $this->panelIndicator('termination_notice_non_compliant', __('Approved terminations with legal notice non-compliance'), $terminationNoticeNonCompliant, 'high'),
+                $this->panelIndicator('resignation_notice_non_compliant', __('Accepted resignations with legal notice non-compliance'), $resignationNoticeNonCompliant, 'high'),
                 $this->panelIndicator('payroll_fiscal_obligations_pending', __('Fiscal obligations pending (INSS/IRPS)'), $fiscalObligationsPending, 'high'),
                 $this->panelIndicator('foreign_workers_at_compliance_risk', __('Foreign workers at compliance risk'), $foreignWorkersAtComplianceRisk, 'high'),
             ]),
@@ -568,7 +760,7 @@ class MozambiqueHrComplianceDashboardService
 
         $attendances = Attendance::query()
             ->where('created_by', $companyId)
-            ->whereIn('status', ['present', 'half day'])
+            ->whereNotNull('clock_in')
             ->whereDate('date', '>=', $windowStart)
             ->whereDate('date', '<=', $windowEnd)
             ->get(['employee_id', 'date'])
@@ -611,5 +803,74 @@ class MozambiqueHrComplianceDashboardService
         }
 
         return $workersAtRisk;
+    }
+
+    private function countUnjustifiedAbsenceDisciplinaryRisks(
+        int $companyId,
+        Carbon $today,
+        int $consecutiveThreshold,
+        int $monthlyThreshold
+    ): array {
+        $monthStart = $today->copy()->startOfMonth();
+        $monthEnd = $today->copy()->endOfMonth();
+
+        $absencesByEmployee = Attendance::query()
+            ->where('created_by', $companyId)
+            ->where('status', 'absent')
+            ->where(function ($query): void {
+                $query->where('is_justified', false)
+                    ->orWhereNull('is_justified');
+            })
+            ->whereDate('date', '>=', $monthStart->toDateString())
+            ->whereDate('date', '<=', $monthEnd->toDateString())
+            ->get(['employee_id', 'date'])
+            ->groupBy('employee_id');
+
+        $consecutiveRiskEmployees = [];
+        $monthlyRiskEmployees = [];
+        $anyRiskEmployees = [];
+
+        foreach ($absencesByEmployee as $employeeId => $employeeAbsences) {
+            $absenceDates = $employeeAbsences
+                ->map(static fn (Attendance $attendance): string => Carbon::parse($attendance->date)->toDateString())
+                ->unique()
+                ->sort()
+                ->values()
+                ->values();
+
+            $monthlyAbsenceCount = $absenceDates->count();
+            if ($monthlyAbsenceCount > $monthlyThreshold) {
+                $monthlyRiskEmployees[(int) $employeeId] = true;
+                $anyRiskEmployees[(int) $employeeId] = true;
+            }
+
+            $longestConsecutive = 0;
+            $currentConsecutive = 0;
+            $previousDate = null;
+
+            foreach ($absenceDates as $absenceDate) {
+                $currentDate = Carbon::parse($absenceDate)->startOfDay();
+
+                if ($previousDate && (int) $previousDate->diffInDays($currentDate) === 1) {
+                    $currentConsecutive++;
+                } else {
+                    $currentConsecutive = 1;
+                }
+
+                $longestConsecutive = max($longestConsecutive, $currentConsecutive);
+                $previousDate = $currentDate;
+            }
+
+            if ($longestConsecutive > $consecutiveThreshold) {
+                $consecutiveRiskEmployees[(int) $employeeId] = true;
+                $anyRiskEmployees[(int) $employeeId] = true;
+            }
+        }
+
+        return [
+            'consecutive_risk' => count($consecutiveRiskEmployees),
+            'monthly_risk' => count($monthlyRiskEmployees),
+            'any_risk' => count($anyRiskEmployees),
+        ];
     }
 }

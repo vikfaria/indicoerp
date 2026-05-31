@@ -69,6 +69,10 @@ class DesignationController extends Controller
     public function update(UpdateDesignationRequest $request, Designation $designation)
     {
         if (Auth::user()->can('edit-designations')) {
+            if ((int) $designation->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.designations.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -90,6 +94,10 @@ class DesignationController extends Controller
     public function destroy(Designation $designation)
     {
         if (Auth::user()->can('delete-designations')) {
+            if ((int) $designation->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.designations.index')->with('error', __('Permission denied'));
+            }
+
             DestroyDesignation::dispatch($designation);
             $designation->delete();
 

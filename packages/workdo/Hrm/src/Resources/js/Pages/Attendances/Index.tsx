@@ -168,6 +168,32 @@ export default function Index() {
                 );
             }
         },
+        {
+            key: 'absence_category',
+            header: t('Absence Classification'),
+            sortable: false,
+            render: (_: string, row: Attendance) => {
+                if (row.status !== 'absent') {
+                    return '-';
+                }
+
+                const justificationLabel = row.is_justified === null || row.is_justified === undefined
+                    ? t('Not Classified')
+                    : row.is_justified
+                        ? t('Justified')
+                        : t('Unjustified');
+                const categoryLabel = row.absence_category
+                    ? t(row.absence_category.replaceAll('_', ' '))
+                    : t('No Category');
+
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-sm font-medium">{justificationLabel}</span>
+                        <span className="text-xs text-muted-foreground">{categoryLabel}</span>
+                    </div>
+                );
+            }
+        },
         ...(auth.user?.permissions?.some((p: string) => ['view-attendances', 'edit-attendances', 'delete-attendances'].includes(p)) ? [{
             key: 'actions',
             header: t('Actions'),

@@ -725,7 +725,13 @@ class PayrollController extends Controller
     {
         $overtimes = Overtime::where('employee_id', $employee->user_id)
             ->where('created_by', creatorId())
-            ->where('status', 'active')
+            ->where(function ($query): void {
+                $query->where('approval_status', 'approved')
+                    ->orWhere(function ($legacyQuery): void {
+                        $legacyQuery->whereNull('approval_status')
+                            ->where('status', 'active');
+                    });
+            })
             ->where(function ($query) use ($startDate, $endDate) {
                 $query->whereBetween('start_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
                     ->orWhereBetween('end_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
@@ -832,6 +838,11 @@ class PayrollController extends Controller
     public function printPayslip(PayrollEntry $payrollEntry)
     {
         if (Auth::user()->can('download-payslip')) {
+            $payroll = $payrollEntry->payroll;
+            if (!$payroll || !$this->checkPayrollAccess($payroll)) {
+                return redirect()->route('hrm.payrolls.index')->with('error', __('Permission denied'));
+            }
+
             $payrollEntry->load(['employee.user', 'employee.designation', 'payroll']);
 
             return Inertia::render('Hrm/Payrolls/payslip/Payslip', [

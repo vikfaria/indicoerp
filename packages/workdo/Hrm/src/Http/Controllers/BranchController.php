@@ -64,6 +64,10 @@ class BranchController extends Controller
     public function update(UpdateBranchRequest $request, Branch $branch)
     {
         if (Auth::user()->can('edit-branches')) {
+            if ((int) $branch->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.branches.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
             $branch->branch_name = $validated['branch_name'];
             $branch->save();
@@ -79,6 +83,10 @@ class BranchController extends Controller
     public function destroy(Branch $branch)
     {
         if (Auth::user()->can('delete-branches')) {
+            if ((int) $branch->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.branches.index')->with('error', __('Permission denied'));
+            }
+
             DestroyBranch::dispatch($branch);
             $branch->delete();
 

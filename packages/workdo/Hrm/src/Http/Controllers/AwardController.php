@@ -77,6 +77,10 @@ class AwardController extends Controller
     public function update(UpdateAwardRequest $request, Award $award)
     {
         if (Auth::user()->can('edit-awards')) {
+            if (!$this->canAccessAward($award)) {
+                return redirect()->route('hrm.awards.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
 
@@ -100,6 +104,10 @@ class AwardController extends Controller
     public function destroy(Award $award)
     {
         if (Auth::user()->can('delete-awards')) {
+            if (!$this->canAccessAward($award)) {
+                return redirect()->route('hrm.awards.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAward::dispatch($award);
             $award->delete();
 
@@ -122,5 +130,23 @@ class AwardController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function canAccessAward(Award $award): bool
+    {
+        if ((int) $award->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-awards')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-awards')) {
+            return (int) $award->creator_id === (int) Auth::id()
+                || (int) $award->employee_id === (int) Auth::id();
+        }
+
+        return false;
     }
 }

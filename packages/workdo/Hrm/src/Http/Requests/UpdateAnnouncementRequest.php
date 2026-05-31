@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateAnnouncementRequest extends FormRequest
 {
@@ -13,11 +14,24 @@ class UpdateAnnouncementRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
             'title' => 'required|string|max:255',
-            'announcement_category_id' => 'nullable|exists:announcement_categories,id',
+            'announcement_category_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('announcement_categories', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'departments' => 'required|array',
-            'departments.*' => 'exists:departments,id',
+            'departments.*' => [
+                'integer',
+                Rule::exists('departments', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'description' => 'required',
             'priority' => 'required',
             'start_date' => 'required|date|after_or_equal:today',

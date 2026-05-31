@@ -88,6 +88,20 @@ export default function EditCandidate({ candidate, onSuccess }: EditCandidatePro
                 (typeof candidate.dob === 'string' ?
                  candidate.dob.split('T')[0] :
                  new Date(candidate.dob).toISOString().split('T')[0]) : '',
+            nationality: candidate.nationality ?? '',
+            identification_document_type: candidate.identification_document_type ?? '',
+            identification_document_number: candidate.identification_document_number ?? '',
+            nuit: candidate.nuit ?? '',
+            desired_professional_category: candidate.desired_professional_category ?? '',
+            is_regulated_profession: Boolean(candidate.is_regulated_profession),
+            professional_license_type: candidate.professional_license_type ?? '',
+            professional_license_number: candidate.professional_license_number ?? '',
+            professional_license_expiry_date: candidate.professional_license_expiry_date ?
+                (typeof candidate.professional_license_expiry_date === 'string' ?
+                 candidate.professional_license_expiry_date.split('T')[0] :
+                 new Date(candidate.professional_license_expiry_date).toISOString().split('T')[0]) : '',
+            minor_work_authorization_path: candidate.minor_work_authorization_path ?? '',
+            legal_exception_notes: candidate.legal_exception_notes ?? '',
             country: candidate.country ?? '',
             state: candidate.state ?? '',
             city: candidate.city ?? '',
@@ -127,6 +141,12 @@ export default function EditCandidate({ candidate, onSuccess }: EditCandidatePro
     };
 
     const { data, setData, put, processing, errors } = useForm<any>(getInitialFormData());
+
+    const parsedDob = data.dob ? new Date(data.dob) : null;
+    const candidateAge = parsedDob && !Number.isNaN(parsedDob.getTime())
+        ? Math.floor((Date.now() - parsedDob.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+        : null;
+    const requiresMinorAuthorization = candidateAge !== null && candidateAge >= 12 && candidateAge < 15;
 
     // Load custom questions on mount
     useEffect(() => {
@@ -425,6 +445,156 @@ export default function EditCandidate({ candidate, onSuccess }: EditCandidatePro
                                 <InputError message={errors.city} />
                             </div>
                         )}
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="nationality">{t('Nationality')}</Label>
+                        <Input
+                            id="nationality"
+                            type="text"
+                            value={data.nationality}
+                            onChange={(e) => setData('nationality', e.target.value)}
+                            placeholder={t('Enter Nationality')}
+                        />
+                        <InputError message={errors.nationality} />
+                    </div>
+
+                    <div>
+                        <Label htmlFor="nuit">{t('NUIT')}</Label>
+                        <Input
+                            id="nuit"
+                            type="text"
+                            value={data.nuit}
+                            onChange={(e) => setData('nuit', e.target.value)}
+                            placeholder={t('Enter NUIT (9 digits)')}
+                        />
+                        <InputError message={errors.nuit} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="identification_document_type">{t('Identification Document Type')}</Label>
+                        <Select
+                            value={data.identification_document_type}
+                            onValueChange={(value) => setData('identification_document_type', value)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select document type')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="bi">{t('BI')}</SelectItem>
+                                <SelectItem value="passport">{t('Passport')}</SelectItem>
+                                <SelectItem value="dire">{t('DIRE')}</SelectItem>
+                                <SelectItem value="other">{t('Other')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.identification_document_type} />
+                    </div>
+
+                    <div>
+                        <Label htmlFor="identification_document_number">{t('Identification Document Number')}</Label>
+                        <Input
+                            id="identification_document_number"
+                            type="text"
+                            value={data.identification_document_number}
+                            onChange={(e) => setData('identification_document_number', e.target.value)}
+                            placeholder={t('Enter document number')}
+                        />
+                        <InputError message={errors.identification_document_number} />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="desired_professional_category">{t('Desired Professional Category')}</Label>
+                        <Input
+                            id="desired_professional_category"
+                            type="text"
+                            value={data.desired_professional_category}
+                            onChange={(e) => setData('desired_professional_category', e.target.value)}
+                            placeholder={t('Enter desired professional category')}
+                        />
+                        <InputError message={errors.desired_professional_category} />
+                    </div>
+
+                    <div className="flex items-end">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox
+                                id="is_regulated_profession"
+                                checked={Boolean(data.is_regulated_profession)}
+                                onCheckedChange={(checked) => setData('is_regulated_profession', checked === true)}
+                            />
+                            <Label htmlFor="is_regulated_profession">{t('Regulated Profession')}</Label>
+                        </div>
+                        <InputError message={errors.is_regulated_profession} />
+                    </div>
+                </div>
+
+                {Boolean(data.is_regulated_profession) && (
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="professional_license_type">{t('Professional License Type')}</Label>
+                            <Input
+                                id="professional_license_type"
+                                type="text"
+                                value={data.professional_license_type}
+                                onChange={(e) => setData('professional_license_type', e.target.value)}
+                                placeholder={t('Enter license type')}
+                            />
+                            <InputError message={errors.professional_license_type} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="professional_license_number">{t('Professional License Number')}</Label>
+                            <Input
+                                id="professional_license_number"
+                                type="text"
+                                value={data.professional_license_number}
+                                onChange={(e) => setData('professional_license_number', e.target.value)}
+                                placeholder={t('Enter license number')}
+                            />
+                            <InputError message={errors.professional_license_number} />
+                        </div>
+
+                        <div>
+                            <Label>{t('Professional License Expiry Date')}</Label>
+                            <DatePicker
+                                value={data.professional_license_expiry_date}
+                                onChange={(date) => setData('professional_license_expiry_date', date)}
+                                placeholder={t('Select expiry date')}
+                            />
+                            <InputError message={errors.professional_license_expiry_date} />
+                        </div>
+                    </div>
+                )}
+
+                {requiresMinorAuthorization && (
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="minor_work_authorization_path" required>{t('Minor Work Authorization Evidence')}</Label>
+                            <Input
+                                id="minor_work_authorization_path"
+                                type="text"
+                                value={data.minor_work_authorization_path}
+                                onChange={(e) => setData('minor_work_authorization_path', e.target.value)}
+                                placeholder={t('Enter authorization file path/reference')}
+                            />
+                            <InputError message={errors.minor_work_authorization_path} />
+                        </div>
+                        <div>
+                            <Label htmlFor="legal_exception_notes" required>{t('Legal Exception Notes')}</Label>
+                            <Textarea
+                                id="legal_exception_notes"
+                                value={data.legal_exception_notes}
+                                onChange={(e) => setData('legal_exception_notes', e.target.value)}
+                                placeholder={t('Enter legal notes for exceptional minor hiring')}
+                                rows={3}
+                            />
+                            <InputError message={errors.legal_exception_notes} />
+                        </div>
                     </div>
                 )}
 

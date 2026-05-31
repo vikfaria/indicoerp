@@ -62,6 +62,10 @@ class EmployeeDocumentTypeController extends Controller
     public function update(UpdateEmployeeDocumentTypeRequest $request, EmployeeDocumentType $employeedocumenttype)
     {
         if (Auth::user()->can('edit-employee-document-types')) {
+            if ((int) $employeedocumenttype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.employee-document-types.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             $validated['is_required'] = $request->boolean('is_required', false);
@@ -81,6 +85,10 @@ class EmployeeDocumentTypeController extends Controller
     public function destroy(EmployeeDocumentType $employeedocumenttype)
     {
         if (Auth::user()->can('delete-employee-document-types')) {
+            if ((int) $employeedocumenttype->created_by !== (int) creatorId()) {
+                return redirect()->route('hrm.employee-document-types.index')->with('error', __('Permission denied'));
+            }
+
             $employeedocumenttype->delete();
 
             return redirect()->route('hrm.employee-document-types.index')->with('success', __('The document type has been deleted.'));

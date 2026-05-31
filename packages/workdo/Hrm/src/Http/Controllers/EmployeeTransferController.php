@@ -111,6 +111,10 @@ class EmployeeTransferController extends Controller
     public function update(UpdateEmployeeTransferRequest $request, EmployeeTransfer $employeetransfer)
     {
         if (Auth::user()->can('edit-employee-transfers')) {
+            if (!$this->canAccessEmployeeTransfer($employeetransfer)) {
+                return redirect()->route('hrm.employee-transfers.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             $employeetransfer->transfer_date = $validated['transfer_date'] ?? null;
@@ -134,6 +138,10 @@ class EmployeeTransferController extends Controller
     public function destroy(EmployeeTransfer $employeetransfer)
     {
         if (Auth::user()->can('delete-employee-transfers')) {
+            if (!$this->canAccessEmployeeTransfer($employeetransfer)) {
+                return redirect()->route('hrm.employee-transfers.index')->with('error', __('Permission denied'));
+            }
+
             DestroyEmployeeTransfer::dispatch($employeetransfer);
             $employeetransfer->delete();
 
@@ -146,6 +154,10 @@ class EmployeeTransferController extends Controller
     public function updateStatus(Request $request, EmployeeTransfer $employeetransfer)
     {
         if (Auth::user()->can('manage-employee-transfers-status')) {
+            if (!$this->canAccessEmployeeTransfer($employeetransfer)) {
+                return redirect()->route('hrm.employee-transfers.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validate([
                 'status' => ['required', Rule::in(['pending', 'approved', 'in progress', 'rejected', 'cancelled'])]
             ]);
@@ -191,5 +203,24 @@ class EmployeeTransferController extends Controller
         return User::emp()->where('created_by', creatorId())
             ->whereIn('id', $employeeQuery->pluck('user_id'))
             ->select('id', 'name')->get();
+    }
+
+    private function canAccessEmployeeTransfer(EmployeeTransfer $employeeTransfer): bool
+    {
+        if ((int) $employeeTransfer->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-employee-transfers')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-employee-transfers')) {
+            return (int) $employeeTransfer->creator_id === (int) Auth::id()
+                || (int) $employeeTransfer->employee_id === (int) Auth::id()
+                || (int) ($employeeTransfer->approved_by ?? 0) === (int) Auth::id();
+        }
+
+        return false;
     }
 }

@@ -4,7 +4,7 @@ import { User, Calendar, FileText, Tag, CheckCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Resignation } from './types';
-import { formatDate, getImagePath } from '@/utils/helpers';
+import { formatCurrency, formatDate, getImagePath } from '@/utils/helpers';
 
 interface ViewProps {
     resignation: Resignation;
@@ -81,6 +81,52 @@ export default function View({ resignation }: ViewProps) {
                         </div>
                     </div>
                 </div>
+
+                {(resignation.legal_notice_required_days !== undefined ||
+                    resignation.legal_notice_provided_days !== undefined ||
+                    resignation.legal_notice_missing_days !== undefined) && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Legal Notice Required (days)')}</label>
+                            <p className="mt-1 font-medium">{resignation.legal_notice_required_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Provided (days)')}</label>
+                            <p className="mt-1 font-medium">{resignation.legal_notice_provided_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Missing (days)')}</label>
+                            <p className="mt-1 font-medium">{resignation.legal_notice_missing_days ?? '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Notice Compliance')}</label>
+                            <p className="mt-1 font-medium">
+                                {resignation.legal_notice_compliant === undefined || resignation.legal_notice_compliant === null
+                                    ? '-'
+                                    : resignation.legal_notice_compliant ? t('Compliant') : t('Non-compliant')}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {(resignation.settlement_salary_until_exit_amount !== undefined ||
+                    resignation.settlement_gross_amount !== undefined ||
+                    resignation.settlement_net_amount !== undefined) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Salary Until Exit')}</label>
+                            <p className="mt-1 font-medium">{resignation.settlement_salary_until_exit_amount !== undefined ? formatCurrency(resignation.settlement_salary_until_exit_amount) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Settlement Gross')}</label>
+                            <p className="mt-1 font-medium">{resignation.settlement_gross_amount !== undefined ? formatCurrency(resignation.settlement_gross_amount) : '-'}</p>
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium text-gray-500">{t('Settlement Net')}</label>
+                            <p className="mt-1 font-medium">{resignation.settlement_net_amount !== undefined ? formatCurrency(resignation.settlement_net_amount) : '-'}</p>
+                        </div>
+                    </div>
+                )}
                 
                 {resignation.description && (
                     <div>

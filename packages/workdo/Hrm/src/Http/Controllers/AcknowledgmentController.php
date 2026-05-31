@@ -27,7 +27,16 @@ class AcknowledgmentController extends Controller
                     if (Auth::user()->can('manage-any-acknowledgments')) {
                         $q->where('created_by', creatorId());
                     } elseif (Auth::user()->can('manage-own-acknowledgments')) {
-                        $q->where('creator_id', Auth::id())->orWhere('employee_id', Auth::id());
+                        $q->where(function ($scope): void {
+                            $scope
+                                ->where('created_by', creatorId())
+                                ->where(function ($own): void {
+                                    $own
+                                        ->where('creator_id', Auth::id())
+                                        ->orWhere('employee_id', Auth::id())
+                                        ->orWhere('assigned_by', Auth::id());
+                                });
+                        });
                     } else {
                         $q->whereRaw('1 = 0');
                     }
@@ -65,7 +74,22 @@ class AcknowledgmentController extends Controller
         if (Auth::user()->can('create-acknowledgments')) {
             $validated = $request->validated();
 
+            $employeeExists = Employee::query()
+                ->where('created_by', creatorId())
+                ->where('user_id', (int) $validated['employee_id'])
+                ->exists();
+            if (!$employeeExists) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
 
+            $documentExists = HrmDocument::query()
+                ->where('created_by', creatorId())
+                ->where('id', (int) $validated['document_id'])
+                ->where('status', 'approve')
+                ->exists();
+            if (!$documentExists) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
 
             $acknowledgment = new Acknowledgment();
             $acknowledgment->employee_id = $validated['employee_id'];
@@ -87,9 +111,28 @@ class AcknowledgmentController extends Controller
     public function update(UpdateAcknowledgmentRequest $request, Acknowledgment $acknowledgment)
     {
         if (Auth::user()->can('edit-acknowledgments')) {
+            if (!$this->canAccessAcknowledgment($acknowledgment)) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
+            $employeeExists = Employee::query()
+                ->where('created_by', creatorId())
+                ->where('user_id', (int) $validated['employee_id'])
+                ->exists();
+            if (!$employeeExists) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
 
+            $documentExists = HrmDocument::query()
+                ->where('created_by', creatorId())
+                ->where('id', (int) $validated['document_id'])
+                ->where('status', 'approve')
+                ->exists();
+            if (!$documentExists) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
 
             $acknowledgment->employee_id = $validated['employee_id'];
             $acknowledgment->document_id = $validated['document_id'];
@@ -108,6 +151,10 @@ class AcknowledgmentController extends Controller
     public function destroy(Acknowledgment $acknowledgment)
     {
         if (Auth::user()->can('delete-acknowledgments')) {
+            if (!$this->canAccessAcknowledgment($acknowledgment)) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
+
             DestroyAcknowledgment::dispatch($acknowledgment);
             $acknowledgment->delete();
 
@@ -122,6 +169,10 @@ class AcknowledgmentController extends Controller
     public function updateStatus(Request $request, Acknowledgment $acknowledgment)
     {
         if (Auth::user()->can('manage-acknowledgment-status')) {
+            if (!$this->canAccessAcknowledgment($acknowledgment)) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validate([
                 'status' => ['required', Rule::in(['pending', 'acknowledged'])]
             ]);
@@ -138,5 +189,24 @@ class AcknowledgmentController extends Controller
         } else {
             return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
         }
+    }
+
+    private function canAccessAcknowledgment(Acknowledgment $acknowledgment): bool
+    {
+        if ((int) $acknowledgment->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-acknowledgments')) {
+            return true;
+        }
+
+        if (Auth::user()->can('manage-own-acknowledgments')) {
+            return (int) $acknowledgment->creator_id === (int) Auth::id()
+                || (int) $acknowledgment->employee_id === (int) Auth::id()
+                || (int) $acknowledgment->assigned_by === (int) Auth::id();
+        }
+
+        return false;
     }
 }

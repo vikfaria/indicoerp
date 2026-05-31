@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -12,6 +14,7 @@ use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Models\EmployeeDependent;
 use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
 use Workdo\Hrm\Models\EmployeeProbationProfile;
+use Workdo\Hrm\Models\EmployeeSocialSecurityProfile;
 
 class HrmEmployeeLegalProfilesTest extends TestCase
 {
@@ -241,6 +244,96 @@ class HrmEmployeeLegalProfilesTest extends TestCase
         $this->assertSame('2026-07-30', optional($profile->expected_end_at)->toDateString());
     }
 
+    public function test_employee_show_masks_sensitive_data_without_sensitive_permission(): void
+    {
+        $company = $this->makeCompany();
+        $employee = $this->makeEmployee($company, 'EMP-SENS-001');
+
+        $employee->update([
+            'bank_name' => 'Banco Teste',
+            'account_holder_name' => 'Titular Teste',
+            'account_number' => '1234567890',
+            'bank_identifier_code' => 'BIMOMZMX',
+            'bank_branch' => 'Maputo Centro',
+            'tax_payer_id' => '400000111',
+            'emergency_contact_name' => 'Contacto Sensivel',
+            'emergency_contact_relationship' => 'Spouse',
+            'emergency_contact_number' => '840000111',
+        ]);
+
+        EmployeeSocialSecurityProfile::query()->create([
+            'employee_id' => $employee->id,
+            'inss_number' => 'INSS-HIDE-001',
+            'registration_status' => 'registered',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        EmployeeDependent::query()->create([
+            'employee_id' => $employee->id,
+            'full_name' => 'Dependente Oculto',
+            'relationship' => 'child',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $viewer = User::factory()->create([
+            'type' => 'staff',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+        $this->grantPermissions($viewer, ['view-employees', 'manage-any-employees']);
+
+        $this->actingAs($viewer)
+            ->get(route('hrm.employees.show', $employee->id), $this->inertiaHeaders())
+            ->assertOk()
+            ->assertHeader('X-Inertia', 'true')
+            ->assertJsonPath('props.canViewSensitiveEmployeeData', false)
+            ->assertJsonPath('props.employee.bank_name', null)
+            ->assertJsonPath('props.employee.account_number', null)
+            ->assertJsonPath('props.employee.tax_payer_id', null)
+            ->assertJsonPath('props.employee.emergency_contact_name', null)
+            ->assertJsonPath('props.employee.social_security_profile', null)
+            ->assertJsonPath('props.employee.dependents', []);
+    }
+
+    public function test_employee_show_exposes_sensitive_data_with_sensitive_permission(): void
+    {
+        $company = $this->makeCompany();
+        $employee = $this->makeEmployee($company, 'EMP-SENS-002');
+
+        $employee->update([
+            'bank_name' => 'Banco Visivel',
+            'account_number' => '9988776655',
+            'tax_payer_id' => '400000222',
+        ]);
+
+        EmployeeSocialSecurityProfile::query()->create([
+            'employee_id' => $employee->id,
+            'inss_number' => 'INSS-SHOW-001',
+            'registration_status' => 'registered',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $viewer = User::factory()->create([
+            'type' => 'staff',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+        $this->grantPermissions($viewer, ['view-employees', 'manage-any-employees', 'view-sensitive-employee-data']);
+
+        $this->actingAs($viewer)
+            ->get(route('hrm.employees.show', $employee->id), $this->inertiaHeaders())
+            ->assertOk()
+            ->assertHeader('X-Inertia', 'true')
+            ->assertJsonPath('props.canViewSensitiveEmployeeData', true)
+            ->assertJsonPath('props.employee.bank_name', 'Banco Visivel')
+            ->assertJsonPath('props.employee.account_number', '9988776655')
+            ->assertJsonPath('props.employee.tax_payer_id', '400000222')
+            ->assertJsonPath('props.employee.social_security_profile.inss_number', 'INSS-SHOW-001');
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([
@@ -290,5 +383,14 @@ class HrmEmployeeLegalProfilesTest extends TestCase
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $user->refresh();
+    }
+
+    private function inertiaHeaders(): array
+    {
+        return [
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/')) ?? '',
+        ];
     }
 }

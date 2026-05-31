@@ -26,7 +26,16 @@ class WarningController extends Controller
                     if (Auth::user()->can('manage-any-warnings')) {
                         $q->where('created_by', creatorId());
                     } elseif (Auth::user()->can('manage-own-warnings')) {
-                        $q->where('creator_id', Auth::id())->orWhere('employee_id', Auth::id())->where('status', '=', 'approved');
+                        $q->where(function ($ownQuery): void {
+                            $ownQuery
+                                ->where('creator_id', Auth::id())
+                                ->orWhere('warning_by', Auth::id())
+                                ->orWhere(function ($employeeWarningQuery): void {
+                                    $employeeWarningQuery
+                                        ->where('employee_id', Auth::id())
+                                        ->where('status', '=', 'approved');
+                                });
+                        });
                     } else {
                         $q->whereRaw('1 = 0');
                     }
@@ -88,6 +97,14 @@ class WarningController extends Controller
     public function update(UpdateWarningRequest $request, Warning $warning)
     {
         if (Auth::user()->can('edit-warnings')) {
+            if (!$this->canAccessWarning($warning)) {
+                return redirect()->route('hrm.warnings.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($warning->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled warnings cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
 
@@ -115,10 +132,27 @@ class WarningController extends Controller
     public function destroy(Warning $warning)
     {
         if (Auth::user()->can('delete-warnings')) {
-            DestroyWarning::dispatch($warning);
-            $warning->delete();
+            if (!$this->canAccessWarning($warning)) {
+                return redirect()->route('hrm.warnings.index')->with('error', __('Permission denied'));
+            }
 
-            return redirect()->back()->with('success', __('The warning has been deleted.'));
+            if ((bool) ($warning->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Warning is already cancelled.'));
+            }
+
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyWarning::dispatch($warning);
+            $warning->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Warning cancelled successfully.'));
         } else {
             return redirect()->route('hrm.warnings.index')->with('error', __('Permission denied'));
         }
@@ -127,8 +161,16 @@ class WarningController extends Controller
     public function response(Warning $warning)
     {
         if (Auth::user()->can('manage-warning-response')) {
+            if (!$this->canAccessWarning($warning)) {
+                return redirect()->route('hrm.warnings.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($warning->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled warnings cannot be processed.'));
+            }
+
             $validated = request()->validate([
-                'warning_status' => 'required|string',
+                'warning_status' => 'required|in:pending,approved,rejected',
                 'employee_response' => 'nullable|string',
             ]);
 
@@ -175,5 +217,27 @@ class WarningController extends Controller
         $warning->decision_deadline_at = $validated['decision_deadline_at'] ?? null;
         $warning->disciplinary_sanction = $validated['disciplinary_sanction'] ?? null;
         $warning->disciplinary_decision_at = $validated['disciplinary_decision_at'] ?? null;
+    }
+
+    private function canAccessWarning(Warning $warning): bool
+    {
+        if ((int) $warning->created_by !== (int) creatorId()) {
+            return false;
+        }
+
+        if (Auth::user()->can('manage-any-warnings')) {
+            return true;
+        }
+
+        if ((int) $warning->creator_id === (int) Auth::id()) {
+            return true;
+        }
+
+        if ((int) $warning->warning_by === (int) Auth::id()) {
+            return true;
+        }
+
+        return (int) $warning->employee_id === (int) Auth::id()
+            && (string) $warning->status === 'approved';
     }
 }

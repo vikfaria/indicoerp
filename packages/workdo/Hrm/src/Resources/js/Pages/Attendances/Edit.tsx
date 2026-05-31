@@ -14,6 +14,15 @@ import { EditAttendanceFormData, EditAttendanceProps } from './types';
 export default function Edit({ attendance, onSuccess }: EditAttendanceProps) {
     const { employees, shifts } = usePage<any>().props;
     const { t } = useTranslation();
+    const absenceCategories = [
+        { value: 'unjustified', label: t('Unjustified Absence') },
+        { value: 'medical', label: t('Medical Leave / Sickness') },
+        { value: 'work_accident', label: t('Work Accident') },
+        { value: 'family_assistance', label: t('Family Assistance') },
+        { value: 'manager_authorized', label: t('Management Authorization') },
+        { value: 'public_service', label: t('Public Service') },
+        { value: 'other', label: t('Other') },
+    ];
 
     const { data, setData, put, processing, errors } = useForm<EditAttendanceFormData>({
         employee_id: attendance.employee_id?.toString() || '',
@@ -21,6 +30,12 @@ export default function Edit({ attendance, onSuccess }: EditAttendanceProps) {
         clock_in: attendance.clock_in ? attendance.clock_in.substring(0, 19) : '',
         clock_out: attendance.clock_out ? attendance.clock_out.substring(0, 19) : '',
         break_hour: attendance.break_hour?.toString() || '',
+        is_justified: attendance.is_justified === null || attendance.is_justified === undefined
+            ? 'auto'
+            : attendance.is_justified
+                ? 'true'
+                : 'false',
+        absence_category: attendance.absence_category || 'none',
         notes: attendance.notes || '',
     });
 
@@ -95,6 +110,39 @@ export default function Edit({ attendance, onSuccess }: EditAttendanceProps) {
                     </div>
 
 
+                </div>
+
+                <div>
+                    <Label htmlFor="is_justified">{t('Absence Justification')}</Label>
+                    <Select value={data.is_justified} onValueChange={(value) => setData('is_justified', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Auto-detect from rules')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="auto">{t('Auto-detect from rules')}</SelectItem>
+                            <SelectItem value="true">{t('Justified')}</SelectItem>
+                            <SelectItem value="false">{t('Unjustified')}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.is_justified} />
+                </div>
+
+                <div>
+                    <Label htmlFor="absence_category">{t('Absence Category')}</Label>
+                    <Select value={data.absence_category} onValueChange={(value) => setData('absence_category', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Optional')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">{t('Optional')}</SelectItem>
+                            {absenceCategories.map((category) => (
+                                <SelectItem key={category.value} value={category.value}>
+                                    {category.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.absence_category} />
                 </div>
 
                 <div>

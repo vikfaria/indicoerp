@@ -25,6 +25,11 @@ export default function EditResignation({ resignation, onSuccess }: EditResignat
         reason: resignation.reason ?? '',
         description: resignation.description ?? '',
         document: resignation.document ?? '',
+        settlement_unused_leave_days: resignation.settlement_unused_leave_days?.toString() || '',
+        settlement_other_earnings_amount: resignation.settlement_other_earnings_amount?.toString() || '',
+        settlement_other_deductions_amount: resignation.settlement_other_deductions_amount?.toString() || '',
+        settlement_apply_indemnity: resignation.settlement_apply_indemnity ?? false,
+        settlement_indemnity_days_per_year: resignation.settlement_indemnity_days_per_year?.toString() || '45',
     });
 
     // AI hooks for description field
@@ -113,6 +118,66 @@ export default function EditResignation({ resignation, onSuccess }: EditResignat
                         placeholder={t('Select Document')}
                     />
                     <InputError message={errors.document} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border rounded-md p-3">
+                    <div className="md:col-span-2">
+                        <p className="text-sm font-medium">{t('Final Settlement Inputs')}</p>
+                    </div>
+                    <div>
+                        <Label>{t('Unused Leave Days')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_unused_leave_days}
+                            onChange={(e) => setData('settlement_unused_leave_days', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_unused_leave_days} />
+                    </div>
+                    <div>
+                        <Label>{t('Other Earnings')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_other_earnings_amount}
+                            onChange={(e) => setData('settlement_other_earnings_amount', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_other_earnings_amount} />
+                    </div>
+                    <div>
+                        <Label>{t('Other Deductions')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_other_deductions_amount}
+                            onChange={(e) => setData('settlement_other_deductions_amount', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_other_deductions_amount} />
+                    </div>
+                    <div>
+                        <Label>{t('Indemnity Days / Year')}</Label>
+                        <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={data.settlement_indemnity_days_per_year}
+                            onChange={(e) => setData('settlement_indemnity_days_per_year', e.target.value)}
+                        />
+                        <InputError message={errors.settlement_indemnity_days_per_year} />
+                    </div>
+                    <div className="md:col-span-2 flex items-center gap-2">
+                        <input
+                            id="resignation_settlement_apply_indemnity"
+                            type="checkbox"
+                            checked={data.settlement_apply_indemnity}
+                            onChange={(e) => setData('settlement_apply_indemnity', e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <Label htmlFor="resignation_settlement_apply_indemnity">{t('Apply indemnity calculation')}</Label>
+                    </div>
                 </div>
                 
                 <div className="flex justify-end gap-2">

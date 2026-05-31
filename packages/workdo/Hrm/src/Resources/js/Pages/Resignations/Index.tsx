@@ -64,7 +64,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.resignations.destroy',
-        defaultMessage: t('Are you sure you want to delete this resignation?')
+        defaultMessage: t('Are you sure you want to cancel this resignation?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        }
     });
 
     const handleFilter = () => {
@@ -131,6 +141,12 @@ export default function Index() {
             key: 'reason',
             header: t('Reason'),
             sortable: false
+        },
+        {
+            key: 'settlement_net_amount',
+            header: t('Settlement Net'),
+            sortable: false,
+            render: (value: number) => value !== null && value !== undefined ? formatCurrency(value) : '-'
         },
         {
             key: 'status',

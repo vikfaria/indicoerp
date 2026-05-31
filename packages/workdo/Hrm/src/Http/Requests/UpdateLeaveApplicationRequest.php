@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateLeaveApplicationRequest extends FormRequest
 {
@@ -13,9 +14,23 @@ class UpdateLeaveApplicationRequest extends FormRequest
 
     public function rules(): array
     {
+        $companyId = creatorId();
+
         return [
-            'employee_id' => 'required|exists:users,id',
-            'leave_type_id' => 'required|exists:leave_types,id',
+            'employee_id' => [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
+            'leave_type_id' => [
+                'required',
+                'integer',
+                Rule::exists('leave_types', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where('created_by', $companyId);
+                }),
+            ],
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'legal_reference_date' => 'nullable|date',

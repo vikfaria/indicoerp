@@ -14,6 +14,15 @@ import { CreateAttendanceFormData, CreateAttendanceProps } from './types';
 export default function Create({ onSuccess }: CreateAttendanceProps) {
     const { employees, shifts } = usePage<any>().props;
     const { t } = useTranslation();
+    const absenceCategories = [
+        { value: 'unjustified', label: t('Unjustified Absence') },
+        { value: 'medical', label: t('Medical Leave / Sickness') },
+        { value: 'work_accident', label: t('Work Accident') },
+        { value: 'family_assistance', label: t('Family Assistance') },
+        { value: 'manager_authorized', label: t('Management Authorization') },
+        { value: 'public_service', label: t('Public Service') },
+        { value: 'other', label: t('Other') },
+    ];
 
     const { data, setData, post, processing, errors } = useForm<CreateAttendanceFormData>({
         employee_id: '',
@@ -21,6 +30,8 @@ export default function Create({ onSuccess }: CreateAttendanceProps) {
         clock_in: '',
         clock_out: '',
         break_hour: '',
+        is_justified: 'auto',
+        absence_category: 'none',
         notes: '',
     });
 
@@ -95,6 +106,39 @@ export default function Create({ onSuccess }: CreateAttendanceProps) {
                     </div>
 
 
+                </div>
+
+                <div>
+                    <Label htmlFor="is_justified">{t('Absence Justification')}</Label>
+                    <Select value={data.is_justified} onValueChange={(value) => setData('is_justified', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Auto-detect from rules')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="auto">{t('Auto-detect from rules')}</SelectItem>
+                            <SelectItem value="true">{t('Justified')}</SelectItem>
+                            <SelectItem value="false">{t('Unjustified')}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.is_justified} />
+                </div>
+
+                <div>
+                    <Label htmlFor="absence_category">{t('Absence Category')}</Label>
+                    <Select value={data.absence_category} onValueChange={(value) => setData('absence_category', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Optional')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">{t('Optional')}</SelectItem>
+                            {absenceCategories.map((category) => (
+                                <SelectItem key={category.value} value={category.value}>
+                                    {category.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.absence_category} />
                 </div>
 
                 <div>

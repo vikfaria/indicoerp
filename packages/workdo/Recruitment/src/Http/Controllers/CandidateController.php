@@ -179,6 +179,17 @@ class CandidateController extends Controller
             $candidate->phone = $validated['phone'];
             $candidate->gender = $validated['gender'] ?? null;
             $candidate->dob = $validated['dob'] ?? null;
+            $candidate->nationality = $validated['nationality'] ?? $candidate->nationality;
+            $candidate->identification_document_type = $validated['identification_document_type'] ?? $candidate->identification_document_type;
+            $candidate->identification_document_number = $validated['identification_document_number'] ?? $candidate->identification_document_number;
+            $candidate->nuit = $validated['nuit'] ?? $candidate->nuit;
+            $candidate->desired_professional_category = $validated['desired_professional_category'] ?? $candidate->desired_professional_category;
+            $candidate->is_regulated_profession = filter_var($validated['is_regulated_profession'] ?? $candidate->is_regulated_profession, FILTER_VALIDATE_BOOLEAN);
+            $candidate->professional_license_type = $validated['professional_license_type'] ?? $candidate->professional_license_type;
+            $candidate->professional_license_number = $validated['professional_license_number'] ?? $candidate->professional_license_number;
+            $candidate->professional_license_expiry_date = $validated['professional_license_expiry_date'] ?? $candidate->professional_license_expiry_date;
+            $candidate->minor_work_authorization_path = $validated['minor_work_authorization_path'] ?? $candidate->minor_work_authorization_path;
+            $candidate->legal_exception_notes = $validated['legal_exception_notes'] ?? $candidate->legal_exception_notes;
             $candidate->country = $validated['country'] ?? null;
             $candidate->state = $validated['state'] ?? null;
             $candidate->city = $validated['city'] ?? null;
@@ -217,6 +228,10 @@ class CandidateController extends Controller
     public function update(UpdateCandidateRequest $request, Candidate $candidate)
     {
         if (Auth::user()->can('edit-candidates')) {
+            if (!$this->canAccessCandidate($candidate)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
 
             // Handle profile_url (extract filename from path)
@@ -262,6 +277,17 @@ class CandidateController extends Controller
             $candidate->phone = $validated['phone'];
             $candidate->gender = $validated['gender'] ?? $candidate->gender;
             $candidate->dob = $validated['dob'] ?? $candidate->dob;
+            $candidate->nationality = $validated['nationality'] ?? null;
+            $candidate->identification_document_type = $validated['identification_document_type'] ?? null;
+            $candidate->identification_document_number = $validated['identification_document_number'] ?? null;
+            $candidate->nuit = $validated['nuit'] ?? null;
+            $candidate->desired_professional_category = $validated['desired_professional_category'] ?? null;
+            $candidate->is_regulated_profession = filter_var($validated['is_regulated_profession'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $candidate->professional_license_type = $validated['professional_license_type'] ?? null;
+            $candidate->professional_license_number = $validated['professional_license_number'] ?? null;
+            $candidate->professional_license_expiry_date = $validated['professional_license_expiry_date'] ?? null;
+            $candidate->minor_work_authorization_path = $validated['minor_work_authorization_path'] ?? null;
+            $candidate->legal_exception_notes = $validated['legal_exception_notes'] ?? null;
             $candidate->country = $validated['country'] ?? $candidate->country;
             $candidate->state = $validated['state'] ?? $candidate->state;
             $candidate->city = $validated['city'] ?? $candidate->city;
@@ -293,6 +319,10 @@ class CandidateController extends Controller
     public function destroy(Candidate $candidate)
     {
         if (Auth::user()->can('delete-candidates')) {
+            if (!$this->canAccessCandidate($candidate)) {
+                return redirect()->back()->with('error', __('Permission denied'));
+            }
+
             // Delete profile photo file if exists
             if ($candidate->profile_path) {
                 delete_file($candidate->profile_path);

@@ -74,6 +74,9 @@ class DemoOvertimeSeeder extends Seeder
                 'end_date' => $endDate->format('Y-m-d'),
                 'notes' => $template['notes'],
                 'status' => $template['status'],
+                'approval_status' => $template['status'] === 'active' ? 'approved' : 'rejected',
+                'approved_by' => $template['status'] === 'active' ? $userId : null,
+                'approved_at' => $template['status'] === 'active' ? now() : null,
                 'creator_id' => $userId,
                 'created_by' => $userId,
             ]);

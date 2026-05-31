@@ -185,6 +185,66 @@ export default function Show() {
                     </Card>
                 </div>
 
+                <Card className="shadow-sm">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5" />
+                            {t('Legal & Compliance Information')}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Nationality')}</label>
+                                <p className="font-medium">{candidate.nationality || '-'}</p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('NUIT')}</label>
+                                <p className="font-medium">{candidate.nuit || '-'}</p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Desired Professional Category')}</label>
+                                <p className="font-medium">{candidate.desired_professional_category || '-'}</p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Identification Document')}</label>
+                                <p className="font-medium">
+                                    {[candidate.identification_document_type, candidate.identification_document_number].filter(Boolean).join(' - ') || '-'}
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Regulated Profession')}</label>
+                                <p className="font-medium">
+                                    {candidate.is_regulated_profession ? t('Yes') : t('No')}
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Professional License')}</label>
+                                <p className="font-medium">
+                                    {[candidate.professional_license_type, candidate.professional_license_number].filter(Boolean).join(' - ') || '-'}
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('License Expiry')}</label>
+                                <p className="font-medium">
+                                    {candidate.professional_license_expiry_date ? formatDate(candidate.professional_license_expiry_date) : '-'}
+                                </p>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Minor Authorization Evidence')}</label>
+                                <p className="font-medium">{candidate.minor_work_authorization_path || '-'}</p>
+                            </div>
+                        </div>
+
+                        {candidate.legal_exception_notes && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-500">{t('Legal Exception Notes')}</label>
+                                <p className="font-medium whitespace-pre-wrap">{candidate.legal_exception_notes}</p>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
                 {/* Documents */}
                 {(candidate.resume_path || candidate.cover_letter_path) && (
                     <Card className="shadow-sm">
