@@ -458,7 +458,7 @@ class SaftExportService
                 return;
             }
 
-            if ($xsdPath === '' || !is_file($xsdPath)) {
+            if ($xsdPath === '' || !is_file($xsdPath) || !is_readable($xsdPath)) {
                 throw new RuntimeException(__('SAF-T XSD não encontrado. Configure SAFT_MZ_XSD_PATH para validação oficial.'));
             }
 

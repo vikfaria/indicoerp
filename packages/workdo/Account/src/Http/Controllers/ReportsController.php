@@ -1845,6 +1845,9 @@ class ReportsController extends Controller
         }
 
         $filters = $this->resolveDateFilters($request);
+        $xsdRequired = (bool) config('sce.saft.require_xsd_validation', false);
+        $xsdPath = (string) config('sce.saft.xsd_path', '');
+        $xsdPathReady = $xsdPath !== '' && is_file($xsdPath) && is_readable($xsdPath);
 
         try {
             $xml = $this->saftExportService->generate(
@@ -1873,8 +1876,10 @@ class ReportsController extends Controller
                 'content_type' => 'application/xml',
                 'validation' => [
                     'well_formed' => true,
-                    'xsd_required' => (bool) config('sce.saft.require_xsd_validation', false),
-                    'xsd_path_configured' => (string) config('sce.saft.xsd_path', '') !== '',
+                    'xsd_required' => $xsdRequired,
+                    'xsd_path_configured' => $xsdPath !== '',
+                    'xsd_path_ready' => $xsdPathReady,
+                    'xsd_validated' => $xsdRequired && $xsdPathReady,
                 ],
                 'fiscal_year' => substr($filters['from_date'], 0, 4),
                 'xml_size_bytes' => strlen($xml),

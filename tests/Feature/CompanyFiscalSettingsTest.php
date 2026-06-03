@@ -312,6 +312,60 @@ class CompanyFiscalSettingsTest extends TestCase
         }
     }
 
+    public function test_saft_export_records_xsd_validation_metadata_when_validation_is_required(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+
+        $xsdPath = $this->writeTempXsd($this->permissiveSaftXsd());
+
+        try {
+            config([
+                'sce.saft.require_xsd_validation' => true,
+                'sce.saft.xsd_path' => $xsdPath,
+            ]);
+
+            $this->actingAs($company)->post(route('sce.fiscal.update-profile'), [
+                'nuit' => '400123456',
+                'legal_name' => 'Empresa Demo, Lda',
+                'fiscal_regime' => 'normal',
+                'accounting_framework' => 'pgc_nirf',
+                'entity_classification' => 'medium',
+                'taxpayer_type' => 'ordinary',
+                'state_of_certification' => 'certified',
+                'software_certificate_number' => 'CERT-2026-002',
+                'province' => 'Maputo',
+                'economic_activity_code' => 'A011',
+            ])->assertSessionHas('success');
+
+            $download = $this->actingAs($company)->get(route('sce.fiscal.saft-export', [
+                'start_date' => '2026-01-01',
+                'end_date' => '2026-01-31',
+            ]));
+
+            $download->assertOk();
+
+            $history = FiscalExportHistory::query()
+                ->where('company_id', $company->id)
+                ->where('export_type', 'saft_xml')
+                ->latest('id')
+                ->first();
+
+            $this->assertNotNull($history);
+            $this->assertTrue((bool) data_get($history->metadata, 'validation.xsd_required'));
+            $this->assertTrue((bool) data_get($history->metadata, 'validation.xsd_path_configured'));
+            $this->assertTrue((bool) data_get($history->metadata, 'validation.xsd_path_ready'));
+            $this->assertTrue((bool) data_get($history->metadata, 'validation.xsd_validated'));
+            $this->assertSame('CERT-2026-002', (string) data_get($history->metadata, 'software_certificate_number'));
+
+            if ($history->file_path) {
+                Storage::disk('local')->delete($history->file_path);
+            }
+        } finally {
+            @unlink($xsdPath);
+        }
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([
@@ -351,6 +405,38 @@ class CompanyFiscalSettingsTest extends TestCase
             'creator_id' => $company->id,
             'created_by' => $company->id,
         ]);
+    }
+
+    private function writeTempXsd(string $contents): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'saft_xsd_');
+
+        if ($path === false) {
+            $this->fail('Unable to create temporary SAF-T XSD file.');
+        }
+
+        file_put_contents($path, $contents);
+
+        return $path;
+    }
+
+    private function permissiveSaftXsd(): string
+    {
+        return <<<'XSD'
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    targetNamespace="urn:OECD:StandardAuditFile-Tax:MZ_1.0"
+    xmlns="urn:OECD:StandardAuditFile-Tax:MZ_1.0"
+    elementFormDefault="qualified">
+  <xs:element name="AuditFile">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+XSD;
     }
 
     private function grantPermissions(User $user, array $permissions): void

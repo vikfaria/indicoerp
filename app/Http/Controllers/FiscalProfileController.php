@@ -185,6 +185,9 @@ class FiscalProfileController extends Controller
 
         try {
             $service = app(SaftExportService::class);
+            $xsdRequired = (bool) config('sce.saft.require_xsd_validation', false);
+            $xsdPath = (string) config('sce.saft.xsd_path', '');
+            $xsdPathReady = $xsdPath !== '' && is_file($xsdPath) && is_readable($xsdPath);
             $filename = sprintf(
                 'mozambique-saft-%s-to-%s.xml',
                 $validated['start_date'],
@@ -221,6 +224,10 @@ class FiscalProfileController extends Controller
                     'content_type' => 'application/xml',
                     'validation' => [
                         'well_formed' => true,
+                        'xsd_required' => $xsdRequired,
+                        'xsd_path_configured' => $xsdPath !== '',
+                        'xsd_path_ready' => $xsdPathReady,
+                        'xsd_validated' => $xsdRequired && $xsdPathReady,
                         'source' => 'sce.fiscal.saft-export',
                     ],
                     'fiscal_year' => substr($validated['start_date'], 0, 4),

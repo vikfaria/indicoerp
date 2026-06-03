@@ -5465,7 +5465,9 @@ class ReportService
 
         $saftXsdRequired = (bool) config('sce.saft.require_xsd_validation', false);
         $saftXsdPath = trim((string) config('sce.saft.xsd_path', ''));
-        $saftXsdAvailable = !$saftXsdRequired || ($saftXsdPath !== '' && is_file($saftXsdPath));
+        $saftXsdAvailable = !$saftXsdRequired || (
+            $saftXsdPath !== '' && is_file($saftXsdPath) && is_readable($saftXsdPath)
+        );
         $addCheck(
             'exports.saft_xsd_validation_config',
             'SAF-T XSD validation configuration',
@@ -5479,7 +5481,7 @@ class ReportService
             [
                 'required' => $saftXsdRequired,
                 'path_configured' => $saftXsdPath !== '',
-                'path_exists' => $saftXsdPath !== '' && is_file($saftXsdPath),
+                'path_exists' => $saftXsdPath !== '' && is_file($saftXsdPath) && is_readable($saftXsdPath),
             ]
         );
 
