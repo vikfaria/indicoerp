@@ -11,6 +11,9 @@ use Illuminate\Support\Carbon;
 class MozambiquePayrollTaxService
 {
     private const DEFAULT_NON_RESIDENT_FLAT_RATE_PERCENT = 20.0;
+    private const DEFAULT_MINIMUM_NON_TAXABLE_AMOUNT = 18750.0;
+    private const DEFAULT_DEPENDENT_DEDUCTION_AMOUNT = 150.0;
+    private const SETTING_IRPS_MINIMUM_NON_TAXABLE_AMOUNT = 'mz_irps_minimum_non_taxable_amount';
     private const SETTING_IRPS_DEPENDENT_DEDUCTION_AMOUNT = 'mz_irps_dependent_deduction_amount';
     private const SETTING_IRPS_MAX_DEPENDENTS_FOR_DEDUCTION = 'mz_irps_max_dependents_for_deduction';
     private const SETTING_IRPS_NON_RESIDENT_FLAT_RATE_PERCENT = 'mz_irps_non_resident_flat_rate_percent';
@@ -26,6 +29,9 @@ class MozambiquePayrollTaxService
         $date = $this->resolveDate($effectiveDate);
         $irpsContext = $this->resolveIrpsContext($companyId, $context);
 
+        $minimumNonTaxableAmount = $irpsContext['minimum_non_taxable_amount'];
+        $adjustedIncome = max(0, round($income - $minimumNonTaxableAmount, 2));
+
         $effectiveDependents = $irpsContext['eligible_dependents_count'];
         if ($irpsContext['max_dependents_for_deduction'] !== null) {
             $effectiveDependents = min($effectiveDependents, $irpsContext['max_dependents_for_deduction']);
@@ -35,12 +41,12 @@ class MozambiquePayrollTaxService
             $effectiveDependents * $irpsContext['dependent_deduction_amount'],
             2
         );
-        $adjustedIncome = max(0, round($income - $dependentDeductionTotal, 2));
-
         if ($income <= 0) {
             return [
                 'taxable_income' => $income,
                 'adjusted_taxable_income' => $adjustedIncome,
+                'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
+                'tax_before_dependent_deductions' => 0.0,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
@@ -51,7 +57,7 @@ class MozambiquePayrollTaxService
                 'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
                 'effective_dependents_count' => $effectiveDependents,
                 'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
-                'dependent_deduction_total' => $dependentDeductionTotal,
+                'dependent_deduction_total' => 0.0,
                 'rule' => 'none',
             ];
         }
@@ -61,12 +67,14 @@ class MozambiquePayrollTaxService
             && $irpsContext['apply_non_resident_flat_rate']
             && $irpsContext['non_resident_flat_rate_percent'] > 0
         ) {
-            $irpsAmount = round(($adjustedIncome * $irpsContext['non_resident_flat_rate_percent']) / 100, 2);
+            $taxBeforeDependentDeductions = round(($income * $irpsContext['non_resident_flat_rate_percent']) / 100, 2);
 
             return [
                 'taxable_income' => $income,
-                'adjusted_taxable_income' => $adjustedIncome,
-                'irps_amount' => $irpsAmount,
+                'adjusted_taxable_income' => $income,
+                'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
+                'tax_before_dependent_deductions' => $taxBeforeDependentDeductions,
+                'irps_amount' => $taxBeforeDependentDeductions,
                 'rate_percent' => $irpsContext['non_resident_flat_rate_percent'],
                 'fixed_amount' => 0.0,
                 'table_id' => null,
@@ -76,7 +84,7 @@ class MozambiquePayrollTaxService
                 'eligible_dependents_count' => $irpsContext['eligible_dependents_count'],
                 'effective_dependents_count' => $effectiveDependents,
                 'dependent_deduction_amount' => $irpsContext['dependent_deduction_amount'],
-                'dependent_deduction_total' => $dependentDeductionTotal,
+                'dependent_deduction_total' => 0.0,
                 'rule' => 'non_resident_flat',
             ];
         }
@@ -87,6 +95,8 @@ class MozambiquePayrollTaxService
             return [
                 'taxable_income' => $income,
                 'adjusted_taxable_income' => $adjustedIncome,
+                'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
+                'tax_before_dependent_deductions' => 0.0,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
@@ -125,6 +135,8 @@ class MozambiquePayrollTaxService
             return [
                 'taxable_income' => $income,
                 'adjusted_taxable_income' => $adjustedIncome,
+                'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
+                'tax_before_dependent_deductions' => 0.0,
                 'irps_amount' => 0.0,
                 'rate_percent' => 0.0,
                 'fixed_amount' => 0.0,
@@ -144,11 +156,14 @@ class MozambiquePayrollTaxService
         $fixedAmount = (float) $bracket->fixed_amount;
         $ratePercent = (float) $bracket->rate_percent;
         $variableBase = max(0, $adjustedIncome - $rangeFrom);
-        $irpsAmount = round($fixedAmount + (($variableBase * $ratePercent) / 100), 2);
+        $taxBeforeDependentDeductions = round($fixedAmount + (($variableBase * $ratePercent) / 100), 2);
+        $irpsAmount = round(max(0, $taxBeforeDependentDeductions - $dependentDeductionTotal), 2);
 
         return [
             'taxable_income' => $income,
             'adjusted_taxable_income' => $adjustedIncome,
+            'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
+            'tax_before_dependent_deductions' => $taxBeforeDependentDeductions,
             'irps_amount' => $irpsAmount,
             'rate_percent' => $ratePercent,
             'fixed_amount' => $fixedAmount,
@@ -325,10 +340,17 @@ class MozambiquePayrollTaxService
         $eligibleDependentsCount = (int) ($context['eligible_dependents_count'] ?? $context['dependents_count'] ?? 0);
         $eligibleDependentsCount = max(0, $eligibleDependentsCount);
 
+        $minimumNonTaxableAmount = (float) (
+            $context['minimum_non_taxable_amount']
+            ?? $settings[self::SETTING_IRPS_MINIMUM_NON_TAXABLE_AMOUNT]
+            ?? self::DEFAULT_MINIMUM_NON_TAXABLE_AMOUNT
+        );
+        $minimumNonTaxableAmount = round(max(0, $minimumNonTaxableAmount), 2);
+
         $dependentDeductionAmount = (float) (
             $context['dependent_deduction_amount']
             ?? $settings[self::SETTING_IRPS_DEPENDENT_DEDUCTION_AMOUNT]
-            ?? 0
+            ?? self::DEFAULT_DEPENDENT_DEDUCTION_AMOUNT
         );
         $dependentDeductionAmount = round(max(0, $dependentDeductionAmount), 2);
 
@@ -357,6 +379,7 @@ class MozambiquePayrollTaxService
         return [
             'residency_status' => $residencyStatus,
             'eligible_dependents_count' => $eligibleDependentsCount,
+            'minimum_non_taxable_amount' => $minimumNonTaxableAmount,
             'dependent_deduction_amount' => $dependentDeductionAmount,
             'max_dependents_for_deduction' => $maxDependents,
             'non_resident_flat_rate_percent' => $nonResidentRate,

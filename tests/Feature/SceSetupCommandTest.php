@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\MozIrpsBracket;
+use App\Models\MozIrpsTable;
+use App\Models\MozMinimumWage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -58,5 +61,46 @@ class SceSetupCommandTest extends TestCase
             'obligation_type' => 'saft',
             'status' => 'pending',
         ]);
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'mz_irps_minimum_non_taxable_amount',
+            'created_by' => $company->id,
+            'value' => '18750',
+        ]);
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'mz_irps_dependent_deduction_amount',
+            'created_by' => $company->id,
+            'value' => '150',
+        ]);
+
+        $this->assertDatabaseHas('settings', [
+            'key' => 'mz_irps_non_resident_flat_rate_percent',
+            'created_by' => $company->id,
+            'value' => '20',
+        ]);
+
+        $irpsTable = MozIrpsTable::query()
+            ->where('created_by', $company->id)
+            ->where('name', 'Tabela IRPS Moçambique Oficial')
+            ->firstOrFail();
+
+        $this->assertSame(5, MozIrpsBracket::query()->where('irps_table_id', $irpsTable->id)->count());
+        $this->assertDatabaseHas('mz_inss_rates', [
+            'created_by' => $company->id,
+            'employee_rate' => '3.0000',
+            'employer_rate' => '4.0000',
+            'is_active' => 1,
+        ]);
+        $this->assertDatabaseHas('mz_minimum_wages', [
+            'created_by' => $company->id,
+            'sector_code' => 'S1_AGRICULTURE',
+            'monthly_amount' => '6688.00',
+            'is_active' => 1,
+        ]);
+
+        $this->assertSame(18, MozMinimumWage::query()
+            ->where('created_by', $company->id)
+            ->count());
     }
 }

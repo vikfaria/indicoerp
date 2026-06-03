@@ -9,6 +9,7 @@ use App\Models\FiscalCalendarEvent;
 use App\Models\FiscalDocumentType;
 use App\Models\MzVatCode;
 use App\Models\WithholdingTaxRule;
+use App\Services\MozambiquePayrollLegalDefaultsService;
 use App\Services\PgcImportService;
 use Database\Seeders\PgcNirfSeeder;
 use Illuminate\Console\Command;
@@ -26,7 +27,10 @@ class SceSetupCommand extends Command
 
     protected $description = 'Set up SCE Moçambique compliance for a company (PGC, VAT, journals, periods)';
 
-    public function handle(PgcImportService $pgcImportService): int
+    public function handle(
+        PgcImportService $pgcImportService,
+        MozambiquePayrollLegalDefaultsService $payrollLegalDefaultsService
+    ): int
     {
         $this->info('');
         $this->info('╔══════════════════════════════════════════════╗');
@@ -214,6 +218,13 @@ class SceSetupCommand extends Command
                 }
             }
             return empty($issues);
+        });
+
+        // Step 11: Seed payroll legal defaults
+        $this->task("11. Carregar parâmetros legais do payroll", function () use ($payrollLegalDefaultsService, $companyId) {
+            $result = $payrollLegalDefaultsService->seedForCompany($companyId);
+            $this->line("   → IRPS: {$result['irps_brackets_count']} escalões, INSS: 1 taxa activa, salários mínimos: {$result['minimum_wages_count']} linhas");
+            return true;
         });
 
         $this->info('');

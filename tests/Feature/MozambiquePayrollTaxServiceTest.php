@@ -6,9 +6,11 @@ use App\Models\MozInssRate;
 use App\Models\MozIrpsBracket;
 use App\Models\MozIrpsTable;
 use App\Models\MozMinimumWage;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\MozambiquePayrollTaxService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class MozambiquePayrollTaxServiceTest extends TestCase
@@ -18,6 +20,9 @@ class MozambiquePayrollTaxServiceTest extends TestCase
     public function test_service_calculates_irps_inss_and_minimum_wage_from_effective_company_configuration(): void
     {
         $company = $this->makeCompany();
+
+        $this->setCompanySetting($company->id, 'mz_irps_minimum_non_taxable_amount', '0');
+        $this->setCompanySetting($company->id, 'mz_irps_dependent_deduction_amount', '0');
 
         $irpsTable = MozIrpsTable::create([
             'name' => 'Tabela IRPS Teste',
@@ -136,51 +141,23 @@ class MozambiquePayrollTaxServiceTest extends TestCase
         $this->assertSame(10000.0, $irps['irps_amount']);
     }
 
-    public function test_service_applies_dependent_deduction_before_bracket_for_resident_workers(): void
+    public function test_service_applies_minimum_non_taxable_before_bracket_and_dependents_after_tax_for_resident_workers(): void
     {
         $company = $this->makeCompany();
 
-        $irpsTable = MozIrpsTable::create([
-            'name' => 'Tabela IRPS Dependentes',
-            'effective_from' => now()->startOfYear()->toDateString(),
-            'effective_to' => null,
-            'is_active' => true,
-            'created_by' => $company->id,
-        ]);
-
-        MozIrpsBracket::insert([
-            [
-                'irps_table_id' => $irpsTable->id,
-                'range_from' => 0,
-                'range_to' => 10000,
-                'fixed_amount' => 0,
-                'rate_percent' => 0,
-                'sequence' => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'irps_table_id' => $irpsTable->id,
-                'range_from' => 10000,
-                'range_to' => 50000,
-                'fixed_amount' => 0,
-                'rate_percent' => 10,
-                'sequence' => 2,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ]);
+        $this->seedOfficialIrpsTable($company->id);
+        $this->setCompanySetting($company->id, 'mz_irps_minimum_non_taxable_amount', '18750');
+        $this->setCompanySetting($company->id, 'mz_irps_dependent_deduction_amount', '150');
 
         $service = app(MozambiquePayrollTaxService::class);
 
         $irps = $service->calculateIrps(
-            20000,
+            50000,
             $company->id,
             now()->toDateString(),
             [
                 'residency_status' => 'resident',
                 'eligible_dependents_count' => 2,
-                'dependent_deduction_amount' => 3000,
             ]
         );
 
@@ -188,10 +165,11 @@ class MozambiquePayrollTaxServiceTest extends TestCase
         $this->assertSame('table_bracket', $irps['rule']);
         $this->assertSame(2, $irps['eligible_dependents_count']);
         $this->assertSame(2, $irps['effective_dependents_count']);
-        $this->assertSame(6000.0, $irps['dependent_deduction_total']);
-        $this->assertSame(14000.0, $irps['adjusted_taxable_income']);
-        $this->assertSame(10.0, $irps['rate_percent']);
-        $this->assertSame(400.0, $irps['irps_amount']);
+        $this->assertSame(300.0, $irps['dependent_deduction_total']);
+        $this->assertSame(31250.0, $irps['adjusted_taxable_income']);
+        $this->assertSame(5375.0, $irps['tax_before_dependent_deductions']);
+        $this->assertSame(20.0, $irps['rate_percent']);
+        $this->assertSame(5075.0, $irps['irps_amount']);
     }
 
     private function makeCompany(): User
@@ -201,6 +179,82 @@ class MozambiquePayrollTaxServiceTest extends TestCase
             'created_by' => null,
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
+        ]);
+    }
+
+    private function setCompanySetting(int $companyId, string $key, string $value): void
+    {
+        Setting::query()->updateOrCreate(
+            ['key' => $key, 'created_by' => $companyId],
+            ['value' => $value, 'is_public' => false]
+        );
+
+        Cache::forget('company_settings_' . $companyId);
+        Cache::forget('company_settings_' . $companyId . '_public');
+        Cache::forget('company_settings_owner:' . $companyId);
+    }
+
+    private function seedOfficialIrpsTable(int $companyId): void
+    {
+        $irpsTable = MozIrpsTable::create([
+            'name' => 'Tabela IRPS Moçambique Oficial',
+            'effective_from' => '2025-07-01',
+            'effective_to' => null,
+            'is_active' => true,
+            'created_by' => $companyId,
+        ]);
+
+        MozIrpsBracket::insert([
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 0,
+                'range_to' => 3500,
+                'fixed_amount' => 0,
+                'rate_percent' => 10,
+                'sequence' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 3500,
+                'range_to' => 14000,
+                'fixed_amount' => 350,
+                'rate_percent' => 15,
+                'sequence' => 2,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 14000,
+                'range_to' => 42000,
+                'fixed_amount' => 1925,
+                'rate_percent' => 20,
+                'sequence' => 3,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 42000,
+                'range_to' => 126000,
+                'fixed_amount' => 7525,
+                'rate_percent' => 25,
+                'sequence' => 4,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'irps_table_id' => $irpsTable->id,
+                'range_from' => 126000,
+                'range_to' => null,
+                'fixed_amount' => 28525,
+                'rate_percent' => 32,
+                'sequence' => 5,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
     }
 }
