@@ -94,7 +94,7 @@ class HrmEmployeeLegalProfilesTest extends TestCase
         ]);
     }
 
-    public function test_can_create_update_and_delete_employee_dependent(): void
+    public function test_can_create_update_and_cancel_employee_dependent(): void
     {
         $company = $this->makeCompany();
         $this->grantPermissions($company, ['edit-employees', 'manage-any-employees']);
@@ -146,12 +146,43 @@ class HrmEmployeeLegalProfilesTest extends TestCase
         ]);
 
         $deleteResponse = $this->actingAs($company)->delete(
-            route('hrm.employees.dependents.destroy', [$employee->id, $dependent->id])
+            route('hrm.employees.dependents.destroy', [$employee->id, $dependent->id]),
+            [
+                'cancellation_reason' => 'Dependente desatualizado e substituido.',
+            ]
         );
 
         $deleteResponse->assertRedirect();
-        $this->assertDatabaseMissing('employee_dependents', [
+        $this->assertDatabaseHas('employee_dependents', [
             'id' => $dependent->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+        ]);
+    }
+
+    public function test_dependent_cancellation_requires_reason(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-employees', 'manage-any-employees']);
+        $employee = $this->makeEmployee($company, 'EMP-DEP-002');
+
+        $dependent = EmployeeDependent::query()->create([
+            'employee_id' => $employee->id,
+            'full_name' => 'Dependente Teste',
+            'relationship' => 'child',
+            'is_tax_eligible' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->delete(
+            route('hrm.employees.dependents.destroy', [$employee->id, $dependent->id])
+        );
+
+        $response->assertSessionHasErrors('cancellation_reason');
+        $this->assertDatabaseHas('employee_dependents', [
+            'id' => $dependent->id,
+            'is_cancelled' => false,
         ]);
     }
 

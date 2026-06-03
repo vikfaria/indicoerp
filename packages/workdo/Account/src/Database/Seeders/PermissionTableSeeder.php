@@ -70,6 +70,10 @@ class PermissionTableSeeder extends Seeder
             ['name' => 'manage-own-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Manage Own Vendor Payments'],
             ['name' => 'view-vendor-payments', 'module' => 'vendor-payments', 'label' => 'View Vendor Payments'],
             ['name' => 'create-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Create Vendor Payments'],
+            ['name' => 'create-high-value-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Create High-Value Vendor Payments'],
+            ['name' => 'create-foreign-currency-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Create Foreign Currency Vendor Payments'],
+            ['name' => 'use-all-bank-accounts-for-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Use All Bank Accounts For Vendor Payments'],
+            ['name' => 'approve-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Approve Vendor Payments'],
             ['name' => 'cleared-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Cleared Vendor Payments'],
             ['name' => 'delete-vendor-payments', 'module' => 'vendor-payments', 'label' => 'Delete Vendor Payments'],
 
@@ -79,6 +83,10 @@ class PermissionTableSeeder extends Seeder
             ['name' => 'manage-own-customer-payments', 'module' => 'customer-payments', 'label' => 'Manage Own Customer Payments'],
             ['name' => 'view-customer-payments', 'module' => 'customer-payments', 'label' => 'View Customer Payments'],
             ['name' => 'create-customer-payments', 'module' => 'customer-payments', 'label' => 'Create Customer Payments'],
+            ['name' => 'create-high-value-customer-payments', 'module' => 'customer-payments', 'label' => 'Create High-Value Customer Payments'],
+            ['name' => 'create-foreign-currency-customer-payments', 'module' => 'customer-payments', 'label' => 'Create Foreign Currency Customer Payments'],
+            ['name' => 'use-all-bank-accounts-for-customer-payments', 'module' => 'customer-payments', 'label' => 'Use All Bank Accounts For Customer Payments'],
+            ['name' => 'approve-customer-payments', 'module' => 'customer-payments', 'label' => 'Approve Customer Payments'],
             ['name' => 'cleared-customer-payments', 'module' => 'customer-payments', 'label' => 'Clear Customer Payments'],
             ['name' => 'delete-customer-payments', 'module' => 'customer-payments', 'label' => 'Delete Customer Payments'],
 

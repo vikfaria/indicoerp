@@ -26,5 +26,16 @@ return [
         |
         */
         'deductibility_enforcement' => env('SCE_VAT_DEDUCTIBILITY_ENFORCEMENT', 'warn'),
+
+        /*
+        |--------------------------------------------------------------------------
+        | Default import VAT rate
+        |--------------------------------------------------------------------------
+        |
+        | Fallback used only when the legal VAT table does not have an active
+        | import VAT code configured. Keep this aligned with MzVatCode::IMP.
+        |
+        */
+        'default_import_rate' => env('SCE_DEFAULT_IMPORT_VAT_RATE', 16.00),
     ],
 ];

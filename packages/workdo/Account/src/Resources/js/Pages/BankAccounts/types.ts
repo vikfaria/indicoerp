@@ -19,9 +19,17 @@ export interface BankAccount {
     swift_code?: string;
     routing_number?: string;
     is_active: boolean;
+    is_electronic_money_account?: boolean;
+    electronic_money_entity?: string;
+    electronic_money_level?: string;
+    electronic_money_daily_limit_mzn?: number;
+    electronic_money_monthly_limit_mzn?: number;
+    electronic_money_limit_exempt_for_enterprise?: boolean;
+    electronic_money_account_purpose?: string;
     gl_account_id?: number;
     gl_account?: ChartOfAccount;
     created_at: string;
+    [key: string]: any;
 }
 
 export interface CreateBankAccountFormData {
@@ -37,6 +45,13 @@ export interface CreateBankAccountFormData {
     swift_code: string;
     routing_number: string;
     is_active: boolean;
+    is_electronic_money_account: boolean;
+    electronic_money_entity: string;
+    electronic_money_level: string;
+    electronic_money_daily_limit_mzn: string;
+    electronic_money_monthly_limit_mzn: string;
+    electronic_money_limit_exempt_for_enterprise: boolean;
+    electronic_money_account_purpose: string;
     gl_account_id: string;
 }
 
@@ -53,6 +68,13 @@ export interface EditBankAccountFormData {
     swift_code: string;
     routing_number: string;
     is_active: boolean;
+    is_electronic_money_account: boolean;
+    electronic_money_entity: string;
+    electronic_money_level: string;
+    electronic_money_daily_limit_mzn: string;
+    electronic_money_monthly_limit_mzn: string;
+    electronic_money_limit_exempt_for_enterprise: boolean;
+    electronic_money_account_purpose: string;
     gl_account_id: string;
 }
 

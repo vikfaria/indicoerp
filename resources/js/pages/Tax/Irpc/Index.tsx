@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
-import { Calculator, Plus, Trash2, ArrowDown, ArrowUp } from 'lucide-react';
+import { Calculator, Plus, Trash2, ArrowDown, ArrowUp, Download } from 'lucide-react';
 import { useState } from 'react';
 
 interface Adjustment { id: number; type: string; category: string; description: string; amount: number; legal_basis: string; }
@@ -25,6 +25,7 @@ export default function IrpcIndex() {
 
     const adjForm = useForm({ fiscal_year: year, type: 'add_back', category: '', description: '', amount: '', legal_basis: '' });
     const calculate = () => router.get(route('sce.tax.irpc'), { year, calculate: 1 }, { preserveState: true });
+    const exportCsv = () => window.location.assign(route('sce.tax.irpc.export', { year }));
 
     const handleAddAdjustment = (e: React.FormEvent) => {
         e.preventDefault();
@@ -42,6 +43,7 @@ export default function IrpcIndex() {
         <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: 'IRPC' }]} pageTitle={`IRPC — ${t('Exercício')} ${year}`}
             pageActions={<div className="flex gap-2">
                 {canManageTax && <Button size="sm" variant="outline" onClick={() => setShowAdd(true)}><Plus className="h-4 w-4 mr-1" /> {t('Correcção')}</Button>}
+                <Button size="sm" variant="outline" onClick={exportCsv}><Download className="h-4 w-4 mr-1" /> {t('Exportar CSV')}</Button>
                 <Button size="sm" onClick={calculate}><Calculator className="h-4 w-4 mr-1" /> {t('Calcular')}</Button>
             </div>}>
             <Head title="IRPC" />

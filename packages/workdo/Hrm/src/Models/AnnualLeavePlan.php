@@ -22,6 +22,10 @@ class AnnualLeavePlan extends Model
         'planned_end_date',
         'planned_days',
         'status',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'manager_approved_by',
         'manager_approved_at',
         'hr_approved_by',
@@ -39,10 +43,19 @@ class AnnualLeavePlan extends Model
         'planned_days' => 'integer',
         'planned_start_date' => 'date',
         'planned_end_date' => 'date',
+        'is_cancelled' => 'boolean',
+        'cancelled_at' => 'datetime',
         'manager_approved_at' => 'datetime',
         'hr_approved_at' => 'datetime',
         'rejected_at' => 'datetime',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
+    }
 
     public function employee()
     {
@@ -52,5 +65,10 @@ class AnnualLeavePlan extends Model
     public function leaveType()
     {
         return $this->belongsTo(LeaveType::class, 'leave_type_id');
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'cancelled_by');
     }
 }

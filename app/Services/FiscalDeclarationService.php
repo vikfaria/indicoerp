@@ -13,9 +13,9 @@ class FiscalDeclarationService
         private readonly WithholdingTaxService $withholdingTaxService,
     ) {}
 
-    public function getWithholdingDeclaration(int $companyId, string $year, int $month): array
+    public function getWithholdingDeclaration(int $companyId, string $year, int $month, array $filters = []): array
     {
-        $declaration = $this->withholdingTaxService->getMonthlyDeclaration($companyId, $year, $month);
+        $declaration = $this->withholdingTaxService->getMonthlyDeclaration($companyId, $year, $month, $filters);
 
         return array_merge($declaration, [
             'due_date' => $this->resolveWithholdingDueDate($year, $month),

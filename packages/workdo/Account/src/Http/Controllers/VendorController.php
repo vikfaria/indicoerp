@@ -2,10 +2,13 @@
 
 namespace Workdo\Account\Http\Controllers;
 
+use App\Models\AuditTrail;
+use App\Models\PurchaseInvoice;
 use App\Models\User;
 use App\Support\MozambiqueTaxNumber;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Workdo\Account\Models\Vendor;
 use Workdo\Account\Http\Requests\StoreVendorRequest;
@@ -65,6 +68,20 @@ class VendorController extends Controller
             $vendor->contact_person_email = $validated['contact_person_email'] ?? null;
             $vendor->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
             $vendor->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
+            $vendor->fiscal_residency_status = $validated['fiscal_residency_status'] ?? 'resident';
+            $vendor->vendor_type = $validated['vendor_type'] ?? null;
+            $vendor->fiscal_country = $validated['fiscal_country'] ?? null;
+            $vendor->vat_regime = $validated['vat_regime'] ?? null;
+            $vendor->supply_type = $validated['supply_type'] ?? null;
+            $vendor->payment_currency_code = isset($validated['payment_currency_code'])
+                ? strtoupper((string) $validated['payment_currency_code'])
+                : null;
+            $vendor->foreign_tax_number = $validated['foreign_tax_number'] ?? null;
+            $vendor->withholding_tax_applicable = (bool) ($validated['withholding_tax_applicable'] ?? false);
+            $vendor->reverse_charge_applicable = (bool) ($validated['reverse_charge_applicable'] ?? false);
+            $vendor->adt_eligible = (bool) ($validated['adt_eligible'] ?? false);
+            $vendor->adt_country = $validated['adt_country'] ?? null;
+            $vendor->compliance_documents = $validated['compliance_documents'] ?? null;
             $vendor->payment_terms = $validated['payment_terms'] ?? null;
             $vendor->billing_address = $validated['billing_address'];
             $vendor->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
@@ -84,19 +101,66 @@ class VendorController extends Controller
     public function update(UpdateVendorRequest $request, Vendor $vendor)
     {
         if(Auth::user()->can('edit-vendors')){
+            if ((int) $vendor->created_by !== (int) creatorId()) {
+                return back()->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
+            $hasFiscalHistory = $this->vendorHasFiscalHistory($vendor);
+            $criticalFiscalChange = $this->hasCriticalFiscalChange($vendor, $validated);
+            $fiscalOverrideSnapshot = $criticalFiscalChange
+                ? $this->buildFiscalAuditSnapshot($vendor, $validated)
+                : null;
 
             $vendor->company_name = $validated['company_name'];
             $vendor->contact_person_name = $validated['contact_person_name'];
             $vendor->contact_person_email = $validated['contact_person_email'] ?? null;
             $vendor->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
             $vendor->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
+            $vendor->fiscal_residency_status = $validated['fiscal_residency_status'] ?? $vendor->fiscal_residency_status ?? 'resident';
+            $vendor->vendor_type = $validated['vendor_type'] ?? $vendor->vendor_type;
+            $vendor->fiscal_country = $validated['fiscal_country'] ?? $vendor->fiscal_country;
+            $vendor->vat_regime = $validated['vat_regime'] ?? $vendor->vat_regime;
+            $vendor->supply_type = $validated['supply_type'] ?? $vendor->supply_type;
+            $vendor->payment_currency_code = isset($validated['payment_currency_code'])
+                ? strtoupper((string) $validated['payment_currency_code'])
+                : $vendor->payment_currency_code;
+            $vendor->foreign_tax_number = $validated['foreign_tax_number'] ?? $vendor->foreign_tax_number;
+            $vendor->withholding_tax_applicable = (bool) ($validated['withholding_tax_applicable'] ?? $vendor->withholding_tax_applicable);
+            $vendor->reverse_charge_applicable = (bool) ($validated['reverse_charge_applicable'] ?? $vendor->reverse_charge_applicable);
+            $vendor->adt_eligible = (bool) ($validated['adt_eligible'] ?? $vendor->adt_eligible);
+            $vendor->adt_country = $validated['adt_country'] ?? $vendor->adt_country;
+            $vendor->compliance_documents = $validated['compliance_documents'] ?? $vendor->compliance_documents;
             $vendor->payment_terms = $validated['payment_terms'] ?? null;
             $vendor->billing_address = $validated['billing_address'];
             $vendor->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
             $vendor->same_as_billing = $validated['same_as_billing'] ?? false;
             $vendor->notes = $validated['notes'] ?? null;
+
+            if ($hasFiscalHistory && $vendor->fiscal_identity_locked_at === null) {
+                $vendor->fiscal_identity_locked_at = now();
+                if (empty($vendor->fiscal_identity_lock_reason)) {
+                    $vendor->fiscal_identity_lock_reason = 'fiscal_documents_issued';
+                }
+            }
+
+            if ($criticalFiscalChange && !empty($validated['fiscal_identity_lock_reason'])) {
+                $vendor->fiscal_identity_lock_reason = trim((string) $validated['fiscal_identity_lock_reason']);
+                if ($vendor->fiscal_identity_locked_at === null) {
+                    $vendor->fiscal_identity_locked_at = now();
+                }
+            }
+
             $vendor->save();
+
+            if ($criticalFiscalChange && !empty($validated['fiscal_identity_lock_reason'])) {
+                $this->recordFiscalOverrideAudit(
+                    $vendor,
+                    $fiscalOverrideSnapshot['old'] ?? [],
+                    $fiscalOverrideSnapshot['new'] ?? [],
+                    trim((string) $validated['fiscal_identity_lock_reason'])
+                );
+            }
 
             UpdateVendor::dispatch($request, $vendor);
 
@@ -108,10 +172,104 @@ class VendorController extends Controller
     public function destroy(Vendor $vendor)
     {
         if(Auth::user()->can('delete-vendors')){
+            if ((int) $vendor->created_by !== (int) creatorId()) {
+                return back()->with('error', __('Permission denied'));
+            }
+
             DestroyVendor::dispatch($vendor);
             $vendor->delete();
             return back()->with('success', __('The vendor has been deleted.'));
         }
         return back()->with('error', __('Permission denied'));
+    }
+
+    private function hasCriticalFiscalChange(Vendor $vendor, array $validated): bool
+    {
+        $incomingTaxNumber = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null) ?: '';
+        $currentTaxNumber = MozambiqueTaxNumber::normalize($vendor->tax_number) ?: '';
+
+        $incomingCompanyName = trim((string) ($validated['company_name'] ?? $vendor->company_name));
+        $incomingResidency = strtolower((string) ($validated['fiscal_residency_status'] ?? $vendor->fiscal_residency_status ?: 'resident'));
+        $incomingType = strtolower((string) ($validated['vendor_type'] ?? $vendor->vendor_type ?: ''));
+        $incomingCountry = strtolower((string) ($validated['fiscal_country'] ?? $vendor->fiscal_country ?: ''));
+
+        return $incomingTaxNumber !== $currentTaxNumber
+            || $incomingCompanyName !== trim((string) $vendor->company_name)
+            || $incomingResidency !== strtolower((string) ($vendor->fiscal_residency_status ?: 'resident'))
+            || $incomingType !== strtolower((string) ($vendor->vendor_type ?: ''))
+            || $incomingCountry !== strtolower((string) ($vendor->fiscal_country ?: ''));
+    }
+
+    private function vendorHasFiscalHistory(Vendor $vendor): bool
+    {
+        if (!Schema::hasTable('purchase_invoices') || $vendor->user_id === null) {
+            return false;
+        }
+
+        $query = PurchaseInvoice::query()
+            ->where('created_by', (int) $vendor->created_by)
+            ->where('vendor_id', (int) $vendor->user_id);
+
+        if (Schema::hasColumn('purchase_invoices', 'status')) {
+            $query->whereNotIn('status', ['draft']);
+        }
+
+        return $query->exists();
+    }
+
+    private function buildFiscalAuditSnapshot(Vendor $vendor, array $validated): array
+    {
+        return [
+            'old' => [
+                'company_name' => $vendor->company_name,
+                'tax_number' => $vendor->tax_number,
+                'fiscal_residency_status' => $vendor->fiscal_residency_status,
+                'vendor_type' => $vendor->vendor_type,
+                'fiscal_country' => $vendor->fiscal_country,
+                'vat_regime' => $vendor->vat_regime,
+                'supply_type' => $vendor->supply_type,
+                'payment_currency_code' => $vendor->payment_currency_code,
+                'foreign_tax_number' => $vendor->foreign_tax_number,
+                'adt_eligible' => (bool) $vendor->adt_eligible,
+                'adt_country' => $vendor->adt_country,
+                'reverse_charge_applicable' => (bool) $vendor->reverse_charge_applicable,
+            ],
+            'new' => [
+                'company_name' => $validated['company_name'] ?? $vendor->company_name,
+                'tax_number' => MozambiqueTaxNumber::normalize($validated['tax_number'] ?? $vendor->tax_number),
+                'fiscal_residency_status' => $validated['fiscal_residency_status'] ?? $vendor->fiscal_residency_status,
+                'vendor_type' => $validated['vendor_type'] ?? $vendor->vendor_type,
+                'fiscal_country' => $validated['fiscal_country'] ?? $vendor->fiscal_country,
+                'vat_regime' => $validated['vat_regime'] ?? $vendor->vat_regime,
+                'supply_type' => $validated['supply_type'] ?? $vendor->supply_type,
+                'payment_currency_code' => isset($validated['payment_currency_code'])
+                    ? strtoupper((string) $validated['payment_currency_code'])
+                    : $vendor->payment_currency_code,
+                'foreign_tax_number' => $validated['foreign_tax_number'] ?? $vendor->foreign_tax_number,
+                'adt_eligible' => (bool) ($validated['adt_eligible'] ?? $vendor->adt_eligible),
+                'adt_country' => $validated['adt_country'] ?? $vendor->adt_country,
+                'reverse_charge_applicable' => (bool) ($validated['reverse_charge_applicable'] ?? $vendor->reverse_charge_applicable),
+            ],
+        ];
+    }
+
+    private function recordFiscalOverrideAudit(Vendor $vendor, array $oldValues, array $newValues, string $reason): void
+    {
+        AuditTrail::query()->create([
+            'company_id' => (int) $vendor->created_by,
+            'user_id' => Auth::id(),
+            'event' => 'fiscal_override',
+            'auditable_type' => Vendor::class,
+            'auditable_id' => (int) $vendor->id,
+            'route' => request()?->route()?->getName(),
+            'ip_address' => request()?->ip(),
+            'user_agent' => request()?->userAgent(),
+            'old_values' => $oldValues,
+            'new_values' => $newValues,
+            'changes' => [
+                'fiscal_identity_lock_reason' => $reason,
+                'fields' => array_keys(array_diff_assoc($newValues, $oldValues)),
+            ],
+        ]);
     }
 }

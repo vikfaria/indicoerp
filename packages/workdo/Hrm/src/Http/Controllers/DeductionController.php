@@ -27,6 +27,7 @@ class DeductionController extends Controller
             if ($employee) {
 
                 $existingDeduction = Deduction::query()
+                    ->active()
                     ->where('created_by', creatorId())
                     ->where('employee_id', $employee->user_id)
                     ->where('deduction_type_id', $validated['deduction_type_id'])
@@ -63,9 +64,14 @@ class DeductionController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
+            if ((bool) ($deduction->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled deduction cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
             $existingDeduction = Deduction::query()
+                ->active()
                 ->where('created_by', creatorId())
                 ->where('employee_id', $deduction->employee_id)
                 ->where('deduction_type_id', $validated['deduction_type_id'])
@@ -97,10 +103,23 @@ class DeductionController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
-            DestroyDeduction::dispatch($deduction);
-            $deduction->delete();
+            if ((bool) ($deduction->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Deduction is already cancelled.'));
+            }
 
-            return redirect()->back()->with('success', __('The deduction has been deleted.'))->with('timestamp', time());
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyDeduction::dispatch($deduction);
+            $deduction->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('The deduction has been cancelled.'))->with('timestamp', time());
         } else {
             return back()->with('error', __('Permission denied'));
         }

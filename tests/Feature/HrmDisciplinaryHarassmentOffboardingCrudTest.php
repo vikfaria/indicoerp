@@ -719,6 +719,7 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
         $employeeB = $this->makeStaffUser($companyB, 'Complaint External Employee');
         $againstB = $this->makeStaffUser($companyB, 'Complaint External Against');
         $handlerB = $this->makeStaffUser($companyB, 'Complaint External Handler');
+        $reviewerB = $this->makeStaffUser($companyB, 'Complaint External Reviewer');
         $complaintTypeB = ComplaintType::query()->create([
             'complaint_type' => 'Assédio B',
             'creator_id' => $companyB->id,
@@ -734,10 +735,17 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
             'complaint_date' => '2026-05-27',
             'is_confidential' => true,
             'confidential_channel' => 'hotline',
+            'confidential_access_user_ids' => [$reviewerB->id],
             'handling_owner_id' => $handlerB->id,
         ]);
 
-        $response->assertSessionHasErrors(['employee_id', 'against_employee_id', 'complaint_type_id', 'handling_owner_id']);
+        $response->assertSessionHasErrors([
+            'employee_id',
+            'against_employee_id',
+            'complaint_type_id',
+            'handling_owner_id',
+            'confidential_access_user_ids.0',
+        ]);
         $this->assertDatabaseMissing('complaints', [
             'subject' => 'Tentativa cross-company complaint',
             'created_by' => $companyA->id,
@@ -777,6 +785,7 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
         $employeeB = $this->makeStaffUser($companyB, 'Complaint External Employee');
         $againstB = $this->makeStaffUser($companyB, 'Complaint External Against');
         $handlerB = $this->makeStaffUser($companyB, 'Complaint External Handler');
+        $reviewerB = $this->makeStaffUser($companyB, 'Complaint External Reviewer');
         $complaintTypeB = ComplaintType::query()->create([
             'complaint_type' => 'Assédio B',
             'creator_id' => $companyB->id,
@@ -792,10 +801,17 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
             'complaint_date' => '2026-05-28',
             'is_confidential' => true,
             'confidential_channel' => 'internal',
+            'confidential_access_user_ids' => [$reviewerB->id],
             'handling_owner_id' => $handlerB->id,
         ]);
 
-        $response->assertSessionHasErrors(['employee_id', 'against_employee_id', 'complaint_type_id', 'handling_owner_id']);
+        $response->assertSessionHasErrors([
+            'employee_id',
+            'against_employee_id',
+            'complaint_type_id',
+            'handling_owner_id',
+            'confidential_access_user_ids.0',
+        ]);
         $this->assertDatabaseHas('complaints', [
             'id' => $complaint->id,
             'employee_id' => $employeeA->id,
@@ -867,6 +883,51 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
 
         $withPermission->assertOk();
         $withPermission->assertSee('Caso Confidencial RH', false);
+    }
+
+    public function test_confidential_complaint_supports_explicit_access_list_without_global_confidential_permission(): void
+    {
+        $company = $this->makeCompany();
+        $reviewer = $this->makeStaffUser($company, 'Reviewer');
+        $outsider = $this->makeStaffUser($company, 'Outsider');
+        $reporter = $this->makeStaffUser($company, 'Reporter');
+        $against = $this->makeStaffUser($company, 'Against');
+        $handler = $this->makeStaffUser($company, 'Handler');
+
+        $this->grantPermissions($reviewer, ['manage-complaints', 'manage-own-complaints']);
+        $this->grantPermissions($outsider, ['manage-complaints', 'manage-own-complaints']);
+
+        $complaintType = ComplaintType::query()->create([
+            'complaint_type' => 'Assédio',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Complaint::query()->create([
+            'employee_id' => $reporter->id,
+            'against_employee_id' => $against->id,
+            'complaint_type_id' => $complaintType->id,
+            'subject' => 'Caso Restrito RH',
+            'description' => 'Descricao restrita',
+            'complaint_date' => '2026-05-27',
+            'status' => 'assigned',
+            'is_confidential' => true,
+            'is_harassment_report' => true,
+            'confidential_channel' => 'hotline',
+            'confidentiality_level' => 'restricted',
+            'confidential_access_user_ids' => [$reviewer->id],
+            'handling_owner_id' => $handler->id,
+            'creator_id' => $reporter->id,
+            'created_by' => $company->id,
+        ]);
+
+        $reviewerResponse = $this->actingAs($reviewer)->get(route('hrm.complaints.index'));
+        $reviewerResponse->assertOk();
+        $reviewerResponse->assertSee('Caso Restrito RH', false);
+
+        $outsiderResponse = $this->actingAs($outsider)->get(route('hrm.complaints.index'));
+        $outsiderResponse->assertOk();
+        $outsiderResponse->assertDontSee('Caso Restrito RH', false);
     }
 
     public function test_cross_company_warning_cannot_be_cancelled(): void

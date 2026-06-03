@@ -254,6 +254,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
 
         // VAT Map
         Route::get('tax/vat-map', [TaxController::class, 'vatMap'])->name('tax.vat-map');
+        Route::get('tax/vat-map/export', [TaxController::class, 'exportVatMap'])->name('tax.vat-map.export');
 
         // IRPC
         Route::get('tax/irpc', [TaxController::class, 'irpcDashboard'])->name('tax.irpc');
@@ -261,6 +262,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::post('tax/irpc/adjustment', [TaxController::class, 'storeAdjustment'])->name('tax.irpc.adjustment');
         Route::delete('tax/irpc/adjustment/{adjustment}', [TaxController::class, 'destroyAdjustment'])->name('tax.irpc.adjustment.destroy');
         Route::get('tax/irpc/guide', [TaxController::class, 'irpcGuide'])->name('tax.irpc.guide');
+        Route::get('tax/irpc/export', [TaxController::class, 'exportIrpcGuide'])->name('tax.irpc.export');
 
         // Withholding Tax
         Route::get('tax/withholding', [TaxController::class, 'withholdingIndex'])->name('tax.withholding');
@@ -268,6 +270,12 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::get('tax/withholding/declaration/report', [TaxController::class, 'withholdingDeclarationPage'])->name('tax.withholding.declaration.page');
         Route::get('tax/withholding/declaration', [TaxController::class, 'withholdingDeclaration'])->name('tax.withholding.declaration');
         Route::get('tax/withholding/declaration/export', [TaxController::class, 'exportWithholdingDeclaration'])->name('tax.withholding.declaration.export');
+        Route::post('tax/withholding/declaration/settlement', [TaxController::class, 'updateWithholdingSettlementStatus'])->name('tax.withholding.declaration.settlement');
+        Route::get('tax/withholding/treaty-rates', [TaxController::class, 'withholdingTreatyRates'])->name('tax.withholding.treaty-rates.index');
+        Route::post('tax/withholding/treaty-rates', [TaxController::class, 'storeWithholdingTreatyRate'])->name('tax.withholding.treaty-rates.store');
+        Route::put('tax/withholding/treaty-rates/{treatyRate}', [TaxController::class, 'updateWithholdingTreatyRate'])->name('tax.withholding.treaty-rates.update');
+        Route::delete('tax/withholding/treaty-rates/{treatyRate}', [TaxController::class, 'deactivateWithholdingTreatyRate'])->name('tax.withholding.treaty-rates.deactivate');
+        Route::get('tax/withholding/treaty-rates/compare', [TaxController::class, 'compareWithholdingTreatyRate'])->name('tax.withholding.treaty-rates.compare');
 
         // Modelo 20 and Annual Declaration
         Route::get('tax/modelo20/report', [TaxController::class, 'model20SupportPage'])->name('tax.modelo20.page');
@@ -275,6 +283,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::get('tax/modelo20/export', [TaxController::class, 'exportModel20Support'])->name('tax.modelo20.export');
         Route::get('tax/annual-declaration/report', [TaxController::class, 'annualDeclarationPage'])->name('tax.annual-declaration.page');
         Route::get('tax/annual-declaration', [TaxController::class, 'annualDeclaration'])->name('tax.annual-declaration');
+        Route::get('tax/annual-declaration/export', [TaxController::class, 'exportAnnualDeclaration'])->name('tax.annual-declaration.export');
 
         // Fixed Assets
         Route::get('fixed-assets', [FixedAssetController::class, 'index'])->name('fixed-assets.index');

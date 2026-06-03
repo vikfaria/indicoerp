@@ -30,6 +30,13 @@ class MozambiqueHrLegalSettingsTest extends TestCase
         $this->grantPermissions($company, ['edit-payrolls']);
 
         $payload = [
+            'company_profile' => [
+                'sector_activity' => 'Technology Services',
+                'operation_province' => 'Maputo Cidade',
+                'labour_regime' => 'Regime Geral',
+                'collective_agreements' => 'ACT-2026-01',
+                'labour_directorate' => 'Direcção Provincial do Trabalho de Maputo Cidade',
+            ],
             'foreign_quota' => [
                 'micro_max_workers' => 12,
                 'small_max_workers' => 40,
@@ -50,6 +57,17 @@ class MozambiqueHrLegalSettingsTest extends TestCase
                 'primary' => 20,
                 'secondary' => 10,
             ],
+            'policy_requirements' => [
+                'require_internal_regulation' => true,
+                'require_code_of_conduct' => true,
+                'require_anti_harassment_policy' => true,
+                'require_disciplinary_policy' => true,
+                'require_vacation_policy' => true,
+                'require_data_protection_policy' => true,
+                'require_equipment_use_policy' => false,
+                'require_remote_work_policy' => true,
+                'code_of_conduct_min_workers' => 9,
+            ],
         ];
 
         $this->actingAs($company)->put(
@@ -59,6 +77,8 @@ class MozambiqueHrLegalSettingsTest extends TestCase
 
         $saved = app(MozambiqueHrLegalSettingsService::class)->getSettings($company->id);
 
+        $this->assertSame('Technology Services', $saved['company_profile']['sector_activity']);
+        $this->assertSame('Maputo Cidade', $saved['company_profile']['operation_province']);
         $this->assertSame(12, $saved['foreign_quota']['micro_max_workers']);
         $this->assertSame(40, $saved['foreign_quota']['small_max_workers']);
         $this->assertSame(120, $saved['foreign_quota']['medium_max_workers']);
@@ -66,6 +86,9 @@ class MozambiqueHrLegalSettingsTest extends TestCase
         $this->assertSame(85, $saved['probation_limits_days']['technician_mid']);
         $this->assertSame(20, $saved['probation_alert_days']['primary']);
         $this->assertSame(10, $saved['probation_alert_days']['secondary']);
+        $this->assertFalse($saved['policy_requirements']['require_equipment_use_policy']);
+        $this->assertTrue($saved['policy_requirements']['require_remote_work_policy']);
+        $this->assertSame(9, $saved['policy_requirements']['code_of_conduct_min_workers']);
     }
 
     public function test_foreign_quota_service_uses_configured_thresholds_and_percentages(): void
@@ -205,4 +228,3 @@ class MozambiqueHrLegalSettingsTest extends TestCase
         $user->refresh();
     }
 }
-

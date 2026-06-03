@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-navigation';
-import { RefreshCw } from 'lucide-react';
+import { Download, RefreshCw } from 'lucide-react';
 
 interface AnnualDeclaration {
     fiscal_year: string;
@@ -58,6 +58,14 @@ export default function AnnualDeclarationPage() {
         router.get(route('sce.tax.annual-declaration.page'), { year: selectedYear }, { preserveState: true, replace: true });
     };
 
+    const handleYearChange = (value: string) => {
+        const nextYear = Number(value);
+        setSelectedYear(nextYear);
+        router.get(route('sce.tax.annual-declaration.page'), { year: nextYear }, { preserveState: true, replace: true });
+    };
+
+    const exportCsv = () => window.location.assign(route('sce.tax.annual-declaration.export', { year }));
+
     const vatStatus = declaration.vat.net_position >= 0 ? t('IVA a pagar') : t('IVA a recuperar');
     const vatStatusValue = declaration.vat.net_position >= 0 ? declaration.vat.vat_payable : declaration.vat.vat_recoverable;
     const irpcStatus = declaration.irpc.net_payable >= 0 ? t('IRPC a pagar') : t('IRPC a recuperar');
@@ -67,9 +75,14 @@ export default function AnnualDeclarationPage() {
             breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Impostos') }, { label: t('Declaração Anual') }]}
             pageTitle={t('Declaração Anual Fiscal')}
             pageActions={
-                <Button size="sm" onClick={refresh}>
-                    <RefreshCw className="h-4 w-4 mr-1" /> {t('Actualizar')}
-                </Button>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={exportCsv}>
+                        <Download className="h-4 w-4 mr-1" /> {t('Exportar CSV')}
+                    </Button>
+                    <Button size="sm" onClick={refresh}>
+                        <RefreshCw className="h-4 w-4 mr-1" /> {t('Actualizar')}
+                    </Button>
+                </div>
             }
         >
             <Head title={t('Declaração Anual')} />
@@ -77,7 +90,7 @@ export default function AnnualDeclarationPage() {
 
             <Card className="mb-6">
                 <CardContent className="p-4 flex flex-wrap items-center gap-3">
-                    <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(Number(v))}>
+                    <Select value={String(selectedYear)} onValueChange={handleYearChange}>
                         <SelectTrigger className="w-32">
                             <SelectValue />
                         </SelectTrigger>

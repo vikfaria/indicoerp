@@ -626,7 +626,11 @@ class PayrollController extends Controller
 
     private function calculateAllowances($employee, $basicSalary)
     {
-        $allowances = Allowance::where('employee_id', $employee->user_id)->where('created_by', creatorId())->get();
+        $allowances = Allowance::query()
+            ->active()
+            ->where('employee_id', $employee->user_id)
+            ->where('created_by', creatorId())
+            ->get();
         $breakdown = [];
         $total = 0;
 
@@ -649,7 +653,11 @@ class PayrollController extends Controller
 
     private function calculateDeductions($employee, $basicSalary)
     {
-        $deductions = Deduction::where('employee_id', $employee->user_id)->where('created_by', creatorId())->get();
+        $deductions = Deduction::query()
+            ->active()
+            ->where('employee_id', $employee->user_id)
+            ->where('created_by', creatorId())
+            ->get();
         $breakdown = [];
         $total = 0;
 
@@ -673,6 +681,7 @@ class PayrollController extends Controller
     private function calculateAttendance($employee, $startDate, $endDate)
     {
         $attendances = Attendance::where('employee_id', $employee->user_id)
+            ->active()
             ->whereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
             ->get();
 
@@ -697,6 +706,7 @@ class PayrollController extends Controller
     private function calculateLeave($employee, $startDate, $endDate)
     {
         $leaveApplications = LeaveApplication::with('leave_type')->where('employee_id', $employee->user_id)
+            ->active()
             ->where('status', 'approved')
             ->where(function ($query) use ($startDate, $endDate) {
                 $query->whereBetween('start_date', [$startDate, $endDate])
@@ -723,7 +733,9 @@ class PayrollController extends Controller
 
     private function calculateOvertimes($employee, $basicSalary, $startDate, $endDate)
     {
-        $overtimes = Overtime::where('employee_id', $employee->user_id)
+        $overtimes = Overtime::query()
+            ->active()
+            ->where('employee_id', $employee->user_id)
             ->where('created_by', creatorId())
             ->where(function ($query): void {
                 $query->where('approval_status', 'approved')
@@ -756,7 +768,7 @@ class PayrollController extends Controller
 
     private function calculateLoans($employee, $basicSalary, $startDate, $endDate)
     {
-        $loans = Loan::with('loanType')->where('employee_id', $employee->user_id)
+        $loans = Loan::with('loanType')->active()->where('employee_id', $employee->user_id)
             ->where('created_by', creatorId())
             ->where(function ($query) use ($startDate, $endDate) {
                 $query->whereBetween('start_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])

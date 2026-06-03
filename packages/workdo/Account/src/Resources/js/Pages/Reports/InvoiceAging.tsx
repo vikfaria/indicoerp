@@ -25,6 +25,7 @@ interface AgingData {
 export default function InvoiceAging({ financialYear }: any) {
     const { t } = useTranslation();
     const { auth } = usePage<any>().props;
+    const canManageReports = auth.user?.permissions?.includes('manage-account-reports') ?? false;
     const [asOfDate, setAsOfDate] = useState(financialYear?.year_end_date || '');
     const [data, setData] = useState<AgingData | null>(null);
     const [loading, setLoading] = useState(false);
@@ -63,7 +64,7 @@ export default function InvoiceAging({ financialYear }: any) {
                         <Button onClick={fetchData} disabled={loading} size="sm">
                             {loading ? t('Loading...') : t('Generate')}
                         </Button>
-                        {data && auth.user?.permissions?.includes('print-invoice-aging') && (
+                        {data && (canManageReports || auth.user?.permissions?.includes('print-invoice-aging')) && (
                             <Button variant="outline" size="sm" onClick={handleDownloadPDF} className="gap-2">
                                 <Printer className="h-4 w-4" />
                                 {t('Download PDF')}

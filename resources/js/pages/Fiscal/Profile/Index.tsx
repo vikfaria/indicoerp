@@ -12,11 +12,15 @@ import { Save, RefreshCw, Download, Calendar } from 'lucide-react';
 
 interface FiscalProfile {
     nuit: string;
+    legal_name?: string;
     fiscal_regime?: string;
     tax_regime?: string;
     accounting_framework: string;
     entity_classification?: string;
     nirf_classification?: string;
+    taxpayer_type?: string;
+    state_of_certification?: string;
+    software_certificate_number?: string;
     province?: string;
     economic_activity_code?: string;
     activity_code?: string;
@@ -25,13 +29,17 @@ interface Period { id: number; fiscal_year: string; period_number: number; perio
 
 export default function FiscalProfileIndex() {
     const { t } = useTranslation();
-    const { profile, periods } = usePage<{ profile: FiscalProfile; periods: Period[] }>().props;
+    const { profile, periods, auth } = usePage<{ profile: FiscalProfile; periods: Period[]; auth?: { user?: { name?: string } } }>().props;
 
     const form = useForm({
         nuit: profile.nuit || '',
+        legal_name: profile.legal_name || auth?.user?.name || '',
         fiscal_regime: profile.fiscal_regime || profile.tax_regime || 'normal',
         accounting_framework: profile.accounting_framework || 'pgc_nirf',
         entity_classification: profile.entity_classification || profile.nirf_classification || 'small',
+        taxpayer_type: profile.taxpayer_type || 'ordinary',
+        state_of_certification: profile.state_of_certification || 'not_certified',
+        software_certificate_number: profile.software_certificate_number || '0',
         province: profile.province || '',
         economic_activity_code: profile.economic_activity_code || profile.activity_code || '',
     });
@@ -53,6 +61,7 @@ export default function FiscalProfileIndex() {
                     <CardContent>
                         <form onSubmit={handleSave} className="space-y-4">
                             <div><Label>{t('NUIT')}</Label><Input value={form.data.nuit} onChange={e => form.setData('nuit', e.target.value)} maxLength={9} placeholder="123456789" required /></div>
+                            <div><Label>{t('Nome Legal')}</Label><Input value={form.data.legal_name} onChange={e => form.setData('legal_name', e.target.value)} placeholder={t('Nome legal da empresa')} /></div>
                             <div><Label>{t('Regime Fiscal')}</Label>
                                 <Select value={form.data.fiscal_regime} onValueChange={v => form.setData('fiscal_regime', v)}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -75,6 +84,18 @@ export default function FiscalProfileIndex() {
                                     </SelectContent>
                                 </Select>
                             </div>
+                            <div><Label>{t('Tipo de Contribuinte')}</Label><Input value={form.data.taxpayer_type} onChange={e => form.setData('taxpayer_type', e.target.value)} placeholder={t('Ex.: ordinary, simplified, exempt')} /></div>
+                            <div><Label>{t('Estado de Certificação')}</Label>
+                                <Select value={form.data.state_of_certification} onValueChange={v => form.setData('state_of_certification', v)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="not_certified">{t('Não certificado')}</SelectItem>
+                                        <SelectItem value="pending">{t('Pendente')}</SelectItem>
+                                        <SelectItem value="certified">{t('Certificado')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div><Label>{t('Número do Certificado de Software')}</Label><Input value={form.data.software_certificate_number} onChange={e => form.setData('software_certificate_number', e.target.value)} placeholder="CERT-2026-001" /></div>
                             <div><Label>{t('Referencial Contabilístico')}</Label>
                                 <Select value={form.data.accounting_framework} onValueChange={v => form.setData('accounting_framework', v)}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>

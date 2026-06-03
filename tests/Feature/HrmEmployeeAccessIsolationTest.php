@@ -134,6 +134,65 @@ class HrmEmployeeAccessIsolationTest extends TestCase
         ]);
     }
 
+    public function test_employee_document_cancellation_requires_reason(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-employees', 'manage-any-employees']);
+
+        [$branch, $department, $designation, $shift] = $this->makeStructure($company, 'DOC-REQ');
+        $employee = $this->makeEmployee($company, $branch, $department, $designation, $shift, 'EMP-DOC-REQ-001');
+
+        $document = EmployeeDocument::query()->create([
+            'user_id' => $employee->id,
+            'document_type_id' => $this->makeDocumentTypeId($company),
+            'file_path' => 'employee_documents/require-reason.pdf',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->delete(route('hrm.employee-documents.destroy', [
+            'employeeId' => $employee->id,
+            'document' => $document->id,
+        ]));
+
+        $response->assertSessionHasErrors('cancellation_reason');
+        $this->assertDatabaseHas('employee_documents', [
+            'id' => $document->id,
+            'is_cancelled' => false,
+        ]);
+    }
+
+    public function test_employee_document_delete_cancels_document_instead_of_deleting(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-employees', 'manage-any-employees']);
+
+        [$branch, $department, $designation, $shift] = $this->makeStructure($company, 'DOC-CANCEL');
+        $employee = $this->makeEmployee($company, $branch, $department, $designation, $shift, 'EMP-DOC-CANCEL-001');
+
+        $document = EmployeeDocument::query()->create([
+            'user_id' => $employee->id,
+            'document_type_id' => $this->makeDocumentTypeId($company),
+            'file_path' => 'employee_documents/cancel-document.pdf',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->delete(route('hrm.employee-documents.destroy', [
+            'employeeId' => $employee->id,
+            'document' => $document->id,
+        ]), [
+            'cancellation_reason' => 'Documento substituido por versao assinada.',
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('employee_documents', [
+            'id' => $document->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+        ]);
+    }
+
     public function test_set_salary_update_denies_cross_company_employee_access(): void
     {
         $companyA = $this->makeCompany();

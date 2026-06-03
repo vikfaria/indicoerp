@@ -136,6 +136,66 @@ sudo systemctl restart php8.2-fpm nginx indicoerp-queue indicoerp-scheduler
 
 Se houve migração destrutiva, restaurar backup da base.
 
+## 7.1) Backup, verificação e restore
+
+Antes de qualquer deploy com migration, criar backup operacional versionado:
+
+```bash
+cd /var/www/indicoerp/repo
+DB_PASS='COLOCAR_A_PASSWORD' \
+bash deploy/scripts/16_backup_restore_indicoerp.sh backup
+```
+
+Se a base estiver dentro do container MySQL, executar via container:
+
+```bash
+cd /var/www/indicoerp/repo
+MYSQL_CONTAINER_NAME=indicoerp_mysql \
+DB_NAME=indicoerp \
+DB_USER=indicoerp_user \
+DB_PASS='COLOCAR_A_PASSWORD' \
+bash deploy/scripts/16_backup_restore_indicoerp.sh backup
+```
+
+Validar integridade do dump e testar restore numa base temporária diferente da produção:
+
+```bash
+cd /var/www/indicoerp/repo
+MYSQL_CONTAINER_NAME=indicoerp_mysql \
+DB_NAME=indicoerp \
+DB_USER=indicoerp_user \
+DB_PASS='COLOCAR_A_PASSWORD' \
+MYSQL_ADMIN_USER=root \
+MYSQL_ADMIN_PASS='COLOCAR_A_PASSWORD_ROOT' \
+RESTORE_FILE=/var/backups/indicoerp/db/db_indicoerp_AAAAMMDD_HHMMSS.sql.gz \
+VERIFY_DB_NAME=indicoerp_restore_check \
+bash deploy/scripts/16_backup_restore_indicoerp.sh verify
+```
+
+Se `MYSQL_ADMIN_USER/MYSQL_ADMIN_PASS` não tiver permissão para `CREATE DATABASE` e `DROP DATABASE`, o script ainda valida a integridade gzip do dump, mas o go-live continua bloqueado até existir teste real de restore.
+
+Restore de produção só deve ser executado com confirmação explícita e janela de manutenção:
+
+```bash
+cd /var/www/indicoerp/repo
+MYSQL_CONTAINER_NAME=indicoerp_mysql \
+DB_NAME=indicoerp \
+DB_USER=indicoerp_user \
+DB_PASS='COLOCAR_A_PASSWORD' \
+MYSQL_ADMIN_USER=root \
+MYSQL_ADMIN_PASS='COLOCAR_A_PASSWORD_ROOT' \
+RESTORE_FILE=/var/backups/indicoerp/db/db_indicoerp_AAAAMMDD_HHMMSS.sql.gz \
+CONFIRM_RESTORE=YES \
+bash deploy/scripts/16_backup_restore_indicoerp.sh restore
+```
+
+Após `verify`, registar no painel **Go-Live Readiness**:
+
+- estado `Completed`;
+- data do teste;
+- referência do manifesto `backup_*.manifest`;
+- RPO/RTO validado e responsável.
+
 ## 8) Critério final de aceitação de produção
 
 Produção só é considerada pronta quando:
@@ -144,6 +204,7 @@ Produção só é considerada pronta quando:
 - Login e módulo fiscal carregam sem erro.
 - Export SAF-T de teste gera XML válido.
 - Não há erro crítico no `laravel.log` durante 15–30 minutos após deploy.
+- Backup criado e restore verificado em base temporária com evidência registada no readiness.
 
 ## 9) Auditoria de performance do servidor
 

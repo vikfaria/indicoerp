@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Spatie\Permission\Models\Permission;
@@ -11,6 +12,8 @@ use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Workdo\Contract\Models\Contract;
 use Workdo\Contract\Models\ContractType;
+use Workdo\Hrm\Models\AnnualLeavePlan;
+use Workdo\Hrm\Models\Attendance;
 use Workdo\Hrm\Models\Branch;
 use Workdo\Hrm\Models\Department;
 use Workdo\Hrm\Models\Designation;
@@ -20,8 +23,10 @@ use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
 use Workdo\Hrm\Models\EmployeeProbationProfile;
 use Workdo\Hrm\Models\EmployeeSocialSecurityProfile;
 use Workdo\Hrm\Models\LeaveApplication;
+use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\Payroll;
 use Workdo\Hrm\Models\PayrollEntry;
+use Workdo\Hrm\Models\Shift;
 
 class HrmWorkforceRegisterExportTest extends TestCase
 {
@@ -37,7 +42,7 @@ class HrmWorkforceRegisterExportTest extends TestCase
     {
         $company = $this->makeCompany();
         $outsiderCompany = $this->makeCompany();
-        $this->grantPermissions($company, ['view-payrolls']);
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
 
         $mainEmployee = $this->createEmployeeWithLegalProfiles($company, 'EMP-WR-001', 'Funcionario Registo');
         $this->createEmployeeWithLegalProfiles($outsiderCompany, 'EMP-WR-OUT', 'Funcionario Fora');
@@ -70,7 +75,7 @@ class HrmWorkforceRegisterExportTest extends TestCase
     public function test_workforce_register_json_and_xml_exports_return_structured_payloads(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['view-payrolls']);
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
         $this->createEmployeeWithLegalProfiles($company, 'EMP-WR-JSON', 'Funcionario JSON');
 
         $jsonResponse = $this->actingAs($company)->get(route(
@@ -104,6 +109,24 @@ class HrmWorkforceRegisterExportTest extends TestCase
         $xmlResponse->assertSee('<hr_workforce_register>', false);
         $xmlResponse->assertSee('<workers_total>1</workers_total>', false);
         $xmlResponse->assertSee('<employee_name>Funcionario JSON</employee_name>', false);
+    }
+
+    public function test_workforce_register_export_masks_sensitive_fields_without_sensitive_permission(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['view-payrolls']);
+        $this->createEmployeeWithLegalProfiles($company, 'EMP-WR-MASK', 'Funcionario Masked');
+
+        $response = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.workforce-register.export',
+            ['reference_date' => '2026-05-31']
+        ));
+
+        $response->assertOk();
+        $response->assertDontSee('400123456', false);
+        $response->assertDontSee('INSS-999100', false);
+        $response->assertDontSee('PT123456', false);
+        $response->assertSee('***', false);
     }
 
     public function test_workforce_register_import_updates_employee_legal_profiles(): void
@@ -170,6 +193,104 @@ class HrmWorkforceRegisterExportTest extends TestCase
             'decision_status' => 'confirmed',
             'created_by' => $company->id,
         ]);
+    }
+
+    public function test_attendance_import_creates_or_updates_records(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-payrolls']);
+
+        $employee = $this->createEmployeeWithLegalProfiles($company, 'EMP-AT-IMP-001', 'Funcionario Attendance');
+        $shift = Shift::query()->create([
+            'shift_name' => 'Turno Geral',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+        $employee->shift = $shift->id;
+        $employee->save();
+
+        $csv = implode("\n", [
+            'Employee Internal ID,Attendance Date,Clock In,Clock Out,Break Hours,Status,Is Justified,Absence Category,Notes,Source Channel,Source Device ID,Source Device Label,Source Reference',
+            'EMP-AT-IMP-001,2026-05-20,2026-05-20 08:00,2026-05-20 17:00,1,present,yes,legal_leave,Imported attendance,biometric,DEV-001,Main Gate,BIO-REF-1001',
+        ]);
+        $file = UploadedFile::fake()->createWithContent('attendance_import.csv', $csv);
+
+        $response = $this->actingAs($company)->post(
+            route('hrm.mozambique-payroll-compliance.reports.attendance-compliance.import'),
+            ['csv_file' => $file]
+        );
+
+        $response->assertRedirect();
+
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => $employee->user_id,
+            'status' => 'present',
+            'source_channel' => 'biometric',
+            'source_device_id' => 'DEV-001',
+            'source_reference' => 'BIO-REF-1001',
+            'created_by' => $company->id,
+        ]);
+
+        $attendance = Attendance::query()
+            ->where('created_by', $company->id)
+            ->where('employee_id', $employee->user_id)
+            ->whereDate('date', '2026-05-20')
+            ->firstOrFail();
+
+        $this->assertSame('2026-05-20 08:00:00', Carbon::parse((string) $attendance->clock_in)->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-05-20 17:00:00', Carbon::parse((string) $attendance->clock_out)->format('Y-m-d H:i:s'));
+        $this->assertSame('8.00', number_format((float) $attendance->total_hour, 2, '.', ''));
+    }
+
+    public function test_annual_leave_plan_import_creates_or_updates_records(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-payrolls']);
+
+        $employee = $this->createEmployeeWithLegalProfiles($company, 'EMP-LP-IMP-001', 'Funcionario Leave Plan');
+
+        $leaveType = LeaveType::query()->create([
+            'name' => 'Férias Anuais',
+            'legal_code' => 'annual',
+            'max_days_per_year' => 30,
+            'is_paid' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $csv = implode("\n", [
+            'Employee Record ID,Leave Type ID,Leave Year,Planned Start Date,Planned End Date,Status,Notes,Manager Approved At,HR Approved At',
+            $employee->id . ',' . $leaveType->id . ',2026,2026-08-01,2026-08-10,approved,Imported annual plan,2026-06-15 09:00,2026-06-20 11:00',
+        ]);
+        $file = UploadedFile::fake()->createWithContent('annual_leave_plan_import.csv', $csv);
+
+        $response = $this->actingAs($company)->post(
+            route('hrm.mozambique-payroll-compliance.reports.annual-leave-compliance.import'),
+            ['csv_file' => $file]
+        );
+
+        $response->assertRedirect();
+
+        $this->assertDatabaseHas('annual_leave_plans', [
+            'employee_id' => $employee->user_id,
+            'leave_type_id' => $leaveType->id,
+            'leave_year' => 2026,
+            'planned_days' => 10,
+            'status' => AnnualLeavePlan::STATUS_APPROVED,
+            'created_by' => $company->id,
+        ]);
+
+        $plan = AnnualLeavePlan::query()
+            ->where('created_by', $company->id)
+            ->where('employee_id', $employee->user_id)
+            ->where('leave_type_id', $leaveType->id)
+            ->where('leave_year', 2026)
+            ->firstOrFail();
+
+        $this->assertSame('2026-08-01', Carbon::parse((string) $plan->planned_start_date)->toDateString());
+        $this->assertSame('2026-08-10', Carbon::parse((string) $plan->planned_end_date)->toDateString());
     }
 
     private function createEmployeeWithLegalProfiles(User $company, string $employeeCode, string $employeeName): Employee

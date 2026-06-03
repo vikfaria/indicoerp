@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/ui/input-error';
 import { Trash2 } from 'lucide-react';
 import { CreateCustomerPaymentFormData, CreateCustomerPaymentProps, SalesInvoice, CreditNote } from './types';
@@ -37,6 +38,13 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
         { value: 'mkesh', label: 'mKesh' }
     ] as const;
 
+    const currencyOptions = [
+        { value: 'MZN', label: 'MZN' },
+        { value: 'USD', label: 'USD' },
+        { value: 'EUR', label: 'EUR' },
+        { value: 'ZAR', label: 'ZAR' },
+    ] as const;
+
     const { data, setData, post, processing, errors } = useForm<CreateCustomerPaymentFormData>({
         payment_date: new Date().toISOString().split('T')[0],
         customer_id: '',
@@ -46,6 +54,22 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
         mobile_money_number: '',
         reference_number: '',
         payment_amount: '',
+        currency_code: 'MZN',
+        exchange_rate: '1',
+        foreign_amount: '',
+        is_export_receipt: false,
+        receipt_origin_country: '',
+        export_reference: '',
+        intermediary_bank: '',
+        repatriation_status: 'not_applicable',
+        repatriated_amount_mzn: '',
+        fx_compliance_reference: '',
+        gifim_alert_status: 'not_required',
+        gifim_reference: '',
+        gifim_reported_at: '',
+        gifim_submitted_document: '',
+        gifim_justification: '',
+        high_value_approval_reference: '',
         notes: '',
         allocations: [],
         credit_notes: []
@@ -66,6 +90,18 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
             setData('mobile_money_number', '');
         }
     }, [data.payment_method]);
+
+    useEffect(() => {
+        if (data.currency_code === 'MZN') {
+            if (data.exchange_rate !== '1') {
+                setData('exchange_rate', '1');
+            }
+
+            if (data.foreign_amount !== data.payment_amount) {
+                setData('foreign_amount', data.payment_amount);
+            }
+        }
+    }, [data.currency_code, data.payment_amount]);
 
     const fetchOutstandingInvoices = async (customerId: string) => {
         if (!customerId) {
@@ -145,6 +181,59 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
     };
 
     const getInvoiceById = (id: number) => outstandingInvoices.find(inv => inv.id === id);
+    const selectedCustomer = customers.find((customer) => customer.id.toString() === data.customer_id);
+    const isForeignCurrency = data.currency_code !== 'MZN';
+    const isNonResidentCustomer = selectedCustomer?.fiscal_residency_status === 'non_resident';
+    const requiresExportReceiptForFx = isForeignCurrency && !isNonResidentCustomer;
+    const isExportReceipt = requiresExportReceiptForFx || data.is_export_receipt;
+    const paymentAmountValue = Number(data.payment_amount || 0);
+    const exchangeRateValue = Number(data.exchange_rate || 0);
+    const foreignAmountValue = Number(data.foreign_amount || 0);
+    const convertedAmountMzn = isForeignCurrency && exchangeRateValue > 0
+        ? foreignAmountValue * exchangeRateValue
+        : paymentAmountValue;
+    const fxDifferenceAmount = paymentAmountValue - convertedAmountMzn;
+    const repatriatedAmountValue = Number(data.repatriated_amount_mzn || 0);
+    const normalizedPaymentMethod = (data.payment_method || '').toLowerCase();
+    const gifimThresholdCategory = normalizedPaymentMethod === 'cash' && paymentAmountValue >= 250000
+        ? 'cash_threshold'
+        : (['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'].includes(normalizedPaymentMethod)
+            && paymentAmountValue >= 750000
+            ? 'electronic_threshold'
+            : null);
+    const gifimAlertRequired = Boolean(gifimThresholdCategory);
+
+    useEffect(() => {
+        if (requiresExportReceiptForFx && !data.is_export_receipt) {
+            setData('is_export_receipt', true);
+        }
+    }, [requiresExportReceiptForFx]);
+
+    useEffect(() => {
+        if (!selectedCustomer?.fiscal_country) {
+            return;
+        }
+
+        if (!data.receipt_origin_country) {
+            setData('receipt_origin_country', selectedCustomer.fiscal_country);
+        }
+    }, [selectedCustomer?.id]);
+
+    useEffect(() => {
+        if (!isExportReceipt && data.repatriation_status !== 'not_applicable') {
+            setData('repatriation_status', 'not_applicable');
+        }
+    }, [isExportReceipt, data.repatriation_status]);
+
+    useEffect(() => {
+        if (gifimAlertRequired && data.gifim_alert_status === 'not_required') {
+            setData('gifim_alert_status', 'pending');
+        }
+
+        if (!gifimAlertRequired && data.gifim_alert_status !== 'not_required') {
+            setData('gifim_alert_status', 'not_required');
+        }
+    }, [gifimAlertRequired, data.gifim_alert_status]);
 
     return (
         <DialogContent className="max-w-4xl">
@@ -232,6 +321,55 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
                         <InputError message={errors.payment_method} />
                     </div>
 
+                    <div>
+                        <Label htmlFor="currency_code" required>{t('Currency')}</Label>
+                        <Select value={data.currency_code} onValueChange={(value) => setData('currency_code', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select Currency')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {currencyOptions.map((currency) => (
+                                    <SelectItem key={currency.value} value={currency.value}>
+                                        {currency.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.currency_code} />
+                    </div>
+
+                    {isForeignCurrency && (
+                        <>
+                            <div>
+                                <Label htmlFor="exchange_rate" required>{t('Exchange Rate')}</Label>
+                                <Input
+                                    id="exchange_rate"
+                                    type="number"
+                                    step="0.000001"
+                                    min="0.000001"
+                                    value={data.exchange_rate}
+                                    onChange={(e) => setData('exchange_rate', e.target.value)}
+                                    placeholder="63.500000"
+                                />
+                                <InputError message={errors.exchange_rate} />
+                            </div>
+
+                            <div>
+                                <Label htmlFor="foreign_amount" required>{t('Foreign Amount')}</Label>
+                                <Input
+                                    id="foreign_amount"
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={data.foreign_amount}
+                                    onChange={(e) => setData('foreign_amount', e.target.value)}
+                                    placeholder="100.00"
+                                />
+                                <InputError message={errors.foreign_amount} />
+                            </div>
+                        </>
+                    )}
+
                     {data.payment_method === 'mobile_money' && (
                         <>
                             <div>
@@ -264,6 +402,217 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
                         </>
                     )}
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <Label>{t('Amount in MZN')}</Label>
+                        <Input value={paymentAmountValue.toFixed(2)} readOnly />
+                    </div>
+                    {isForeignCurrency && (
+                        <div>
+                            <Label>{t('Exchange Difference (MZN)')}</Label>
+                            <Input value={fxDifferenceAmount.toFixed(2)} readOnly />
+                        </div>
+                    )}
+                </div>
+
+                {(gifimAlertRequired || data.gifim_alert_status === 'communicated') && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-md border p-4">
+                        <div>
+                            <Label>{t('GIFiM Threshold Category')}</Label>
+                            <Input
+                                value={gifimThresholdCategory === 'cash_threshold'
+                                    ? t('Cash >= 250,000 MZN')
+                                    : t('Electronic >= 750,000 MZN')}
+                                readOnly
+                            />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="gifim_alert_status" required>{t('GIFiM Communication Status')}</Label>
+                            <Select
+                                value={data.gifim_alert_status}
+                                onValueChange={(value) => setData('gifim_alert_status', value as CreateCustomerPaymentFormData['gifim_alert_status'])}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('Select status')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="pending">{t('Pending')}</SelectItem>
+                                    <SelectItem value="communicated">{t('Communicated')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError message={errors.gifim_alert_status} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="high_value_approval_reference" required>{t('High-Value Approval Reference')}</Label>
+                            <Input
+                                id="high_value_approval_reference"
+                                value={data.high_value_approval_reference}
+                                onChange={(e) => setData('high_value_approval_reference', e.target.value)}
+                                placeholder={t('Ex: FIN-APP-HV-2026-001')}
+                            />
+                            <InputError message={errors.high_value_approval_reference} />
+                        </div>
+
+                        {data.gifim_alert_status === 'communicated' && (
+                            <>
+                                <div>
+                                    <Label htmlFor="gifim_reference" required>{t('GIFiM Reference')}</Label>
+                                    <Input
+                                        id="gifim_reference"
+                                        value={data.gifim_reference}
+                                        onChange={(e) => setData('gifim_reference', e.target.value)}
+                                        placeholder={t('Ex: GIFIM-2026-001')}
+                                    />
+                                    <InputError message={errors.gifim_reference} />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="gifim_submitted_document" required>{t('Submitted Document')}</Label>
+                                    <Input
+                                        id="gifim_submitted_document"
+                                        value={data.gifim_submitted_document}
+                                        onChange={(e) => setData('gifim_submitted_document', e.target.value)}
+                                        placeholder={t('Ex: comprovativo.pdf')}
+                                    />
+                                    <InputError message={errors.gifim_submitted_document} />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="gifim_reported_at">{t('Communication Date')}</Label>
+                                    <Input
+                                        id="gifim_reported_at"
+                                        type="date"
+                                        value={data.gifim_reported_at}
+                                        onChange={(e) => setData('gifim_reported_at', e.target.value)}
+                                    />
+                                    <InputError message={errors.gifim_reported_at} />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="gifim_justification">{t('GIFiM Justification')}</Label>
+                                    <Input
+                                        id="gifim_justification"
+                                        value={data.gifim_justification}
+                                        onChange={(e) => setData('gifim_justification', e.target.value)}
+                                        placeholder={t('Optional notes')}
+                                    />
+                                    <InputError message={errors.gifim_justification} />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex items-start gap-2 rounded-md border p-3">
+                    <Checkbox
+                        id="is_export_receipt"
+                        checked={isExportReceipt}
+                        disabled={requiresExportReceiptForFx}
+                        onCheckedChange={(checked) => setData('is_export_receipt', !!checked)}
+                    />
+                    <div className="space-y-1">
+                        <Label htmlFor="is_export_receipt">{t('Export revenue receipt')}</Label>
+                        <p className="text-xs text-gray-500">
+                            {requiresExportReceiptForFx
+                                ? t('Foreign-currency domestic receipts must be flagged as export-related for FX compliance tracking.')
+                                : t('Enable for receipts linked to export revenue and repatriation control.')}
+                        </p>
+                    </div>
+                </div>
+
+                {isExportReceipt && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-md border p-4">
+                        <div>
+                            <Label htmlFor="receipt_origin_country" required>{t('Receipt Origin Country')}</Label>
+                            <Input
+                                id="receipt_origin_country"
+                                value={data.receipt_origin_country}
+                                onChange={(e) => setData('receipt_origin_country', e.target.value)}
+                                placeholder={t('Ex: South Africa')}
+                            />
+                            <InputError message={errors.receipt_origin_country} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="export_reference" required>{t('Export Reference')}</Label>
+                            <Input
+                                id="export_reference"
+                                value={data.export_reference}
+                                onChange={(e) => setData('export_reference', e.target.value)}
+                                placeholder={t('Invoice/DU reference')}
+                            />
+                            <InputError message={errors.export_reference} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="intermediary_bank" required>{t('Intermediary Bank')}</Label>
+                            <Input
+                                id="intermediary_bank"
+                                value={data.intermediary_bank}
+                                onChange={(e) => setData('intermediary_bank', e.target.value)}
+                                placeholder={t('Bank receiving foreign funds')}
+                            />
+                            <InputError message={errors.intermediary_bank} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="fx_compliance_reference" required>{t('FX Compliance Reference')}</Label>
+                            <Input
+                                id="fx_compliance_reference"
+                                value={data.fx_compliance_reference}
+                                onChange={(e) => setData('fx_compliance_reference', e.target.value)}
+                                placeholder={t('BM/Bank compliance reference')}
+                            />
+                            <InputError message={errors.fx_compliance_reference} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="repatriation_status">{t('Repatriation Status')}</Label>
+                            <Select
+                                value={data.repatriation_status}
+                                onValueChange={(value) => setData('repatriation_status', value as CreateCustomerPaymentFormData['repatriation_status'])}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder={t('Select status')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="pending">{t('Pending')}</SelectItem>
+                                    <SelectItem value="partial">{t('Partial')}</SelectItem>
+                                    <SelectItem value="completed">{t('Completed')}</SelectItem>
+                                    <SelectItem value="not_applicable">{t('Not applicable')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <InputError message={errors.repatriation_status} />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="repatriated_amount_mzn">{t('Repatriated Amount (MZN)')}</Label>
+                            <Input
+                                id="repatriated_amount_mzn"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={data.repatriated_amount_mzn}
+                                onChange={(e) => setData('repatriated_amount_mzn', e.target.value)}
+                                placeholder={paymentAmountValue.toFixed(2)}
+                            />
+                            <InputError message={errors.repatriated_amount_mzn} />
+                            {data.repatriation_status === 'completed' && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {t('Completed repatriation should cover at least')}: {paymentAmountValue.toFixed(2)} MZN.
+                                </p>
+                            )}
+                            {repatriatedAmountValue > 0 && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {t('Registered')}: {repatriatedAmountValue.toFixed(2)} MZN
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {data.customer_id && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -470,7 +819,7 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
 
                 <div>
                     <CurrencyInput
-                        label={t('Total Payment Amount')}
+                        label={t('Total Payment Amount (MZN)')}
                         value={data.payment_amount}
                         onChange={(value) => {
                             setData('payment_amount', value);

@@ -17,13 +17,17 @@ interface Series {
     doc_type_code: string; doc_type_name: string;
     last_sequence: number; last_hash: string | null;
     is_active: boolean; valid_from: string; valid_to: string;
+    assigned_user_id?: number | null;
+    terminal_code?: string | null;
+    fiscal_regime_code?: string | null;
 }
 interface DocType { id: number; code: string; name: string; }
+interface CompanyUser { id: number; label: string; }
 
 export default function DocumentSeriesIndex() {
     const { t } = useTranslation();
-    const { series, documentTypes, currentYear } = usePage<{
-        series: Series[]; documentTypes: DocType[]; currentYear: number;
+    const { series, documentTypes, companyUsers, currentYear } = usePage<{
+        series: Series[]; documentTypes: DocType[]; companyUsers: CompanyUser[]; currentYear: number;
     }>().props;
 
     const [open, setOpen] = useState(false);
@@ -31,10 +35,19 @@ export default function DocumentSeriesIndex() {
         fiscal_document_type_id: '',
         series_code: 'A',
         fiscal_year: currentYear.toString(),
+        assigned_user_id: 'none',
+        terminal_code: '',
+        fiscal_regime_code: '',
     });
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+        const payload = {
+            ...form.data,
+            assigned_user_id: form.data.assigned_user_id === 'none' ? null : form.data.assigned_user_id,
+        };
+
+        form.transform(() => payload);
         form.post(route('sce.fiscal.series.store'), {
             onSuccess: () => { setOpen(false); form.reset(); },
         });
@@ -108,6 +121,52 @@ export default function DocumentSeriesIndex() {
                                         )}
                                     </div>
                                 </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <Label>{t('Utilizador (opcional)')}</Label>
+                                        <Select
+                                            value={form.data.assigned_user_id}
+                                            onValueChange={v => form.setData('assigned_user_id', v)}
+                                        >
+                                            <SelectTrigger><SelectValue placeholder={t('Todos')} /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">{t('Todos')}</SelectItem>
+                                                {companyUsers.map(user => (
+                                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                                        {user.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {form.errors.assigned_user_id && (
+                                            <p className="text-xs text-red-500 mt-1">{form.errors.assigned_user_id}</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <Label>{t('Terminal (opcional)')}</Label>
+                                        <Input
+                                            value={form.data.terminal_code}
+                                            onChange={e => form.setData('terminal_code', e.target.value.toUpperCase())}
+                                            maxLength={50}
+                                            placeholder="POS01"
+                                        />
+                                        {form.errors.terminal_code && (
+                                            <p className="text-xs text-red-500 mt-1">{form.errors.terminal_code}</p>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <Label>{t('Regime Fiscal (opcional)')}</Label>
+                                        <Input
+                                            value={form.data.fiscal_regime_code}
+                                            onChange={e => form.setData('fiscal_regime_code', e.target.value.toUpperCase())}
+                                            maxLength={50}
+                                            placeholder="NORMAL"
+                                        />
+                                        {form.errors.fiscal_regime_code && (
+                                            <p className="text-xs text-red-500 mt-1">{form.errors.fiscal_regime_code}</p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('Cancelar')}</Button>
@@ -153,6 +212,7 @@ export default function DocumentSeriesIndex() {
                                                 <tr>
                                                     <th className="p-3 text-left">{t('Tipo')}</th>
                                                     <th className="p-3 text-left">{t('Série')}</th>
+                                                    <th className="p-3 text-left">{t('Dimensão')}</th>
                                                     <th className="p-3 text-center">{t('Último Nº')}</th>
                                                     <th className="p-3 text-center">{t('Hash')}</th>
                                                     <th className="p-3 text-center">{t('Estado')}</th>
@@ -170,6 +230,11 @@ export default function DocumentSeriesIndex() {
                                                             </div>
                                                         </td>
                                                         <td className="p-3 font-mono font-bold">{s.series_code}</td>
+                                                        <td className="p-3 text-xs text-muted-foreground">
+                                                            <div>{s.assigned_user_id ? `${t('User')}: #${s.assigned_user_id}` : `${t('User')}: *`}</div>
+                                                            <div>{t('Terminal')}: {s.terminal_code || '*'}</div>
+                                                            <div>{t('Regime')}: {s.fiscal_regime_code || '*'}</div>
+                                                        </td>
                                                         <td className="p-3 text-center font-mono">
                                                             {s.last_sequence > 0 ? s.last_sequence : '—'}
                                                         </td>

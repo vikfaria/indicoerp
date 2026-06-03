@@ -23,6 +23,13 @@ class BankAccount extends Model
         'swift_code',
         'routing_number',
         'is_active',
+        'is_electronic_money_account',
+        'electronic_money_entity',
+        'electronic_money_level',
+        'electronic_money_daily_limit_mzn',
+        'electronic_money_monthly_limit_mzn',
+        'electronic_money_limit_exempt_for_enterprise',
+        'electronic_money_account_purpose',
         'gl_account_id',
         'creator_id',
         'created_by',
@@ -33,7 +40,11 @@ class BankAccount extends Model
         return [
             'opening_balance' => 'decimal:2',
             'current_balance' => 'decimal:2',
-            'is_active' => 'boolean'
+            'is_active' => 'boolean',
+            'is_electronic_money_account' => 'boolean',
+            'electronic_money_daily_limit_mzn' => 'decimal:2',
+            'electronic_money_monthly_limit_mzn' => 'decimal:2',
+            'electronic_money_limit_exempt_for_enterprise' => 'boolean',
         ];
     }
 

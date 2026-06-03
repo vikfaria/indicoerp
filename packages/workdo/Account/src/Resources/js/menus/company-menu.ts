@@ -15,7 +15,15 @@ export const accountCompanyMenu = (t: (key: string) => string) => [
     {
         title: t('Contabilidade Geral'),
         icon: Calculator,
-        permission: 'manage-account',
+        permissionsAny: [
+            'manage-account',
+            'manage-account-reports',
+            'view-invoice-aging',
+            'view-bill-aging',
+            'view-tax-summary',
+            'view-customer-balance',
+            'view-vendor-balance',
+        ],
         parent: 'contabilidade',
         order: 5,
         children: [
@@ -88,7 +96,14 @@ export const accountCompanyMenu = (t: (key: string) => string) => [
             {
                 title: t('Reports'),
                 href: route('account.reports.index'),
-                permission: 'manage-account-reports',
+                permissionsAny: [
+                    'manage-account-reports',
+                    'view-invoice-aging',
+                    'view-bill-aging',
+                    'view-tax-summary',
+                    'view-customer-balance',
+                    'view-vendor-balance',
+                ],
             },
             {
                 title: t('System Setup'),

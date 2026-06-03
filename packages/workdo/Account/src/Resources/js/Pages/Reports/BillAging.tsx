@@ -12,6 +12,7 @@ import axios from 'axios';
 export default function BillAging({ financialYear }: any) {
     const { t } = useTranslation();
     const { auth } = usePage<any>().props;
+    const canManageReports = auth.user?.permissions?.includes('manage-account-reports') ?? false;
     const [asOfDate, setAsOfDate] = useState(financialYear?.year_end_date || '');
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
@@ -46,7 +47,7 @@ export default function BillAging({ financialYear }: any) {
                         <Button onClick={fetchData} disabled={loading} size="sm">
                             {loading ? t('Loading...') : t('Generate')}
                         </Button>
-                        {data && auth.user?.permissions?.includes('print-bill-aging') && (
+                        {data && (canManageReports || auth.user?.permissions?.includes('print-bill-aging')) && (
                             <Button variant="outline" size="sm" onClick={() => window.open(route('account.reports.bill-aging.print') + `?as_of_date=${asOfDate}&download=pdf`, '_blank')} className="gap-2">
                                 <Printer className="h-4 w-4" />
                                 {t('Download PDF')}

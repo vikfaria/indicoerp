@@ -127,7 +127,7 @@ class HrmPayrollSubmissionExportsTest extends TestCase
             'created_by' => $company->id,
         ]);
 
-        $this->grantPermissions($company, ['view-payrolls']);
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
 
         $response = $this->actingAs($company)->get(route(
             'hrm.mozambique-payroll-compliance.reports.modelo19-support.export',
@@ -259,7 +259,7 @@ class HrmPayrollSubmissionExportsTest extends TestCase
             'created_by' => $otherCompany->id,
         ]);
 
-        $this->grantPermissions($company, ['view-payrolls']);
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
 
         $response = $this->actingAs($company)->get(route(
             'hrm.mozambique-payroll-compliance.reports.inss-guide.export',
@@ -448,7 +448,7 @@ class HrmPayrollSubmissionExportsTest extends TestCase
             'created_by' => $otherCompany->id,
         ]);
 
-        $this->grantPermissions($company, ['view-payrolls']);
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
 
         $response = $this->actingAs($company)->get(route(
             'hrm.mozambique-payroll-compliance.reports.bank-payment-file.export',
@@ -463,6 +463,81 @@ class HrmPayrollSubmissionExportsTest extends TestCase
         $response->assertSee('Funcionario Pagamento', false);
         $response->assertSee('000123456789', false);
         $response->assertDontSee('OUTSIDE BANK EMPLOYEE', false);
+    }
+
+    public function test_bank_payment_file_masks_sensitive_data_without_sensitive_permission(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Mask');
+
+        Employee::query()->create([
+            'employee_id' => 'EMP-BANK-MASK-001',
+            'user_id' => $employeeUser->id,
+            'tax_payer_id' => '411998877',
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 21000,
+            'account_holder_name' => 'Funcionario Mask',
+            'bank_name' => 'Banco MZ',
+            'bank_branch' => 'Maputo Sede',
+            'bank_identifier_code' => 'BMAOMZMA',
+            'account_number' => '000111222333',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $payroll = Payroll::query()->create([
+            'title' => 'Payroll Maio 2026',
+            'payroll_frequency' => 'monthly',
+            'pay_period_start' => '2026-05-01',
+            'pay_period_end' => '2026-05-31',
+            'pay_date' => '2026-05-31',
+            'status' => 'completed',
+            'is_payroll_paid' => 'paid',
+            'total_gross_pay' => 21000,
+            'total_deductions' => 1470,
+            'total_net_pay' => 19530,
+            'total_irps' => 0,
+            'total_inss_employee' => 630,
+            'total_inss_employer' => 840,
+            'employee_count' => 1,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        PayrollEntry::query()->create([
+            'payroll_id' => $payroll->id,
+            'employee_id' => $employeeUser->id,
+            'basic_salary' => 21000,
+            'gross_pay' => 21000,
+            'taxable_income' => 21000,
+            'irps_amount' => 0,
+            'inss_employee_rate' => 3,
+            'inss_employee_amount' => 630,
+            'inss_employer_rate' => 4,
+            'inss_employer_amount' => 840,
+            'statutory_deductions_total' => 1470,
+            'total_allowances' => 0,
+            'total_manual_overtimes' => 0,
+            'total_deductions' => 1470,
+            'total_loans' => 0,
+            'net_pay' => 19530,
+            'working_days' => 22,
+            'status' => 'paid',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->grantPermissions($company, ['view-payrolls']);
+
+        $response = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.bank-payment-file.export',
+            ['reference_period' => '2026-05']
+        ));
+
+        $response->assertOk();
+        $response->assertDontSee('000111222333', false);
+        $response->assertDontSee('411998877', false);
+        $response->assertSee('***', false);
     }
 
     public function test_expatriates_export_returns_compliance_columns_and_is_company_scoped(): void

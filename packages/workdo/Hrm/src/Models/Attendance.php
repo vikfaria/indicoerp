@@ -23,6 +23,14 @@ class Attendance extends Model
         'overtime_hours',
         'overtime_amount',
         'status',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
+        'source_channel',
+        'source_device_id',
+        'source_device_label',
+        'source_reference',
         'is_justified',
         'absence_category',
         'notes',
@@ -41,7 +49,16 @@ class Attendance extends Model
             'overtime_hours' => 'decimal:2',
             'overtime_amount' => 'decimal:2',
             'is_justified' => 'boolean',
+            'is_cancelled' => 'boolean',
+            'cancelled_at' => 'datetime',
         ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
     }
 
 
@@ -55,6 +72,11 @@ class Attendance extends Model
     public function shift()
     {
         return $this->belongsTo(Shift::class);
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 
     /**

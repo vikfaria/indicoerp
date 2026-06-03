@@ -77,6 +77,10 @@ class OvertimeController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
+            if ((bool) ($overtime->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled overtime cannot be edited.'));
+            }
+
             $validated = $request->validated();
             $overtimeCheck = $this->labourComplianceService->validateOvertime(
                 creatorId(),
@@ -118,10 +122,23 @@ class OvertimeController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
-            DestroyOverTime::dispatch($overtime);
-            $overtime->delete();
+            if ((bool) ($overtime->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Overtime is already cancelled.'));
+            }
 
-            return redirect()->back()->with('success', __('The overtime has been deleted.'))->with('timestamp', time());
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyOverTime::dispatch($overtime);
+            $overtime->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('The overtime has been cancelled.'))->with('timestamp', time());
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }
@@ -132,6 +149,10 @@ class OvertimeController extends Controller
         if (Auth::user()->can('edit-overtimes')) {
             if (!$this->canAccessOvertime($overtime)) {
                 return redirect()->back()->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($overtime->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled overtime cannot be processed.'));
             }
 
             $validated = $request->validated();

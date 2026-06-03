@@ -84,7 +84,7 @@ class Employee extends Model
 
     public function dependents()
     {
-        return $this->hasMany(EmployeeDependent::class);
+        return $this->hasMany(EmployeeDependent::class)->active();
     }
 
     public function socialSecurityProfile()

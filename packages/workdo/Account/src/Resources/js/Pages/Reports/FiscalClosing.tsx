@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
-import { RotateCcw, Lock } from 'lucide-react';
+import { Download, RotateCcw, Lock } from 'lucide-react';
 import axios from 'axios';
 
 interface FiscalClosingProps {
@@ -85,6 +85,10 @@ export default function FiscalClosing({ financialYear }: FiscalClosingProps) {
         }
     };
 
+    const handleExport = () => {
+        window.location.href = route('account.reports.fiscal-closings.export');
+    };
+
     return (
         <Card className="shadow-sm">
             <CardContent className="p-6 border-b bg-gray-50/50">
@@ -105,6 +109,10 @@ export default function FiscalClosing({ financialYear }: FiscalClosingProps) {
                         <Button onClick={handleClose} disabled={submitting} className="gap-2">
                             <Lock className="h-4 w-4" />
                             {submitting ? t('Closing...') : t('Close Period')}
+                        </Button>
+                        <Button variant="outline" onClick={handleExport} className="gap-2">
+                            <Download className="h-4 w-4" />
+                            {t('Export CSV')}
                         </Button>
                         <Button variant="outline" onClick={fetchClosings} disabled={loading}>
                             {t('Refresh')}
@@ -165,4 +173,3 @@ export default function FiscalClosing({ financialYear }: FiscalClosingProps) {
         </Card>
     );
 }
-

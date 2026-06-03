@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
-import { Plus, Eye, Trash2, CreditCard, CheckCircle, X } from "lucide-react";
+import { Plus, Eye, Trash2, CreditCard, CheckCircle, X, Check, XCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterButton } from '@/components/ui/filter-button';
 import { Pagination } from "@/components/ui/pagination";
@@ -80,6 +80,27 @@ export default function Index() {
         return labels[method || ''] || t('Bank Transfer');
     };
 
+    const approvalStatusBadgeClasses = (status?: string | null) => {
+        switch (status) {
+            case 'approved':
+                return 'inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800';
+            case 'rejected':
+                return 'inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800';
+            case 'pending':
+                return 'inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800';
+            default:
+                return 'inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700';
+        }
+    };
+
+    const approvalStatusLabel = (payment: VendorPayment) => {
+        if (!payment.approval_required) {
+            return t('Not Required');
+        }
+
+        return t(payment.approval_status || 'pending');
+    };
+
     const handleFilter = () => {
         const filterParams: any = {
             search: filters.search,
@@ -139,6 +160,21 @@ export default function Index() {
 
     const openModal = (mode: 'add', data: VendorPayment | null = null) => {
         setModalState({ isOpen: true, mode, data });
+    };
+
+    const handleApprove = (paymentId: number) => {
+        router.post(route('account.vendor-payments.approve', paymentId));
+    };
+
+    const handleReject = (paymentId: number) => {
+        const rejectionReason = window.prompt(t('Provide a rejection reason'));
+        if (!rejectionReason || rejectionReason.trim() === '') {
+            return;
+        }
+
+        router.post(route('account.vendor-payments.reject', paymentId), {
+            rejection_reason: rejectionReason.trim(),
+        });
     };
 
     const closeModal = () => {
@@ -213,13 +249,56 @@ export default function Index() {
                 </span>
             )
         },
-        ...(auth.user?.permissions?.some((p: string) => ['view-vendor-payments', 'delete-vendor-payments','cleared-vendor-payments'].includes(p)) ? [{
+        {
+            key: 'approval_status',
+            header: t('Approval'),
+            render: (_: any, payment: VendorPayment) => (
+                <span className={approvalStatusBadgeClasses(payment.approval_status)}>
+                    {approvalStatusLabel(payment)}
+                </span>
+            ),
+        },
+        ...(auth.user?.permissions?.some((p: string) => ['view-vendor-payments', 'approve-vendor-payments', 'delete-vendor-payments','cleared-vendor-payments'].includes(p)) ? [{
             key: 'actions',
             header: t('Actions'),
             render: (_: any, payment: VendorPayment) => (
                 <div className="flex gap-1">
                     <TooltipProvider>
-                    {auth.user?.permissions?.includes('cleared-vendor-payments') && payment.status === 'pending' && (
+                    {auth.user?.permissions?.includes('approve-vendor-payments') && payment.status === 'pending' && payment.approval_required && payment.approval_status !== 'approved' && (
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleApprove(payment.id)}
+                                        className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700"
+                                    >
+                                        <Check className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{t('Approve Payment')}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                    {auth.user?.permissions?.includes('approve-vendor-payments') && payment.status === 'pending' && payment.approval_required && payment.approval_status !== 'approved' && payment.approval_status !== 'rejected' && (
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleReject(payment.id)}
+                                        className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                                    >
+                                        <XCircle className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{t('Reject Payment')}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+                    {auth.user?.permissions?.includes('cleared-vendor-payments') && payment.status === 'pending' && (!payment.approval_required || payment.approval_status === 'approved') && (
                             <>
                                 <Tooltip delayDuration={0}>
                                     <TooltipTrigger asChild>
@@ -503,7 +582,41 @@ export default function Index() {
                                                 </span>
                                                 <div className="flex gap-1">
                                                     <TooltipProvider>
-                                                        {payment.status === 'pending' && auth.user?.permissions?.includes('cleared-vendor-payments') && (
+                                                        {payment.status === 'pending' && payment.approval_required && payment.approval_status !== 'approved' && auth.user?.permissions?.includes('approve-vendor-payments') && (
+                                                            <Tooltip delayDuration={0}>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleApprove(payment.id)}
+                                                                        className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700"
+                                                                    >
+                                                                        <Check className="h-4 w-4" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>{t('Approve Payment')}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        )}
+                                                        {payment.status === 'pending' && payment.approval_required && payment.approval_status !== 'approved' && payment.approval_status !== 'rejected' && auth.user?.permissions?.includes('approve-vendor-payments') && (
+                                                            <Tooltip delayDuration={0}>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => handleReject(payment.id)}
+                                                                        className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700"
+                                                                    >
+                                                                        <XCircle className="h-4 w-4" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>{t('Reject Payment')}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        )}
+                                                        {payment.status === 'pending' && (!payment.approval_required || payment.approval_status === 'approved') && auth.user?.permissions?.includes('cleared-vendor-payments') && (
                                                             <>
                                                                 <Tooltip delayDuration={0}>
                                                                     <TooltipTrigger asChild>

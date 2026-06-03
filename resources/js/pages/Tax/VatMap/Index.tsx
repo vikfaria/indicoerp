@@ -6,19 +6,63 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calculator, ArrowRight } from 'lucide-react';
+import { Calculator, ArrowRight, Download, Lock } from 'lucide-react';
 import { useState } from 'react';
+import axios from 'axios';
 
 interface VatCode { id: number; code: string; description: string; rate: number; }
 interface VatResult { by_code: Record<string, { output_tax: number; input_tax: number; net: number }>; total_output: number; total_input: number; net_payable: number; }
 
 export default function VatMapIndex() {
     const { t } = useTranslation();
-    const { vatCodes, vatResult, year, month } = usePage<{ vatCodes: VatCode[]; vatResult: VatResult | null; year: number; month: number }>().props;
+    const page = usePage<any>();
+    const { vatCodes, vatResult, year, month } = page.props as { vatCodes: VatCode[]; vatResult: VatResult | null; year: number; month: number };
+    const userPermissions: string[] = page.props?.auth?.user?.permissions || [];
+    const canManageTax = userPermissions.includes('manage-account-reports');
     const [selYear, setSelYear] = useState(year);
     const [selMonth, setSelMonth] = useState(month);
+    const [closing, setClosing] = useState(false);
 
     const calculate = () => router.get(route('sce.tax.vat-map'), { year: selYear, month: selMonth, calculate: 1 }, { preserveState: true });
+    const exportCsv = () => window.location.assign(route('sce.tax.vat-map.export', { year: selYear, month: selMonth }));
+    const formatDate = (date: Date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+    const closeMonth = async () => {
+        if (!canManageTax) {
+            return;
+        }
+
+        if (!window.confirm(t('Close the selected VAT month and create a fiscal closing snapshot?'))) {
+            return;
+        }
+
+        const closeReason = window.prompt(
+            t('Close reason (optional)'),
+            t('Fecho mensal de IVA')
+        ) || '';
+
+        const periodFrom = formatDate(new Date(selYear, selMonth - 1, 1));
+        const periodTo = formatDate(new Date(selYear, selMonth, 0));
+
+        setClosing(true);
+        try {
+            await axios.post(route('account.reports.fiscal-closings.close'), {
+                period_from: periodFrom,
+                period_to: periodTo,
+                close_reason: closeReason || `Fecho mensal de IVA ${selYear}-${String(selMonth).padStart(2, '0')}`,
+            });
+
+            window.location.href = route('account.reports.fiscal-closings');
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            setClosing(false);
+        }
+    };
     const months = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i).toLocaleString('pt', { month: 'long' }) }));
     const fmt = (n: number) => new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(n);
 
@@ -36,6 +80,8 @@ export default function VatMapIndex() {
                         <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
                         <SelectContent>{[2024, 2025, 2026, 2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
                     </Select>
+                    <Button variant="outline" onClick={exportCsv}><Download className="h-4 w-4 mr-2" /> {t('Exportar CSV')}</Button>
+                    {canManageTax && <Button variant="outline" onClick={closeMonth} disabled={closing}><Lock className="h-4 w-4 mr-2" /> {closing ? t('Closing...') : t('Close Month')}</Button>}
                     <Button onClick={calculate}><Calculator className="h-4 w-4 mr-2" /> {t('Calcular')}</Button>
                 </CardContent>
             </Card>

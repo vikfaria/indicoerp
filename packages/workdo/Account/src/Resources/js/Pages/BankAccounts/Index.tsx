@@ -25,6 +25,9 @@ import NoRecordsFound from '@/components/no-records-found';
 import { BankAccount, BankAccountsIndexProps, BankAccountFilters, BankAccountModalState } from './types';
 import { formatDate, formatTime, formatDateTime, formatCurrency, getImagePath } from '@/utils/helpers';
 import { usePageButtons } from '@/hooks/usePageButtons';
+import { ACCOUNT_TYPE_OPTIONS, getAccountTypeLabel, normalizeAccountType } from './account-type';
+
+const normalizeFilterAccountType = (value: string | null) => (value ? normalizeAccountType(value) : '');
 
 export default function Index() {
     const { t } = useTranslation();
@@ -35,7 +38,7 @@ export default function Index() {
         account_number: urlParams.get('account_number') || '',
         account_name: urlParams.get('account_name') || '',
         bank_name: urlParams.get('bank_name') || '',
-        account_type: urlParams.get('account_type') || '',
+        account_type: normalizeFilterAccountType(urlParams.get('account_type')),
         is_active: urlParams.get('is_active') || '',
     });
 
@@ -118,10 +121,7 @@ export default function Index() {
             key: 'account_type',
             header: t('Account Type'),
             sortable: false,
-            render: (value: any) => {
-                const options: any = {"0":"checking","1":"savings","2":"credit","3":"loan"};
-                return options[value] || value;
-            }
+            render: (value: any) => t(getAccountTypeLabel(value))
         },
         {
             key: 'current_balance',
@@ -291,10 +291,11 @@ export default function Index() {
                                         <SelectValue placeholder={t('Filter by Account Type')} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="0">{t('checking')}</SelectItem>
-                                        <SelectItem value="1">{t('savings')}</SelectItem>
-                                        <SelectItem value="2">{t('credit')}</SelectItem>
-                                        <SelectItem value="3">{t('loan')}</SelectItem>
+                                        {ACCOUNT_TYPE_OPTIONS.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {t(option.label)}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -370,7 +371,7 @@ export default function Index() {
                                                     <div className="flex justify-between">
                                                         <span className="text-sm text-gray-600">{t('Type')}</span>
                                                         <span className="px-2 py-1 rounded-full text-sm bg-blue-100 text-blue-800 capitalize">
-                                                            {(() => { const options: any = {"0":"checking","1":"savings","2":"credit","3":"loan"}; return options[bankaccount.account_type] || bankaccount.account_type; })()}
+                                                            {t(getAccountTypeLabel(bankaccount.account_type))}
                                                         </span>
                                                     </div>
                                                     <div className="flex justify-between">

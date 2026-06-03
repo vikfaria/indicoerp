@@ -10,6 +10,7 @@ use App\Models\Warehouse;
 use App\Http\Requests\StoreSalesInvoiceRequest;
 use App\Http\Requests\UpdateSalesInvoiceRequest;
 use Workdo\ProductService\Models\ProductServiceItem;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -151,13 +152,23 @@ class SalesInvoiceController extends Controller
 
             // SCE: Validate that the invoice date falls within an open accounting period
             try {
-                $this->fiscalValidationService->validatePeriodOpen($request->invoice_date, creatorId());
+                $this->fiscalValidationService->validatePeriodOpen($request->invoice_date, creatorId(), 'invoice_date');
             } catch (ValidationException $e) {
                 return back()->withErrors($e->errors());
             }
 
+            $issueCompliance = $this->resolveLegalIssueCompliance(
+                (string) ($request->operation_date ?: $request->invoice_date),
+                (string) $request->invoice_date,
+                $request->late_issue_reason
+            );
+
             $invoice = new SalesInvoice();
             $invoice->invoice_date = $request->invoice_date;
+            $invoice->operation_date = $issueCompliance['operation_date'];
+            $invoice->fiscal_issue_deadline = $issueCompliance['fiscal_issue_deadline'];
+            $invoice->issued_with_delay = $issueCompliance['issued_with_delay'];
+            $invoice->late_issue_reason = $issueCompliance['late_issue_reason'];
             $invoice->due_date = $request->due_date;
             $invoice->customer_id = $request->customer_id;
             $invoice->warehouse_id = $request->type === 'product' ? $request->warehouse_id : null;
@@ -256,12 +267,27 @@ class SalesInvoiceController extends Controller
             try {
                 $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
             } catch (ValidationException $e) {
+                return back()->with('error', $e->validator->errors()->first());
+            }
+
+            try {
+                $this->fiscalValidationService->validatePeriodOpen($request->invoice_date, creatorId(), 'invoice_date');
+            } catch (ValidationException $e) {
                 return back()->withErrors($e->errors());
             }
 
             $totals = $this->calculateTotals($request->items);
+            $issueCompliance = $this->resolveLegalIssueCompliance(
+                (string) ($request->operation_date ?: $request->invoice_date),
+                (string) $request->invoice_date,
+                $request->late_issue_reason
+            );
 
             $salesInvoice->invoice_date = $request->invoice_date;
+            $salesInvoice->operation_date = $issueCompliance['operation_date'];
+            $salesInvoice->fiscal_issue_deadline = $issueCompliance['fiscal_issue_deadline'];
+            $salesInvoice->issued_with_delay = $issueCompliance['issued_with_delay'];
+            $salesInvoice->late_issue_reason = $issueCompliance['late_issue_reason'];
             $salesInvoice->due_date = $request->due_date;
             $salesInvoice->customer_id = $request->customer_id;
             $salesInvoice->warehouse_id = $salesInvoice->type === 'product' ? $request->warehouse_id : null;
@@ -299,7 +325,7 @@ class SalesInvoiceController extends Controller
             try {
                 $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
             } catch (ValidationException $e) {
-                return back()->withErrors($e->errors());
+                return back()->with('error', $e->validator->errors()->first());
             }
 
             if ($salesInvoice->status !== 'draft') {
@@ -353,6 +379,8 @@ class SalesInvoiceController extends Controller
             $item->unit_price = $itemData['unit_price'];
             $item->discount_percentage = $itemData['discount_percentage'] ?? 0;
             $item->tax_percentage = $itemData['tax_percentage'] ?? 0;
+            $item->vat_code = $itemData['vat_code'] ?? null;
+            $item->tax_exemption_reason = $itemData['tax_exemption_reason'] ?? null;
             $item->save();
 
             // Store individual taxes
@@ -362,10 +390,50 @@ class SalesInvoiceController extends Controller
                     $salesInvoiceItemTax->item_id = $item->id;
                     $salesInvoiceItemTax->tax_name = $tax['tax_name'];
                     $salesInvoiceItemTax->tax_rate = $tax['tax_rate'] ?? $tax['rate'] ?? 0;
+                    $salesInvoiceItemTax->vat_code = $tax['vat_code'] ?? $item->vat_code;
+                    $salesInvoiceItemTax->tax_exemption_reason = $tax['tax_exemption_reason'] ?? $item->tax_exemption_reason;
                     $salesInvoiceItemTax->save();
                 }
             }
         }
+    }
+
+    private function resolveLegalIssueCompliance(string $operationDate, string $invoiceDate, ?string $lateIssueReason): array
+    {
+        $operation = CarbonImmutable::parse($operationDate)->startOfDay();
+        $issuedAt = CarbonImmutable::parse($invoiceDate)->startOfDay();
+        $deadline = $this->addBusinessDays($operation, 5);
+        $isLate = $issuedAt->gt($deadline);
+        $reason = $lateIssueReason !== null ? trim($lateIssueReason) : null;
+
+        if ($isLate && ($reason === null || $reason === '')) {
+            throw ValidationException::withMessages([
+                'late_issue_reason' => __('Invoice issued after legal deadline requires a justification.'),
+            ]);
+        }
+
+        return [
+            'operation_date' => $operation->toDateString(),
+            'fiscal_issue_deadline' => $deadline->toDateString(),
+            'issued_with_delay' => $isLate,
+            'late_issue_reason' => $isLate ? $reason : null,
+        ];
+    }
+
+    private function addBusinessDays(CarbonImmutable $date, int $days): CarbonImmutable
+    {
+        $cursor = $date;
+        $added = 0;
+
+        while ($added < $days) {
+            $cursor = $cursor->addDay();
+
+            if (!$cursor->isWeekend()) {
+                $added++;
+            }
+        }
+
+        return $cursor;
     }
 
     public function post(SalesInvoice $salesInvoice)
@@ -385,10 +453,11 @@ class SalesInvoiceController extends Controller
             try {
                 $this->fiscalValidationService->validatePeriodOpen(
                     $salesInvoice->invoice_date,
-                    $salesInvoice->created_by
+                    $salesInvoice->created_by,
+                    'invoice_date'
                 );
             } catch (ValidationException $e) {
-                return back()->withErrors($e->errors());
+                return back()->with('error', $e->validator->errors()->first());
             }
 
             try {

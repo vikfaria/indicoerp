@@ -21,3 +21,6 @@ package-lock.json
 /.fleet
 /.idea
 /.vscode
+.DS_Store
+/storage/app/private
+/storage/app/saft

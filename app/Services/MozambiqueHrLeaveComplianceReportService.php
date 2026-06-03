@@ -223,6 +223,7 @@ class MozambiqueHrLeaveComplianceReportService
         }
 
         return LeaveApplication::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereIn('employee_id', $employeeUserIds->all())
             ->whereIn('leave_type_id', $annualLeaveTypeIds->all())
@@ -250,6 +251,7 @@ class MozambiqueHrLeaveComplianceReportService
         }
 
         return AnnualLeavePlan::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereIn('employee_id', $employeeUserIds->all())
             ->where('leave_year', $year)

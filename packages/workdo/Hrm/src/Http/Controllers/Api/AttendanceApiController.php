@@ -61,20 +61,25 @@ class AttendanceApiController extends Controller
             $creatorId  = creatorId();
 
             // Validate working day, leave, and holiday
-            $workingDays      = getCompanyAllSetting($creatorId)['working_days'] ?? '';
-            $workingDaysArray = json_decode($workingDays, true) ?? [];
-            $isWorkingDay     = in_array(now()->dayOfWeek, $workingDaysArray);
+            $workingDays = getCompanyAllSetting($creatorId)['working_days'] ?? '';
+            $workingDaysArray = json_decode($workingDays, true);
+            if (!is_array($workingDaysArray) || $workingDaysArray === []) {
+                $workingDaysArray = [1, 2, 3, 4, 5];
+            }
+            $workingDaysArray = array_values(array_unique(array_map('intval', $workingDaysArray)));
+            $isWorkingDay = in_array((int) now()->dayOfWeek, $workingDaysArray, true);
 
             $isOnLeave = LeaveApplication::where('created_by', $creatorId)
+                ->active()
                 ->where('employee_id', $employeeId)
                 ->where('status', 'approved')
-                ->where('start_date', '<=', $today)
-                ->where('end_date', '>=', $today)
+                ->whereDate('start_date', '<=', $today)
+                ->whereDate('end_date', '>=', $today)
                 ->exists();
 
             $isHoliday = Holiday::where('created_by', $creatorId)
-                ->where('start_date', '<=', $today)
-                ->where('end_date', '>=', $today)
+                ->whereDate('start_date', '<=', $today)
+                ->whereDate('end_date', '>=', $today)
                 ->exists();
 
             if (!$isWorkingDay) {
@@ -97,6 +102,7 @@ class AttendanceApiController extends Controller
             }
             // First check for any pending clock out and complete it
             $pendingClockOuts = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->whereNull('clock_out')
                 ->where('created_by', $creatorId)
                 ->get();
@@ -139,6 +145,7 @@ class AttendanceApiController extends Controller
 
             // Check if already clocked in today
             $existingAttendance = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->where('date', $today)
                 ->where('created_by', $creatorId)
                 ->first();
@@ -198,6 +205,7 @@ class AttendanceApiController extends Controller
             $creatorId  = creatorId();
 
             $attendance = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->where('date', $today)
                 ->where('created_by', $creatorId)
                 ->first();
@@ -205,6 +213,7 @@ class AttendanceApiController extends Controller
             // If no today's attendance, check for pending attendance from previous days
             if (!$attendance || !$attendance->clock_in) {
                 $attendance = Attendance::where('employee_id', $employeeId)
+                    ->active()
                     ->whereNull('clock_out')
                     ->where('created_by', $creatorId)
                     ->orderBy('clock_in', 'desc')
@@ -376,7 +385,9 @@ class AttendanceApiController extends Controller
             $employeeId = Auth::id();
             $creatorId  = creatorId();
 
-            $attendances = Attendance::where('employee_id', $employeeId)->where('created_by', $creatorId);
+            $attendances = Attendance::where('employee_id', $employeeId)
+                ->active()
+                ->where('created_by', $creatorId);
 
             if ($request->type == 'monthly' && !empty($request->month)) {
                 $month      = $request->month;

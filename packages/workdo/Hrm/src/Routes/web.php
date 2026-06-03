@@ -413,6 +413,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::put('/labour-policy', [MozambiquePayrollComplianceController::class, 'updateLabourPolicy'])->name('labour-policy.update');
         Route::put('/legal-settings', [MozambiquePayrollComplianceController::class, 'updateLegalSettings'])->name('legal-settings.update');
         Route::put('/cost-center-mappings', [MozambiquePayrollComplianceController::class, 'updateCostCenterMappings'])->name('cost-center-mappings.update');
+        Route::put('/attendance-device-settings', [MozambiquePayrollComplianceController::class, 'updateAttendanceDeviceSettings'])->name('attendance-device-settings.update');
 
         Route::post('/irps-tables', [MozambiquePayrollComplianceController::class, 'storeIrpsTable'])->name('irps-tables.store');
         Route::put('/irps-tables/{table}', [MozambiquePayrollComplianceController::class, 'updateIrpsTable'])->name('irps-tables.update');
@@ -432,8 +433,20 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
 
         Route::get('/reports/modelo19-support', [MozambiquePayrollComplianceController::class, 'exportModelo19Support'])
             ->name('reports.modelo19-support.export');
+        Route::get('/reports/modelo19-support.json', [MozambiquePayrollComplianceController::class, 'exportModelo19SupportJson'])
+            ->name('reports.modelo19-support.json');
+        Route::get('/reports/modelo19-support.xml', [MozambiquePayrollComplianceController::class, 'exportModelo19SupportXml'])
+            ->name('reports.modelo19-support.xml');
+        Route::get('/reports/modelo19-support.xlsx', [MozambiquePayrollComplianceController::class, 'exportModelo19SupportXlsx'])
+            ->name('reports.modelo19-support.xlsx');
         Route::get('/reports/inss-guide', [MozambiquePayrollComplianceController::class, 'exportInssGuide'])
             ->name('reports.inss-guide.export');
+        Route::get('/reports/inss-guide.json', [MozambiquePayrollComplianceController::class, 'exportInssGuideJson'])
+            ->name('reports.inss-guide.json');
+        Route::get('/reports/inss-guide.xml', [MozambiquePayrollComplianceController::class, 'exportInssGuideXml'])
+            ->name('reports.inss-guide.xml');
+        Route::get('/reports/inss-guide.xlsx', [MozambiquePayrollComplianceController::class, 'exportInssGuideXlsx'])
+            ->name('reports.inss-guide.xlsx');
         Route::get('/reports/bank-payment-file', [MozambiquePayrollComplianceController::class, 'exportBankPaymentFile'])
             ->name('reports.bank-payment-file.export');
         Route::get('/reports/annual-fiscal-history', [MozambiquePayrollComplianceController::class, 'exportAnnualFiscalHistory'])
@@ -448,12 +461,20 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
             ->name('reports.disciplinary-cases.json');
         Route::get('/reports/annual-leave-compliance', [MozambiquePayrollComplianceController::class, 'exportLeaveComplianceReport'])
             ->name('reports.annual-leave-compliance.export');
+        Route::post('/reports/annual-leave-compliance/import', [MozambiquePayrollComplianceController::class, 'importAnnualLeavePlans'])
+            ->name('reports.annual-leave-compliance.import');
         Route::get('/reports/annual-leave-compliance.json', [MozambiquePayrollComplianceController::class, 'exportLeaveComplianceReportJson'])
             ->name('reports.annual-leave-compliance.json');
         Route::get('/reports/attendance-compliance', [MozambiquePayrollComplianceController::class, 'exportAttendanceComplianceReport'])
             ->name('reports.attendance-compliance.export');
+        Route::post('/reports/attendance-compliance/import', [MozambiquePayrollComplianceController::class, 'importAttendanceRegister'])
+            ->name('reports.attendance-compliance.import');
         Route::get('/reports/attendance-compliance.json', [MozambiquePayrollComplianceController::class, 'exportAttendanceComplianceReportJson'])
             ->name('reports.attendance-compliance.json');
+        Route::get('/reports/attendance-device-health', [MozambiquePayrollComplianceController::class, 'exportAttendanceDeviceHealthReport'])
+            ->name('reports.attendance-device-health.export');
+        Route::get('/reports/attendance-device-health.json', [MozambiquePayrollComplianceController::class, 'exportAttendanceDeviceHealthReportJson'])
+            ->name('reports.attendance-device-health.json');
         Route::get('/reports/training-compliance', [MozambiquePayrollComplianceController::class, 'exportTrainingComplianceReport'])
             ->name('reports.training-compliance.export');
         Route::get('/reports/training-compliance.json', [MozambiquePayrollComplianceController::class, 'exportTrainingComplianceReportJson'])
@@ -462,14 +483,26 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
             ->name('reports.cost-allocation.export');
         Route::get('/reports/accounting-journal-lines', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLines'])
             ->name('reports.accounting-journal-lines.export');
+        Route::get('/reports/payroll-monthly-summary', [MozambiquePayrollComplianceController::class, 'exportPayrollMonthlySummary'])
+            ->name('reports.payroll-monthly-summary.export');
         Route::get('/reports/cost-allocation.json', [MozambiquePayrollComplianceController::class, 'exportCostAllocationJson'])
             ->name('reports.cost-allocation.json');
         Route::get('/reports/cost-allocation.xml', [MozambiquePayrollComplianceController::class, 'exportCostAllocationXml'])
             ->name('reports.cost-allocation.xml');
+        Route::get('/reports/cost-allocation.xlsx', [MozambiquePayrollComplianceController::class, 'exportCostAllocationXlsx'])
+            ->name('reports.cost-allocation.xlsx');
         Route::get('/reports/accounting-journal-lines.json', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesJson'])
             ->name('reports.accounting-journal-lines.json');
         Route::get('/reports/accounting-journal-lines.xml', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesXml'])
             ->name('reports.accounting-journal-lines.xml');
+        Route::get('/reports/accounting-journal-lines.xlsx', [MozambiquePayrollComplianceController::class, 'exportAccountingJournalLinesXlsx'])
+            ->name('reports.accounting-journal-lines.xlsx');
+        Route::get('/reports/payroll-monthly-summary.json', [MozambiquePayrollComplianceController::class, 'exportPayrollMonthlySummaryJson'])
+            ->name('reports.payroll-monthly-summary.json');
+        Route::get('/reports/payroll-monthly-summary.xml', [MozambiquePayrollComplianceController::class, 'exportPayrollMonthlySummaryXml'])
+            ->name('reports.payroll-monthly-summary.xml');
+        Route::get('/reports/payroll-monthly-summary.xlsx', [MozambiquePayrollComplianceController::class, 'exportPayrollMonthlySummaryXlsx'])
+            ->name('reports.payroll-monthly-summary.xlsx');
         Route::get('/reports/workforce-register', [MozambiquePayrollComplianceController::class, 'exportWorkforceRegister'])
             ->name('reports.workforce-register.export');
         Route::post('/reports/workforce-register/import', [MozambiquePayrollComplianceController::class, 'importWorkforceRegister'])

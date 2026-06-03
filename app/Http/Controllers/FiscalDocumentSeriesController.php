@@ -7,6 +7,7 @@ use App\Models\FiscalDocumentSeries;
 use App\Models\FiscalDocumentType;
 use App\Services\FiscalHashService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class FiscalDocumentSeriesController extends Controller
@@ -44,15 +45,35 @@ class FiscalDocumentSeriesController extends Controller
                 'is_active' => $s->is_active,
                 'valid_from' => $s->valid_from?->format('Y-m-d'),
                 'valid_to' => $s->valid_to?->format('Y-m-d'),
+                'assigned_user_id' => $s->assigned_user_id,
+                'terminal_code' => $s->terminal_code,
+                'fiscal_regime_code' => $s->fiscal_regime_code,
             ]);
 
         $documentTypes = FiscalDocumentType::where('is_active', true)
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
 
+        $companyUsers = \App\Models\User::query()
+            ->where(function ($query) use ($companyId): void {
+                $query->where('id', $companyId)
+                    ->orWhere('created_by', $companyId);
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'type'])
+            ->map(static fn ($user) => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'type' => $user->type,
+                'label' => trim(sprintf('%s (%s)', (string) $user->name, (string) $user->type)),
+            ])
+            ->values();
+
         return Inertia::render('Fiscal/DocumentSeries/Index', [
             'series' => $series,
             'documentTypes' => $documentTypes,
+            'companyUsers' => $companyUsers,
             'currentYear' => (int) date('Y'),
         ]);
     }
@@ -66,13 +87,24 @@ class FiscalDocumentSeriesController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
+        $companyId = creatorId();
+
         $validated = $request->validate([
             'fiscal_document_type_id' => 'required|exists:fiscal_document_types,id',
             'series_code' => 'required|string|max:5|regex:/^[A-Z0-9]+$/',
             'fiscal_year' => 'required|integer|min:2020|max:2099',
+            'assigned_user_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(static function ($query) use ($companyId): void {
+                    $query->where(function ($q) use ($companyId): void {
+                        $q->where('id', $companyId)
+                            ->orWhere('created_by', $companyId);
+                    });
+                }),
+            ],
+            'terminal_code' => 'nullable|string|max:50|regex:/^[A-Z0-9_-]+$/i',
+            'fiscal_regime_code' => 'nullable|string|max:50|regex:/^[A-Z0-9_-]+$/i',
         ]);
-
-        $companyId = creatorId();
 
         // Check uniqueness
         $exists = FiscalDocumentSeries::where('company_id', $companyId)
@@ -89,6 +121,13 @@ class FiscalDocumentSeriesController extends Controller
             'company_id' => $companyId,
             'fiscal_document_type_id' => $validated['fiscal_document_type_id'],
             'series_code' => $validated['series_code'],
+            'assigned_user_id' => $validated['assigned_user_id'] ?? null,
+            'terminal_code' => !empty($validated['terminal_code'])
+                ? strtoupper((string) $validated['terminal_code'])
+                : null,
+            'fiscal_regime_code' => !empty($validated['fiscal_regime_code'])
+                ? strtoupper((string) $validated['fiscal_regime_code'])
+                : null,
             'fiscal_year' => $validated['fiscal_year'],
             'last_sequence' => 0,
             'is_active' => true,

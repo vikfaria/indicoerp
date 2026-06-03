@@ -323,6 +323,83 @@ class HrmPayrollAccountingExportsTest extends TestCase
         $this->assertStringContainsString('<reference_period>2026-05</reference_period>', (string) $xmlResponse->getContent());
     }
 
+    public function test_monthly_summary_exports_cover_csv_json_xml_and_xlsx_formats(): void
+    {
+        $company = $this->makeCompany();
+        $this->createPayrollJournalForCompany($company, 'FUNC SUMMARY', '2026-05-31', true);
+        $this->grantPermissions($company, ['view-payrolls']);
+
+        $csvResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.export',
+            ['reference_period' => '2026-05']
+        ));
+
+        $csvResponse->assertOk();
+        $csvResponse->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+        $csvResponse->assertSee('Payroll Title', false);
+        $csvResponse->assertSee('Payroll Export', false);
+        $csvResponse->assertSee('Gross Pay Total', false);
+
+        $jsonResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.json',
+            ['reference_period' => '2026-05']
+        ));
+
+        $jsonResponse->assertOk();
+        $jsonResponse->assertJsonStructure([
+            'reference_period',
+            'period_start',
+            'period_end',
+            'summary',
+            'rows',
+        ]);
+        $jsonResponse->assertJsonPath('reference_period', '2026-05');
+        $jsonResponse->assertJsonPath('summary.payroll_runs', 1);
+        $jsonResponse->assertJsonPath('rows.0.payroll_title', 'Payroll Export');
+
+        $xmlResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.xml',
+            ['reference_period' => '2026-05']
+        ));
+
+        $xmlResponse->assertOk();
+        $xmlResponse->assertHeader('Content-Type', 'application/xml; charset=UTF-8');
+        $this->assertStringContainsString('<payroll_monthly_summary>', (string) $xmlResponse->getContent());
+        $this->assertStringContainsString('<reference_period>2026-05</reference_period>', (string) $xmlResponse->getContent());
+
+        $xlsxResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.xlsx',
+            ['reference_period' => '2026-05']
+        ));
+
+        $xlsxResponse->assertOk();
+        $xlsxResponse->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringStartsWith('PK', (string) $xlsxResponse->getContent());
+    }
+
+    public function test_cost_and_journal_xlsx_exports_are_available(): void
+    {
+        $company = $this->makeCompany();
+        $this->createPayrollJournalForCompany($company, 'FUNC XLSX', '2026-05-31', true);
+        $this->grantPermissions($company, ['view-payrolls']);
+
+        $costResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.cost-allocation.xlsx',
+            ['reference_period' => '2026-05']
+        ));
+        $costResponse->assertOk();
+        $costResponse->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringStartsWith('PK', (string) $costResponse->getContent());
+
+        $journalResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.xlsx',
+            ['reference_period' => '2026-05']
+        ));
+        $journalResponse->assertOk();
+        $journalResponse->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $this->assertStringStartsWith('PK', (string) $journalResponse->getContent());
+    }
+
     private function createPayrollJournalForCompany(User $company, string $employeeName, string $payDate, bool $seedSalaryJournal): \Workdo\Account\Models\JournalEntry
     {
         $employeeUser = $this->makeEmployeeUser($company, $employeeName);

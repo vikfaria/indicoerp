@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CreditCard } from 'lucide-react';
 import { BankAccount } from './types';
 import { formatCurrency } from '@/utils/helpers';
+import { getAccountTypeLabel, isCashAccountType } from './account-type';
 
 interface ViewProps {
     bankaccount: BankAccount;
@@ -46,11 +47,71 @@ export default function View({ bankaccount }: ViewProps) {
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">{t('Account Type')}</label>
                         <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
-                            {bankaccount.account_type === '0' ? 'Checking' :
-                             bankaccount.account_type === '1' ? 'Savings' :
-                             bankaccount.account_type === '2' ? 'Credit' : 'Loan'}
+                            {getAccountTypeLabel(bankaccount.account_type)}
                         </p>
                     </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">{t('Cash Account')}</label>
+                        <p className="text-sm">
+                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                isCashAccountType(bankaccount.account_type)
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-gray-100 text-gray-700'
+                            }`}>
+                                {isCashAccountType(bankaccount.account_type) ? t('Yes') : t('No')}
+                            </span>
+                        </p>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-gray-700">{t('Electronic Money Account')}</label>
+                        <p className="text-sm">
+                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                bankaccount.is_electronic_money_account
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-gray-100 text-gray-700'
+                            }`}>
+                                {bankaccount.is_electronic_money_account ? t('Yes') : t('No')}
+                            </span>
+                        </p>
+                    </div>
+                    {bankaccount.is_electronic_money_account && (
+                        <>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Electronic Money Entity')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">{bankaccount.electronic_money_entity || '-'}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Electronic Money Account Level')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">{bankaccount.electronic_money_level || '-'}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Daily Limit (MZN)')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
+                                    {bankaccount.electronic_money_daily_limit_mzn !== undefined && bankaccount.electronic_money_daily_limit_mzn !== null
+                                        ? formatCurrency(bankaccount.electronic_money_daily_limit_mzn)
+                                        : '-'}
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Monthly Limit (MZN)')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
+                                    {bankaccount.electronic_money_monthly_limit_mzn !== undefined && bankaccount.electronic_money_monthly_limit_mzn !== null
+                                        ? formatCurrency(bankaccount.electronic_money_monthly_limit_mzn)
+                                        : '-'}
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Enterprise Limit Exempt')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
+                                    {bankaccount.electronic_money_limit_exempt_for_enterprise ? t('Yes') : t('No')}
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700">{t('Electronic Money Account Purpose')}</label>
+                                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">{bankaccount.electronic_money_account_purpose || '-'}</p>
+                            </div>
+                        </>
+                    )}
                     {/* <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">{t('Payment Gateway')}</label>
                         <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">{bankaccount.payment_gateway || '-'}</p>

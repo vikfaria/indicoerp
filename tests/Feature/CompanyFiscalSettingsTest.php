@@ -5,13 +5,17 @@ namespace Tests\Feature;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseReturn;
+use App\Models\FiscalCalendarEvent;
+use App\Models\FiscalExportHistory;
 use App\Models\SalesInvoice;
 use App\Models\SalesInvoiceReturn;
 use App\Models\SalesProposal;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\SaftExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 use Workdo\Account\Models\CreditNote;
@@ -224,6 +228,88 @@ class CompanyFiscalSettingsTest extends TestCase
         $this->assertSame("ND-{$expectedPeriod}-001", $purchaseReturn->return_number);
         $this->assertSame("NC-{$expectedPeriod}-001", $creditNote->credit_note_number);
         $this->assertSame("ND-{$expectedPeriod}-001", $debitNote->debit_note_number);
+    }
+
+    public function test_sce_fiscal_profile_persists_legal_metadata_and_logs_saft_export_history(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+
+        $response = $this->actingAs($company)->post(route('sce.fiscal.update-profile'), [
+            'nuit' => '400123456',
+            'legal_name' => 'Empresa Demo, Lda',
+            'fiscal_regime' => 'normal',
+            'accounting_framework' => 'pgc_nirf',
+            'entity_classification' => 'medium',
+            'taxpayer_type' => 'ordinary',
+            'state_of_certification' => 'certified',
+            'software_certificate_number' => 'CERT-2026-001',
+            'province' => 'Maputo',
+            'economic_activity_code' => 'A011',
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('company_fiscal_profiles', [
+            'company_id' => $company->id,
+            'nuit' => '400123456',
+            'legal_name' => 'Empresa Demo, Lda',
+            'taxpayer_type' => 'ordinary',
+            'state_of_certification' => 'certified',
+            'software_certificate_number' => 'CERT-2026-001',
+        ]);
+
+        $currentYear = now()->year;
+        $this->assertDatabaseHas('fiscal_calendar_events', [
+            'company_id' => $company->id,
+            'code' => "IVA-{$currentYear}-1",
+            'obligation_type' => 'vat',
+            'status' => 'pending',
+        ]);
+        $this->assertDatabaseHas('fiscal_calendar_events', [
+            'company_id' => $company->id,
+            'code' => "SAFT-{$currentYear}",
+            'obligation_type' => 'saft',
+            'status' => 'pending',
+        ]);
+
+        $xml = app(SaftExportService::class)->generate($company->id, '2026-01-01', '2026-01-31');
+        $this->assertStringContainsString('Empresa Demo, Lda', $xml);
+        $this->assertStringContainsString('CERT-2026-001', $xml);
+
+        $download = $this->actingAs($company)->get(route('sce.fiscal.saft-export', [
+            'start_date' => '2026-01-01',
+            'end_date' => '2026-01-31',
+        ]));
+
+        $download->assertOk();
+        $download->assertHeader('Content-Type', 'application/xml; charset=UTF-8');
+
+        $this->assertDatabaseHas('fiscal_export_histories', [
+            'company_id' => $company->id,
+            'export_type' => 'saft_xml',
+            'status' => 'generated',
+            'file_name' => 'mozambique-saft-2026-01-01-to-2026-01-31.xml',
+        ]);
+
+        $history = FiscalExportHistory::query()
+            ->where('company_id', $company->id)
+            ->where('export_type', 'saft_xml')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($history);
+        $this->assertSame('application/xml', data_get($history->metadata, 'content_type'));
+        $this->assertTrue((bool) data_get($history->metadata, 'validation.well_formed'));
+        $this->assertSame('2026', (string) data_get($history->metadata, 'fiscal_year'));
+        $this->assertSame('certified', (string) data_get($history->metadata, 'profile_state_of_certification'));
+        $this->assertSame('CERT-2026-001', (string) data_get($history->metadata, 'software_certificate_number'));
+        $this->assertNotEmpty($history->file_path);
+        $this->assertTrue(Storage::disk('local')->exists($history->file_path));
+
+        if ($history->file_path) {
+            Storage::disk('local')->delete($history->file_path);
+        }
     }
 
     private function makeCompany(): User

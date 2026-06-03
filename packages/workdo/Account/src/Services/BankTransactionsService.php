@@ -46,6 +46,32 @@ class BankTransactionsService
         return implode(' / ', array_filter($parts));
     }
 
+    private function buildFxSummaryForPayment(object $payment): string
+    {
+        $currencyCode = strtoupper((string) ($payment->currency_code ?? 'MZN'));
+        if ($currencyCode === '' || $currencyCode === 'MZN') {
+            return '';
+        }
+
+        $foreignAmount = (float) ($payment->foreign_amount ?? 0);
+        $exchangeRate = (float) ($payment->exchange_rate ?? 0);
+        $amountMzn = (float) ($payment->amount_mzn ?? $payment->payment_amount ?? 0);
+        $fxDifference = (float) ($payment->fx_difference_amount ?? 0);
+
+        if ($foreignAmount <= 0 || $exchangeRate <= 0) {
+            return '';
+        }
+
+        return sprintf(
+            ' | FX %s %s @ %s = %s MZN (Diff %s MZN)',
+            $currencyCode,
+            number_format($foreignAmount, 2, '.', ''),
+            number_format($exchangeRate, 6, '.', ''),
+            number_format($amountMzn, 2, '.', ''),
+            number_format($fxDifference, 2, '.', '')
+        );
+    }
+
     public function createVendorPayment($vendorPayment)
     {
         // Get current running balance for the bank account
@@ -61,7 +87,8 @@ class BankTransactionsService
         $bankTransaction->reference_number = $vendorPayment->payment_number;
         $bankTransaction->description = 'Vendor Payment #' . $vendorPayment->payment_number
             . ' - ' . $vendorPayment->vendor->name
-            . ' (' . $this->buildPaymentDetails($vendorPayment->payment_method, $vendorPayment->mobile_money_provider) . ')';
+            . ' (' . $this->buildPaymentDetails($vendorPayment->payment_method, $vendorPayment->mobile_money_provider) . ')'
+            . $this->buildFxSummaryForPayment($vendorPayment);
         $bankTransaction->amount = $vendorPayment->payment_amount;
         $bankTransaction->running_balance = $runningBalance;
         $bankTransaction->transaction_status = 'cleared';
@@ -88,7 +115,8 @@ class BankTransactionsService
         $bankTransaction->reference_number = $customerPayment->payment_number;
         $bankTransaction->description = 'Customer Payment #' . $customerPayment->payment_number
             . ' - ' . $customerPayment->customer->name
-            . ' (' . $this->buildPaymentDetails($customerPayment->payment_method, $customerPayment->mobile_money_provider) . ')';
+            . ' (' . $this->buildPaymentDetails($customerPayment->payment_method, $customerPayment->mobile_money_provider) . ')'
+            . $this->buildFxSummaryForPayment($customerPayment);
         $bankTransaction->amount = $customerPayment->payment_amount;
         $bankTransaction->running_balance = $runningBalance;
         $bankTransaction->transaction_status = 'cleared';

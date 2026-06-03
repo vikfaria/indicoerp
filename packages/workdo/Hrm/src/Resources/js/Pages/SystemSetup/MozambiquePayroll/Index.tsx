@@ -67,6 +67,13 @@ interface LabourPolicy {
 }
 
 interface LegalSettings {
+    company_profile: {
+        sector_activity: string;
+        operation_province: string;
+        labour_regime: string;
+        collective_agreements: string;
+        labour_directorate: string;
+    };
     foreign_quota: {
         micro_max_workers: number;
         small_max_workers: number;
@@ -86,6 +93,17 @@ interface LegalSettings {
     probation_alert_days: {
         primary: number;
         secondary: number;
+    };
+    policy_requirements: {
+        require_internal_regulation: boolean;
+        require_code_of_conduct: boolean;
+        require_anti_harassment_policy: boolean;
+        require_disciplinary_policy: boolean;
+        require_vacation_policy: boolean;
+        require_data_protection_policy: boolean;
+        require_equipment_use_policy: boolean;
+        require_remote_work_policy: boolean;
+        code_of_conduct_min_workers: number;
     };
 }
 
@@ -202,6 +220,43 @@ interface CostCenterMappingConfig {
     };
 }
 
+interface AttendanceDeviceConfig {
+    enabled: boolean;
+    has_token: boolean;
+    token_preview: string;
+    token_updated_at: string | null;
+    default_device_label: string | null;
+    ingest_url: string;
+}
+
+interface AttendanceDeviceHealthRow {
+    attendance_id: number;
+    employee_name: string;
+    attendance_date: string | null;
+    action: 'clockin' | 'clockout' | 'clockin_and_clockout';
+    clock_in: string | null;
+    clock_out: string | null;
+    source_device_id: string | null;
+    source_device_label: string | null;
+    source_reference: string | null;
+    last_activity_at: string | null;
+}
+
+interface AttendanceDeviceHealth {
+    generated_at: string;
+    window_start: string;
+    window_hours: number;
+    summary: {
+        total_events_last_24h: number;
+        unique_devices_last_24h: number;
+        clockins_last_24h: number;
+        clockouts_last_24h: number;
+        open_attendances: number;
+        last_event_at: string | null;
+    };
+    rows: AttendanceDeviceHealthRow[];
+}
+
 interface PageProps {
     irpsTables: IrpsTable[];
     inssRates: InssRate[];
@@ -215,6 +270,8 @@ interface PageProps {
     branches: MappingSourceOption[];
     employees: MappingSourceOption[];
     costCenterMappingConfig: CostCenterMappingConfig;
+    attendanceDeviceConfig: AttendanceDeviceConfig;
+    attendanceDeviceHealth: AttendanceDeviceHealth;
     auth: {
         user: {
             id: number;
@@ -225,7 +282,23 @@ interface PageProps {
 
 export default function MozambiquePayrollComplianceIndex() {
     const { t } = useTranslation();
-    const { irpsTables, inssRates, minimumWages, labourPolicy, legalSettings, complianceSnapshot, complianceAlerts, costCenters, departments, branches, employees, costCenterMappingConfig, auth } = usePage<PageProps>().props;
+    const {
+        irpsTables,
+        inssRates,
+        minimumWages,
+        labourPolicy,
+        legalSettings,
+        complianceSnapshot,
+        complianceAlerts,
+        costCenters,
+        departments,
+        branches,
+        employees,
+        costCenterMappingConfig,
+        attendanceDeviceConfig,
+        attendanceDeviceHealth,
+        auth,
+    } = usePage<PageProps>().props;
     const canEdit = auth.user?.permissions?.includes('edit-payrolls') ?? false;
     const triggeredItems = (complianceSnapshot?.items ?? []).filter((item) => item.count > 0);
     const payrollObligations = complianceSnapshot?.payroll_obligations;
@@ -336,13 +409,21 @@ export default function MozambiquePayrollComplianceIndex() {
     });
 
     const legalSettingsForm = useForm<LegalSettings>({
+        company_profile: { ...legalSettings.company_profile },
         foreign_quota: { ...legalSettings.foreign_quota },
         probation_limits_days: { ...legalSettings.probation_limits_days },
         probation_alert_days: { ...legalSettings.probation_alert_days },
+        policy_requirements: { ...legalSettings.policy_requirements },
     });
 
     const workforceImportForm = useForm<{ csv_file: File | null }>({
         csv_file: null,
+    });
+
+    const attendanceDeviceForm = useForm({
+        enabled: attendanceDeviceConfig?.enabled ?? false,
+        token: '',
+        default_device_label: attendanceDeviceConfig?.default_device_label ?? '',
     });
 
     const costCenterMappingForm = useForm<CostCenterMappingConfig>({
@@ -374,6 +455,13 @@ export default function MozambiquePayrollComplianceIndex() {
         return value ? String(value) : '';
     };
 
+    const setCompanyProfileField = (field: keyof LegalSettings['company_profile'], value: string) => {
+        legalSettingsForm.setData('company_profile', {
+            ...legalSettingsForm.data.company_profile,
+            [field]: value,
+        });
+    };
+
     const setForeignQuotaField = (field: keyof LegalSettings['foreign_quota'], value: string) => {
         legalSettingsForm.setData('foreign_quota', {
             ...legalSettingsForm.data.foreign_quota,
@@ -392,6 +480,17 @@ export default function MozambiquePayrollComplianceIndex() {
         legalSettingsForm.setData('probation_alert_days', {
             ...legalSettingsForm.data.probation_alert_days,
             [field]: Number(value),
+        });
+    };
+
+    const setPolicyRequirementField = (
+        field: keyof LegalSettings['policy_requirements'],
+        value: boolean | string
+    ) => {
+        const isThresholdField = field === 'code_of_conduct_min_workers';
+        legalSettingsForm.setData('policy_requirements', {
+            ...legalSettingsForm.data.policy_requirements,
+            [field]: isThresholdField ? Number(value) : Boolean(value),
         });
     };
 
@@ -542,6 +641,192 @@ export default function MozambiquePayrollComplianceIndex() {
                                                     </span>
                                                 </td>
                                                 <td className="py-2 font-semibold">{indicator.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <CardTitle>{t('Biometric Attendance Device Integration')}</CardTitle>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        router.reload({
+                                            only: ['attendanceDeviceConfig', 'attendanceDeviceHealth'],
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    {t('Refresh Health')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.attendance-device-health.export'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Device Health CSV')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        window.open(
+                                            route('hrm.mozambique-payroll-compliance.reports.attendance-device-health.json'),
+                                            '_blank'
+                                        )
+                                    }
+                                >
+                                    {t('Device Health JSON')}
+                                </Button>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <form
+                                className="space-y-4"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    attendanceDeviceForm.put(route('hrm.mozambique-payroll-compliance.attendance-device-settings.update'), {
+                                        preserveScroll: true,
+                                        onSuccess: () => attendanceDeviceForm.reset('token'),
+                                    });
+                                }}
+                            >
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <Label>{t('Ingest Endpoint')}</Label>
+                                        <Input value={attendanceDeviceConfig?.ingest_url ?? ''} readOnly />
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {t('Devices must call this endpoint using header X-HRM-DEVICE-TOKEN.')}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <Label>{t('Configured Token')}</Label>
+                                        <Input value={attendanceDeviceConfig?.has_token ? attendanceDeviceConfig?.token_preview : t('Not configured')} readOnly />
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {t('Token last updated')}: {formatDateTime(attendanceDeviceConfig?.token_updated_at)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            id="attendance-device-enabled"
+                                            type="checkbox"
+                                            checked={attendanceDeviceForm.data.enabled}
+                                            onChange={(e) => attendanceDeviceForm.setData('enabled', e.target.checked)}
+                                            disabled={!canEdit}
+                                        />
+                                        <Label htmlFor="attendance-device-enabled">{t('Enable device ingest')}</Label>
+                                    </div>
+                                    <div>
+                                        <Label>{t('Default Device Label')}</Label>
+                                        <Input
+                                            value={attendanceDeviceForm.data.default_device_label}
+                                            onChange={(e) => attendanceDeviceForm.setData('default_device_label', e.target.value)}
+                                            placeholder={t('Main Gate Terminal')}
+                                            disabled={!canEdit}
+                                        />
+                                        <InputError message={attendanceDeviceForm.errors.default_device_label} />
+                                    </div>
+                                    <div>
+                                        <Label>{t('New/Rotated Token')}</Label>
+                                        <Input
+                                            value={attendanceDeviceForm.data.token}
+                                            onChange={(e) => attendanceDeviceForm.setData('token', e.target.value)}
+                                            placeholder={t('Leave empty to keep current token')}
+                                            disabled={!canEdit}
+                                        />
+                                        <InputError message={attendanceDeviceForm.errors.token} />
+                                    </div>
+                                </div>
+
+                                {canEdit && (
+                                    <Button type="submit" disabled={attendanceDeviceForm.processing}>
+                                        {t('Save Device Settings')}
+                                    </Button>
+                                )}
+                            </form>
+
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Ingest Status')}</p>
+                                    <p className={`text-sm font-semibold ${attendanceDeviceConfig?.enabled ? 'text-green-700' : 'text-red-700'}`}>
+                                        {attendanceDeviceConfig?.enabled ? t('Enabled') : t('Disabled')}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Events (24h)')}</p>
+                                    <p className="text-xl font-semibold">{attendanceDeviceHealth?.summary?.total_events_last_24h ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Unique Devices (24h)')}</p>
+                                    <p className="text-xl font-semibold">{attendanceDeviceHealth?.summary?.unique_devices_last_24h ?? 0}</p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Clock-ins / Clock-outs')}</p>
+                                    <p className="text-xl font-semibold">
+                                        {(attendanceDeviceHealth?.summary?.clockins_last_24h ?? 0)} / {(attendanceDeviceHealth?.summary?.clockouts_last_24h ?? 0)}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <p className="text-xs text-muted-foreground">{t('Open Attendances')}</p>
+                                    <p className="text-xl font-semibold">{attendanceDeviceHealth?.summary?.open_attendances ?? 0}</p>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground">
+                                {t('Last device activity')}: {formatDateTime(attendanceDeviceHealth?.summary?.last_event_at)} ·
+                                {' '}
+                                {t('Health generated at')}: {formatDateTime(attendanceDeviceHealth?.generated_at)}
+                            </p>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left py-2">{t('Employee')}</th>
+                                            <th className="text-left py-2">{t('Action')}</th>
+                                            <th className="text-left py-2">{t('Clock In')}</th>
+                                            <th className="text-left py-2">{t('Clock Out')}</th>
+                                            <th className="text-left py-2">{t('Device')}</th>
+                                            <th className="text-left py-2">{t('Reference')}</th>
+                                            <th className="text-left py-2">{t('Last Activity')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(attendanceDeviceHealth?.rows ?? []).length === 0 && (
+                                            <tr>
+                                                <td colSpan={7} className="py-3 text-muted-foreground">
+                                                    {t('No biometric attendance records available.')}
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {(attendanceDeviceHealth?.rows ?? []).map((row) => (
+                                            <tr key={row.attendance_id} className="border-b">
+                                                <td className="py-2">{row.employee_name}</td>
+                                                <td className="py-2">{row.action}</td>
+                                                <td className="py-2">{formatDateTime(row.clock_in)}</td>
+                                                <td className="py-2">{formatDateTime(row.clock_out)}</td>
+                                                <td className="py-2">
+                                                    {[row.source_device_id, row.source_device_label].filter(Boolean).join(' · ') || '-'}
+                                                </td>
+                                                <td className="py-2">{row.source_reference ?? '-'}</td>
+                                                <td className="py-2">{formatDateTime(row.last_activity_at)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -794,6 +1079,20 @@ export default function MozambiquePayrollComplianceIndex() {
                                                                 size="sm"
                                                                 onClick={() =>
                                                                     window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.export', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Monthly Summary')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
                                                                         route('hrm.mozambique-payroll-compliance.reports.cost-allocation.json', {
                                                                             reference_period: row.reference_period,
                                                                         }),
@@ -822,6 +1121,20 @@ export default function MozambiquePayrollComplianceIndex() {
                                                                 size="sm"
                                                                 onClick={() =>
                                                                     window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.cost-allocation.xlsx', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Cost XLSX')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
                                                                         route('hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.json', {
                                                                             reference_period: row.reference_period,
                                                                         }),
@@ -844,6 +1157,62 @@ export default function MozambiquePayrollComplianceIndex() {
                                                                 }
                                                             >
                                                                 {t('Journal XML')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.accounting-journal-lines.xlsx', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Journal XLSX')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.json', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Summary JSON')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.xml', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Summary XML')}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    window.open(
+                                                                        route('hrm.mozambique-payroll-compliance.reports.payroll-monthly-summary.xlsx', {
+                                                                            reference_period: row.reference_period,
+                                                                        }),
+                                                                        '_blank'
+                                                                    )
+                                                                }
+                                                            >
+                                                                {t('Summary XLSX')}
                                                             </Button>
                                                         </div>
                                                     ) : (
@@ -1177,6 +1546,52 @@ export default function MozambiquePayrollComplianceIndex() {
                                 }}
                             >
                                 <div className="space-y-3">
+                                    <h4 className="font-medium">{t('Company Labour Profile')}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div>
+                                            <Label>{t('Sector Activity')}</Label>
+                                            <Input
+                                                value={legalSettingsForm.data.company_profile.sector_activity}
+                                                onChange={(e) => setCompanyProfileField('sector_activity', e.target.value)}
+                                            />
+                                            <InputError message={legalError('company_profile.sector_activity')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Operation Province')}</Label>
+                                            <Input
+                                                value={legalSettingsForm.data.company_profile.operation_province}
+                                                onChange={(e) => setCompanyProfileField('operation_province', e.target.value)}
+                                            />
+                                            <InputError message={legalError('company_profile.operation_province')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Labour Regime')}</Label>
+                                            <Input
+                                                value={legalSettingsForm.data.company_profile.labour_regime}
+                                                onChange={(e) => setCompanyProfileField('labour_regime', e.target.value)}
+                                            />
+                                            <InputError message={legalError('company_profile.labour_regime')} />
+                                        </div>
+                                        <div>
+                                            <Label>{t('Labour Directorate')}</Label>
+                                            <Input
+                                                value={legalSettingsForm.data.company_profile.labour_directorate}
+                                                onChange={(e) => setCompanyProfileField('labour_directorate', e.target.value)}
+                                            />
+                                            <InputError message={legalError('company_profile.labour_directorate')} />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <Label>{t('Collective Agreements')}</Label>
+                                            <Input
+                                                value={legalSettingsForm.data.company_profile.collective_agreements}
+                                                onChange={(e) => setCompanyProfileField('collective_agreements', e.target.value)}
+                                            />
+                                            <InputError message={legalError('company_profile.collective_agreements')} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
                                     <h4 className="font-medium">{t('Foreign Worker Quota Rules')}</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                         <div>
@@ -1318,7 +1733,7 @@ export default function MozambiquePayrollComplianceIndex() {
 
                                 <div className="space-y-3">
                                     <h4 className="font-medium">{t('Probation Alert Days')}</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div>
                                             <Label>{t('Primary Alert (days)')}</Label>
                                             <Input
@@ -1339,12 +1754,101 @@ export default function MozambiquePayrollComplianceIndex() {
                                             />
                                             <InputError message={legalError('probation_alert_days.secondary')} />
                                         </div>
-                                        <div className="flex items-end">
-                                            <Button type="submit" disabled={!canEdit || legalSettingsForm.processing} className="w-full">
-                                                {t('Save Legal Settings')}
-                                            </Button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <h4 className="font-medium">{t('Internal Policy Requirements')}</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_internal_regulation}
+                                                onChange={(e) => setPolicyRequirementField('require_internal_regulation', e.target.checked)}
+                                            />
+                                            <span>{t('Require Internal Regulation')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_code_of_conduct}
+                                                onChange={(e) => setPolicyRequirementField('require_code_of_conduct', e.target.checked)}
+                                            />
+                                            <span>{t('Require Code of Conduct')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_anti_harassment_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_anti_harassment_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Anti-Harassment Policy')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_disciplinary_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_disciplinary_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Disciplinary Policy')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_vacation_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_vacation_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Vacation Policy')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_data_protection_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_data_protection_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Data Protection Policy')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_equipment_use_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_equipment_use_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Equipment Use Policy')}</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={legalSettingsForm.data.policy_requirements.require_remote_work_policy}
+                                                onChange={(e) => setPolicyRequirementField('require_remote_work_policy', e.target.checked)}
+                                            />
+                                            <span>{t('Require Remote Work Policy')}</span>
+                                        </label>
+                                        <div>
+                                            <Label>{t('Code of Conduct Threshold (workers)')}</Label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={legalSettingsForm.data.policy_requirements.code_of_conduct_min_workers}
+                                                onChange={(e) => setPolicyRequirementField('code_of_conduct_min_workers', e.target.value)}
+                                            />
+                                            <InputError message={legalError('policy_requirements.code_of_conduct_min_workers')} />
                                         </div>
                                     </div>
+                                </div>
+
+                                <div>
+                                    <Button type="submit" disabled={!canEdit || legalSettingsForm.processing}>
+                                        {t('Save Legal Settings')}
+                                    </Button>
+                                    <InputError message={legalError('policy_requirements.require_internal_regulation')} />
+                                    <InputError message={legalError('policy_requirements.require_code_of_conduct')} />
+                                    <InputError message={legalError('policy_requirements.require_anti_harassment_policy')} />
+                                    <InputError message={legalError('policy_requirements.require_disciplinary_policy')} />
+                                    <InputError message={legalError('policy_requirements.require_vacation_policy')} />
+                                    <InputError message={legalError('policy_requirements.require_data_protection_policy')} />
+                                    <InputError message={legalError('policy_requirements.require_equipment_use_policy')} />
+                                    <InputError message={legalError('policy_requirements.require_remote_work_policy')} />
                                 </div>
                             </form>
                         </CardContent>

@@ -18,6 +18,15 @@ class Customer extends Model
         'contact_person_email',
         'contact_person_mobile',
         'tax_number',
+        'fiscal_residency_status',
+        'customer_type',
+        'fiscal_country',
+        'vat_regime',
+        'operation_type',
+        'billing_currency_code',
+        'accounting_account_code',
+        'fiscal_identity_locked_at',
+        'fiscal_identity_lock_reason',
         'payment_terms',
         'billing_address',
         'shipping_address',
@@ -31,6 +40,7 @@ class Customer extends Model
         'billing_address' => 'array',
         'shipping_address' => 'array',
         'same_as_billing' => 'boolean',
+        'fiscal_identity_locked_at' => 'datetime',
     ];
 
     protected static function boot()

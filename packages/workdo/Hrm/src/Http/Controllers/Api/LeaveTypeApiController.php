@@ -22,7 +22,10 @@ class LeaveTypeApiController extends Controller
                 ->transform(function ($leavetype) {
                     $currentYear = date('Y');
                     $employeeId  = Auth::id();
-                    $baseQuery   = LeaveApplication::where('employee_id', $employeeId)->where('leave_type_id', $leavetype->id)->whereYear('start_date', $currentYear);
+                    $baseQuery   = LeaveApplication::where('employee_id', $employeeId)
+                        ->active()
+                        ->where('leave_type_id', $leavetype->id)
+                        ->whereYear('start_date', $currentYear);
 
                     if (request('exclude_id')) {
                         $baseQuery->where('id', '!=', request('exclude_id'));

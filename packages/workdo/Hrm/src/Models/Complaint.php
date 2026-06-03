@@ -5,6 +5,7 @@ namespace Workdo\Hrm\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\User;
+use Workdo\Hrm\Models\Warning;
 
 class Complaint extends Model
 {
@@ -22,9 +23,12 @@ class Complaint extends Model
         'is_harassment_report',
         'confidential_channel',
         'confidentiality_level',
+        'confidential_access_user_ids',
         'document',
         'resolved_by',
         'handling_owner_id',
+        'disciplinary_warning_id',
+        'disciplinary_case_opened_at',
         'resolution_date',
         'investigation_started_at',
         'investigation_closed_at',
@@ -41,8 +45,10 @@ class Complaint extends Model
         'resolution_date' => 'date',
         'investigation_started_at' => 'date',
         'investigation_closed_at' => 'date',
+        'disciplinary_case_opened_at' => 'date',
         'is_confidential' => 'boolean',
         'is_harassment_report' => 'boolean',
+        'confidential_access_user_ids' => 'array',
         'is_cancelled' => 'boolean',
         'cancelled_at' => 'datetime',
     ];
@@ -77,6 +83,11 @@ class Complaint extends Model
     public function handlingOwner()
     {
         return $this->belongsTo(User::class, 'handling_owner_id');
+    }
+
+    public function disciplinaryWarning()
+    {
+        return $this->belongsTo(Warning::class, 'disciplinary_warning_id');
     }
 
     public function cancelledBy()

@@ -11,6 +11,7 @@ export interface Complaint {
     is_harassment_report?: boolean;
     confidential_channel?: string;
     confidentiality_level?: string;
+    confidential_access_user_ids?: number[];
     document?: string;
     resolved_by?: number;
     handling_owner_id?: number;
@@ -123,6 +124,7 @@ export interface CreateComplaintFormData {
     is_harassment_report: boolean;
     confidential_channel: string;
     confidentiality_level: string;
+    confidential_access_user_ids: string[];
     handling_owner_id: string;
     investigation_started_at: string;
     investigation_closed_at: string;
@@ -140,6 +142,7 @@ export interface EditComplaintFormData {
     is_harassment_report: boolean;
     confidential_channel: string;
     confidentiality_level: string;
+    confidential_access_user_ids: string[];
     handling_owner_id: string;
     investigation_started_at: string;
     investigation_closed_at: string;

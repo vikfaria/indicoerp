@@ -12,6 +12,7 @@ import axios from 'axios';
 export default function TaxSummary({ financialYear }: any) {
     const { t } = useTranslation();
     const { auth } = usePage<any>().props;
+    const canManageReports = auth.user?.permissions?.includes('manage-account-reports') ?? false;
     const [fromDate, setFromDate] = useState(financialYear?.year_start_date || '');
     const [toDate, setToDate] = useState(financialYear?.year_end_date || '');
     const [data, setData] = useState<any>(null);
@@ -51,7 +52,7 @@ export default function TaxSummary({ financialYear }: any) {
                         <Button onClick={fetchData} disabled={loading} size="sm">
                             {loading ? t('Loading...') : t('Generate')}
                         </Button>
-                        {data && auth.user?.permissions?.includes('print-tax-summary') && (
+                        {data && (canManageReports || auth.user?.permissions?.includes('print-tax-summary')) && (
                             <Button variant="outline" size="sm" onClick={() => window.open(route('account.reports.tax-summary.print') + `?from_date=${fromDate}&to_date=${toDate}&download=pdf`, '_blank')} className="gap-2">
                                 <Printer className="h-4 w-4" />
                                 {t('Download PDF')}

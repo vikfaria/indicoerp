@@ -13,6 +13,7 @@ import axios from 'axios';
 export default function CustomerBalance({ financialYear }: any) {
     const { t } = useTranslation();
     const { auth } = usePage<any>().props;
+    const canManageReports = auth.user?.permissions?.includes('manage-account-reports') ?? false;
     const [asOfDate, setAsOfDate] = useState(financialYear?.year_end_date || '');
     const [showZeroBalances, setShowZeroBalances] = useState(false);
     const [data, setData] = useState<any>(null);
@@ -54,7 +55,7 @@ export default function CustomerBalance({ financialYear }: any) {
                         <Button onClick={fetchData} disabled={loading} size="sm">
                             {loading ? t('Loading...') : t('Generate')}
                         </Button>
-                        {data && auth.user?.permissions?.includes('print-customer-balance') && (
+                        {data && (canManageReports || auth.user?.permissions?.includes('print-customer-balance')) && (
                             <Button variant="outline" size="sm" onClick={() => window.open(route('account.reports.customer-balance.print') + `?as_of_date=${asOfDate}&show_zero_balances=${showZeroBalances}&download=pdf`, '_blank')} className="gap-2">
                                 <Printer className="h-4 w-4" />
                                 {t('Download PDF')}
@@ -89,7 +90,7 @@ export default function CustomerBalance({ financialYear }: any) {
                                     {data.customers.map((customer: any, idx: number) => (
                                         <tr key={idx} className="border-t hover:bg-gray-50">
                                             <td className="px-4 py-3">
-                                                {auth.user?.permissions?.includes('view-customer-detail-report') ? (
+                                                {canManageReports || auth.user?.permissions?.includes('view-customer-detail-report') ? (
                                                     <Link href={route('account.reports.customer-detail', customer.customer_id)} className="text-blue-600 hover:text-blue-700">
                                                         {customer.customer_name}
                                                     </Link>

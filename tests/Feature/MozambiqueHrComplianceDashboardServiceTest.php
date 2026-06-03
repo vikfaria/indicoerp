@@ -8,6 +8,7 @@ use App\Models\MozMinimumWage;
 use App\Models\FiscalCalendarEvent;
 use App\Models\User;
 use App\Services\MozambiqueHrComplianceDashboardService;
+use App\Services\MozambiqueHrLegalSettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use Workdo\Contract\Models\Contract;
@@ -634,13 +635,15 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
         $this->assertSame(2, $this->panelCountByKey($indicators, 'accumulated_annual_leave_risk'));
         $this->assertSame(1, $this->panelCountByKey($indicators, 'disciplinary_cases_pending'));
         $this->assertSame(0, $this->panelCountByKey($indicators, 'unjustified_absence_disciplinary_risk'));
+        $this->assertSame(5, $this->panelCountByKey($indicators, 'company_profile_missing_fields'));
+        $this->assertSame(6, $this->panelCountByKey($indicators, 'required_policy_documents_missing'));
         $this->assertSame(0, $this->panelCountByKey($indicators, 'code_of_conduct_missing_required_document'));
         $this->assertSame(0, $this->panelCountByKey($indicators, 'code_of_conduct_acknowledgments_pending'));
         $this->assertSame(0, $this->panelCountByKey($indicators, 'termination_notice_non_compliant'));
         $this->assertSame(0, $this->panelCountByKey($indicators, 'resignation_notice_non_compliant'));
         $this->assertSame(2, $this->panelCountByKey($indicators, 'payroll_fiscal_obligations_pending'));
         $this->assertSame(1, $this->panelCountByKey($indicators, 'foreign_workers_at_compliance_risk'));
-        $this->assertSame(15, (int) data_get($snapshot, 'compliance_panel.metrics.total_indicators'));
+        $this->assertSame(18, (int) data_get($snapshot, 'compliance_panel.metrics.total_indicators'));
     }
 
     public function test_snapshot_reports_code_of_conduct_document_and_acknowledgment_gaps_for_seven_plus_workers(): void
@@ -695,6 +698,75 @@ class MozambiqueHrComplianceDashboardServiceTest extends TestCase
 
         $this->assertSame(0, $this->countByKey($snapshotWithDocument['items'], 'code_of_conduct_missing_required_document'));
         $this->assertSame(4, $this->countByKey($snapshotWithDocument['items'], 'code_of_conduct_acknowledgments_pending'));
+    }
+
+    public function test_snapshot_reports_company_profile_and_internal_policy_gaps(): void
+    {
+        $company = $this->makeCompany();
+
+        for ($i = 1; $i <= 3; $i++) {
+            $employeeUser = $this->makeEmployeeUser($company, "Profile Worker {$i}");
+
+            Employee::query()->create([
+                'employee_id' => sprintf('CMP-PROF-%03d', $i),
+                'user_id' => $employeeUser->id,
+                'employment_type' => 'GENERAL',
+                'tax_payer_id' => '400900' . str_pad((string) $i, 3, '0', STR_PAD_LEFT),
+                'basic_salary' => 10000 + ($i * 500),
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $snapshotMissing = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+        $this->assertSame(5, $this->countByKey($snapshotMissing['items'], 'company_profile_missing_fields'));
+        $this->assertSame(6, $this->countByKey($snapshotMissing['items'], 'required_policy_documents_missing'));
+
+        app(MozambiqueHrLegalSettingsService::class)->updateSettings($company->id, [
+            'company_profile' => [
+                'sector_activity' => 'Technology',
+                'operation_province' => 'Maputo Cidade',
+                'labour_regime' => 'Regime Geral',
+                'collective_agreements' => 'ACT-001',
+                'labour_directorate' => 'DPT Maputo Cidade',
+            ],
+            'policy_requirements' => [
+                'require_internal_regulation' => true,
+                'require_code_of_conduct' => true,
+                'require_anti_harassment_policy' => true,
+                'require_disciplinary_policy' => true,
+                'require_vacation_policy' => true,
+                'require_data_protection_policy' => true,
+                'require_equipment_use_policy' => true,
+                'require_remote_work_policy' => false,
+                'code_of_conduct_min_workers' => 10,
+            ],
+        ]);
+
+        foreach ([
+            'Regulamento Interno',
+            'Política Anti Assédio',
+            'Política Disciplinar',
+            'Política de Férias',
+            'Política de Proteção de Dados',
+            'Política de Uso de Equipamentos',
+        ] as $title) {
+            HrmDocument::query()->create([
+                'title' => $title,
+                'description' => 'Documento obrigatório de conformidade',
+                'status' => 'approve',
+                'uploaded_by' => $company->id,
+                'approved_by' => $company->id,
+                'creator_id' => $company->id,
+                'created_by' => $company->id,
+            ]);
+        }
+
+        $snapshotResolved = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+
+        $this->assertSame(0, $this->countByKey($snapshotResolved['items'], 'company_profile_missing_fields'));
+        $this->assertSame(0, $this->countByKey($snapshotResolved['items'], 'required_policy_documents_missing'));
+        $this->assertSame(0, $this->countByKey($snapshotResolved['items'], 'code_of_conduct_missing_required_document'));
     }
 
     public function test_snapshot_reports_mandatory_training_overdue_and_expiring_risks(): void

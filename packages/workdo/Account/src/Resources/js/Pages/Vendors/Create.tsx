@@ -13,6 +13,18 @@ import { CreateVendorProps, CreateVendorFormData } from './types';
 
 export default function Create({ onSuccess, users = [], auth }: CreateVendorProps) {
     const { t } = useTranslation();
+    const residencyOptions = [
+        { value: 'resident', label: t('Resident') },
+        { value: 'non_resident', label: t('Non-resident') },
+    ];
+    const vendorTypeOptions = [
+        { value: 'public_entity', label: t('Public entity') },
+        { value: 'private_company', label: t('Private company') },
+        { value: 'service_provider', label: t('Service provider') },
+        { value: 'import_supplier', label: t('Import supplier') },
+        { value: 'exempt', label: t('Exempt') },
+        { value: 'special_regime', label: t('Special regime') },
+    ];
     const { data, setData, post, processing, errors } = useForm<CreateVendorFormData>({
         user_id: '0',
         company_name: '',
@@ -20,6 +32,18 @@ export default function Create({ onSuccess, users = [], auth }: CreateVendorProp
         contact_person_email: '',
         contact_person_mobile: '',
         tax_number: '',
+        fiscal_residency_status: 'resident',
+        vendor_type: '',
+        fiscal_country: '',
+        vat_regime: '',
+        supply_type: '',
+        payment_currency_code: 'MZN',
+        foreign_tax_number: '',
+        withholding_tax_applicable: false,
+        reverse_charge_applicable: false,
+        adt_eligible: false,
+        adt_country: '',
+        compliance_documents: [],
         payment_terms: '',
         billing_address: {
             name: '',
@@ -59,6 +83,8 @@ export default function Create({ onSuccess, users = [], auth }: CreateVendorProp
             }
         }
     };
+
+    const complianceDocumentsText = data.compliance_documents.join('\n');
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -165,6 +191,154 @@ export default function Create({ onSuccess, users = [], auth }: CreateVendorProp
                         <InputError message={errors.payment_terms} />
                     </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="fiscal_residency_status">{t('Fiscal Residency')}</Label>
+                        <Select value={data.fiscal_residency_status} onValueChange={(value) => setData('fiscal_residency_status', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select residency')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {residencyOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.fiscal_residency_status} />
+                    </div>
+                    <div>
+                        <Label htmlFor="vendor_type" required>{t('Vendor Type')}</Label>
+                        <Select value={data.vendor_type} onValueChange={(value) => setData('vendor_type', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select vendor type')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {vendorTypeOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.vendor_type} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="fiscal_country">{t('Fiscal Country')}</Label>
+                        <Input
+                            id="fiscal_country"
+                            value={data.fiscal_country}
+                            onChange={(e) => setData('fiscal_country', e.target.value)}
+                            placeholder={t('Enter fiscal country')}
+                        />
+                        <InputError message={errors.fiscal_country} />
+                    </div>
+                    <div>
+                        <Label htmlFor="payment_currency_code">{t('Payment Currency')}</Label>
+                        <Input
+                            id="payment_currency_code"
+                            value={data.payment_currency_code}
+                            onChange={(e) => setData('payment_currency_code', e.target.value.toUpperCase())}
+                            placeholder="MZN"
+                            maxLength={3}
+                        />
+                        <InputError message={errors.payment_currency_code} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="vat_regime">{t('VAT Regime')}</Label>
+                        <Input
+                            id="vat_regime"
+                            value={data.vat_regime}
+                            onChange={(e) => setData('vat_regime', e.target.value)}
+                            placeholder={t('e.g., standard, exempt')}
+                        />
+                        <InputError message={errors.vat_regime} />
+                    </div>
+                    <div>
+                        <Label htmlFor="supply_type" required>{t('Supply Type')}</Label>
+                        <Input
+                            id="supply_type"
+                            value={data.supply_type}
+                            onChange={(e) => setData('supply_type', e.target.value)}
+                            placeholder={t('e.g., services, goods, import')}
+                        />
+                        <InputError message={errors.supply_type} />
+                    </div>
+                </div>
+                <div>
+                    <Label htmlFor="foreign_tax_number">{t('Foreign Tax Number')}</Label>
+                    <Input
+                        id="foreign_tax_number"
+                        value={data.foreign_tax_number}
+                        onChange={(e) => setData('foreign_tax_number', e.target.value)}
+                        placeholder={t('Enter foreign tax identifier')}
+                    />
+                    <InputError message={errors.foreign_tax_number} />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="flex items-center space-x-2 pt-6">
+                        <Checkbox
+                            id="withholding_tax_applicable"
+                            checked={data.withholding_tax_applicable}
+                            onCheckedChange={(checked) => setData('withholding_tax_applicable', !!checked)}
+                        />
+                        <Label htmlFor="withholding_tax_applicable">{t('Withholding tax applies')}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2 pt-6">
+                        <Checkbox
+                            id="reverse_charge_applicable"
+                            checked={data.reverse_charge_applicable}
+                            onCheckedChange={(checked) => setData('reverse_charge_applicable', !!checked)}
+                        />
+                        <Label htmlFor="reverse_charge_applicable">{t('Reverse charge applies')}</Label>
+                    </div>
+                    <div className="flex items-center space-x-2 pt-6">
+                        <Checkbox
+                            id="adt_eligible"
+                            checked={data.adt_eligible}
+                            onCheckedChange={(checked) => setData('adt_eligible', !!checked)}
+                        />
+                        <Label htmlFor="adt_eligible">{t('ADT eligible')}</Label>
+                    </div>
+                </div>
+                {data.adt_eligible && (
+                    <div className="space-y-4 border-t pt-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <Label htmlFor="adt_country">{t('ADT Country')}</Label>
+                                <Input
+                                    id="adt_country"
+                                    value={data.adt_country}
+                                    onChange={(e) => setData('adt_country', e.target.value)}
+                                    placeholder={t('Enter ADT country')}
+                                />
+                                <InputError message={errors.adt_country} />
+                            </div>
+                            <div>
+                                <Label htmlFor="compliance_documents">{t('Compliance Documents')}</Label>
+                                <Textarea
+                                    id="compliance_documents"
+                                    value={complianceDocumentsText}
+                                    onChange={(e) => setData(
+                                        'compliance_documents',
+                                        e.target.value
+                                            .split(/\r?\n|,/)
+                                            .map((item) => item.trim())
+                                            .filter((item) => item !== '')
+                                    )}
+                                    placeholder={t('Enter one document per line or separated by commas')}
+                                    rows={4}
+                                />
+                                <InputError message={errors.compliance_documents} />
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div>
                     <Label htmlFor="billing_name">{t('Billing Name')}</Label>
                     <Input

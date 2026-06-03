@@ -20,6 +20,7 @@ class LeaveApiController extends Controller
         try {
             if (Auth::user()->can('manage-leave-applications')) {
                 $leaveapplications = LeaveApplication::query()
+                    ->active()
                     ->where(function ($q) {
                         if (Auth::user()->can('manage-any-leave-applications')) {
                             $q->where('created_by', creatorId());
@@ -126,6 +127,7 @@ class LeaveApiController extends Controller
 
                     // Calculate used leaves for this employee, leave type and current year
                 $usedLeaves = LeaveApplication::where('employee_id', $employeeId)
+                    ->active()
                     ->where('leave_type_id', $validated['leave_type_id'])
                     ->whereIn('status', ['approved', 'pending'])
                     ->whereYear('start_date', $currentYear)
@@ -133,6 +135,7 @@ class LeaveApiController extends Controller
 
                     // Check for overlapping leave applications
                 $overlappingLeave = LeaveApplication::where('employee_id', $employeeId)
+                    ->active()
                     ->where(function ($query) use ($validated) {
                         $query
                             ->whereBetween('start_date', [$validated['start_date'], $validated['end_date']])

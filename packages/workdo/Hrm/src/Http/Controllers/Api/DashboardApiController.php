@@ -31,6 +31,7 @@ class DashboardApiController extends Controller
 
             // Check for pending attendance (including night shifts)
             $pendingAttendance = Attendance::where('created_by', $creatorId)
+                ->active()
                 ->where('employee_id', $userId)
                 ->whereNotNull('clock_in')
                 ->whereNull('clock_out')
@@ -39,6 +40,7 @@ class DashboardApiController extends Controller
 
             // Today's Attendance for Clock In/Out
             $todayAttendance = Attendance::where('created_by', $creatorId)
+                ->active()
                 ->where('employee_id', $userId)
                 ->where('date', $date)
                 ->first();
@@ -50,6 +52,7 @@ class DashboardApiController extends Controller
             $isWorkingDay     = in_array($todayDayIndex, $workingDaysArray);
 
             $todayLeaves = LeaveApplication::where('created_by', $creatorId)
+                ->active()
                 ->where('employee_id', $userId)
                 ->where('status', 'approved')
                 ->where('start_date', '<=', $date)
@@ -59,6 +62,7 @@ class DashboardApiController extends Controller
             $isOnLeave = $todayLeaves->count() > 0;
 
             $leaves = LeaveApplication::where('created_by', $creatorId)
+                ->active()
                 ->where('employee_id', $userId)
                 ->where('status', 'approved')
                 ->where('start_date', '<=', $date)
@@ -128,6 +132,7 @@ class DashboardApiController extends Controller
 
 
             $attendance = Attendance::where('employee_id', $userId)
+                ->active()
                 ->where('date', $date)
                 ->where('created_by', $creatorId)
                 ->orderBy('id', 'desc')

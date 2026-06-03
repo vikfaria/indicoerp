@@ -28,7 +28,8 @@ class MozambiqueHrComplianceDashboardService
     public function __construct(
         private readonly MozambiqueForeignWorkerQuotaService $foreignWorkerQuotaService,
         private readonly MozambiqueLabourComplianceService $labourComplianceService,
-        private readonly MozambiquePayrollObligationService $payrollObligationService
+        private readonly MozambiquePayrollObligationService $payrollObligationService,
+        private readonly MozambiqueHrLegalSettingsService $legalSettingsService
     ) {}
 
     public function snapshot(int $companyId): array
@@ -59,34 +60,63 @@ class MozambiqueHrComplianceDashboardService
             ->unique()
             ->values();
 
-        $codeOfConductThreshold = max(1, (int) (company_setting('mz_code_of_conduct_min_workers', $companyId) ?? 7));
-        $codeOfConductRequired = $totalWorkers >= $codeOfConductThreshold;
-        $codeOfConductPatterns = [
-            '%code of conduct%',
-            '%codigo de conduta%',
-            '%código de conduta%',
-            '%boa conduta%',
+        $legalSettings = $this->legalSettingsService->getSettings($companyId);
+        $companyProfile = (array) ($legalSettings['company_profile'] ?? []);
+        $policyRequirements = (array) ($legalSettings['policy_requirements'] ?? []);
+
+        $companyProfileRequiredFields = [
+            'sector_activity',
+            'operation_province',
+            'labour_regime',
+            'collective_agreements',
+            'labour_directorate',
         ];
 
-        $codeOfConductDocumentIds = HrmDocument::query()
+        $companyProfileMissingFields = collect($companyProfileRequiredFields)
+            ->filter(function (string $field) use ($companyProfile): bool {
+                return trim((string) ($companyProfile[$field] ?? '')) === '';
+            })
+            ->count();
+
+        $codeOfConductThreshold = max(
+            1,
+            (int) ($policyRequirements['code_of_conduct_min_workers'] ?? company_setting('mz_code_of_conduct_min_workers', $companyId) ?? 7)
+        );
+        $codeOfConductRequired = $totalWorkers >= $codeOfConductThreshold;
+
+        $policyDocumentPatterns = $this->policyDocumentPatterns();
+        $policyRequirementByKey = [
+            'internal_regulation' => (bool) ($policyRequirements['require_internal_regulation'] ?? true),
+            'code_of_conduct' => (bool) ($policyRequirements['require_code_of_conduct'] ?? true) && $codeOfConductRequired,
+            'anti_harassment_policy' => (bool) ($policyRequirements['require_anti_harassment_policy'] ?? true),
+            'disciplinary_policy' => (bool) ($policyRequirements['require_disciplinary_policy'] ?? true),
+            'vacation_policy' => (bool) ($policyRequirements['require_vacation_policy'] ?? true),
+            'data_protection_policy' => (bool) ($policyRequirements['require_data_protection_policy'] ?? true),
+            'equipment_use_policy' => (bool) ($policyRequirements['require_equipment_use_policy'] ?? true),
+            'remote_work_policy' => (bool) ($policyRequirements['require_remote_work_policy'] ?? false),
+        ];
+
+        $approvedPolicyDocuments = HrmDocument::query()
             ->where('created_by', $companyId)
             ->where('status', 'approve')
-            ->where(function ($query) use ($codeOfConductPatterns): void {
-                foreach ($codeOfConductPatterns as $pattern) {
-                    $query
-                        ->orWhereRaw('LOWER(title) like ?', [$pattern])
-                        ->orWhereRaw("LOWER(COALESCE(description, '')) like ?", [$pattern]);
-                }
+            ->get(['id', 'title', 'description']);
+
+        $policyDocumentMatches = $this->matchPolicyDocuments($approvedPolicyDocuments->all(), $policyDocumentPatterns);
+        $missingRequiredPolicyDocuments = collect($policyRequirementByKey)
+            ->filter(static fn (bool $required): bool => $required)
+            ->filter(function (bool $required, string $policyKey) use ($policyDocumentMatches): bool {
+                return $required && empty($policyDocumentMatches[$policyKey]);
             })
-            ->pluck('id')
+            ->count();
+
+        $codeOfConductDocumentIds = collect($policyDocumentMatches['code_of_conduct'] ?? [])
             ->map(static fn ($id): int => (int) $id)
             ->unique()
             ->values();
-
-        $codeOfConductMissingRequiredDocument = $codeOfConductRequired && $codeOfConductDocumentIds->isEmpty() ? 1 : 0;
+        $codeOfConductMissingRequiredDocument = (($policyRequirementByKey['code_of_conduct'] ?? false) && $codeOfConductDocumentIds->isEmpty()) ? 1 : 0;
         $codeOfConductAcknowledgmentsPending = 0;
 
-        if ($codeOfConductRequired && $codeOfConductDocumentIds->isNotEmpty() && $employeeUserIds->isNotEmpty()) {
+        if (($policyRequirementByKey['code_of_conduct'] ?? false) && $codeOfConductDocumentIds->isNotEmpty() && $employeeUserIds->isNotEmpty()) {
             $acknowledgedEmployeeIds = Acknowledgment::query()
                 ->where('created_by', $companyId)
                 ->whereIn('employee_id', $employeeUserIds->all())
@@ -219,6 +249,14 @@ class MozambiqueHrComplianceDashboardService
             ->whereNull('handling_owner_id')
             ->count();
 
+        $harassmentReportsWithoutDisciplinaryCase = Complaint::query()
+            ->where('created_by', $companyId)
+            ->active()
+            ->where('is_harassment_report', true)
+            ->whereIn('status', ['assigned', 'in progress', 'resolved'])
+            ->whereNull('disciplinary_warning_id')
+            ->count();
+
         $offboardingChecklistPending = Termination::query()
             ->where('created_by', $companyId)
             ->active()
@@ -228,6 +266,7 @@ class MozambiqueHrComplianceDashboardService
             ->count();
 
         $leaveMissingSupportingDocument = LeaveApplication::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereIn('status', ['pending', 'approved'])
             ->whereHas('leave_type', function ($query): void {
@@ -239,6 +278,7 @@ class MozambiqueHrComplianceDashboardService
             ->count();
 
         $legalLeaveMissingReferenceDate = LeaveApplication::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereIn('status', ['pending', 'approved'])
             ->whereHas('leave_type', function ($query): void {
@@ -248,6 +288,7 @@ class MozambiqueHrComplianceDashboardService
             ->count();
 
         $leaveCashOutBelowMinimumRest = LeaveApplication::query()
+            ->active()
             ->join('leave_types', 'leave_types.id', '=', 'leave_applications.leave_type_id')
             ->where('leave_applications.created_by', $companyId)
             ->where('leave_applications.compensated_days', '>', 0)
@@ -292,6 +333,7 @@ class MozambiqueHrComplianceDashboardService
         $weeklyOvertimeLimit = (float) ($labourPolicy['overtime_weekly_limit_hours'] ?? 16.0);
 
         $overtimeDailyLimitBreaches = Overtime::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('total_days', '>', 0)
             ->get(['hours', 'total_days'])
@@ -389,6 +431,7 @@ class MozambiqueHrComplianceDashboardService
             $accumulatedAnnualLeaveRisk = $annualLeaveEligibleUsers->count();
         } else {
             $usersWithAnnualLeaveInWindow = LeaveApplication::query()
+                ->active()
                 ->where('created_by', $companyId)
                 ->where('status', 'approved')
                 ->whereIn('employee_id', $annualLeaveEligibleUsers->all())
@@ -595,6 +638,9 @@ class MozambiqueHrComplianceDashboardService
             $this->item('disciplinary_refusal_without_witnesses', __('Disciplinary refusals without two witnesses'), $disciplinaryRefusalWithoutWitnesses, 'high'),
             $this->item('harassment_reports_pending', __('Harassment reports pending resolution'), $harassmentReportsPending, 'high'),
             $this->item('harassment_reports_without_owner', __('Harassment reports without assigned owner'), $harassmentReportsWithoutOwner, 'high'),
+            $this->item('harassment_reports_without_disciplinary_case', __('Harassment reports without disciplinary case linkage'), $harassmentReportsWithoutDisciplinaryCase, 'high'),
+            $this->item('company_profile_missing_fields', __('Missing mandatory company labour profile fields'), $companyProfileMissingFields, 'high'),
+            $this->item('required_policy_documents_missing', __('Required internal policy documents missing approval'), $missingRequiredPolicyDocuments, 'high'),
             $this->item('code_of_conduct_missing_required_document', __('Code of conduct required for 7+ workers but approved document is missing'), $codeOfConductMissingRequiredDocument, 'high'),
             $this->item('code_of_conduct_acknowledgments_pending', __('Workers without code of conduct acknowledgment'), $codeOfConductAcknowledgmentsPending, 'high'),
             $this->item('offboarding_checklist_pending', __('Approved terminations without offboarding completion'), $offboardingChecklistPending, 'medium'),
@@ -669,6 +715,9 @@ class MozambiqueHrComplianceDashboardService
                 $this->panelIndicator('mandatory_training_overdue_workers', __('Workers with overdue mandatory training'), $mandatoryTrainingOverdueWorkers, 'high'),
                 $this->panelIndicator('disciplinary_cases_pending', __('Disciplinary cases pending closure'), $disciplinaryCasesPending, 'medium'),
                 $this->panelIndicator('unjustified_absence_disciplinary_risk', __('Workers at disciplinary risk due to unjustified absences'), $unjustifiedAbsenceDisciplinaryRisk, 'high'),
+                $this->panelIndicator('harassment_reports_without_disciplinary_case', __('Harassment reports without disciplinary case linkage'), $harassmentReportsWithoutDisciplinaryCase, 'high'),
+                $this->panelIndicator('company_profile_missing_fields', __('Missing mandatory company labour profile fields'), $companyProfileMissingFields, 'high'),
+                $this->panelIndicator('required_policy_documents_missing', __('Required internal policy documents missing approval'), $missingRequiredPolicyDocuments, 'high'),
                 $this->panelIndicator('code_of_conduct_missing_required_document', __('Code of conduct required for 7+ workers but approved document is missing'), $codeOfConductMissingRequiredDocument, 'high'),
                 $this->panelIndicator('code_of_conduct_acknowledgments_pending', __('Workers without code of conduct acknowledgment'), $codeOfConductAcknowledgmentsPending, 'high'),
                 $this->panelIndicator('termination_notice_non_compliant', __('Approved terminations with legal notice non-compliance'), $terminationNoticeNonCompliant, 'high'),
@@ -723,6 +772,60 @@ class MozambiqueHrComplianceDashboardService
         ];
     }
 
+    private function policyDocumentPatterns(): array
+    {
+        return [
+            'internal_regulation' => ['regulamento interno', 'internal regulation'],
+            'code_of_conduct' => ['code of conduct', 'codigo de conduta', 'código de conduta', 'boa conduta'],
+            'anti_harassment_policy' => ['anti assedio', 'anti assédio', 'anti-harassment', 'harassment policy', 'assedio', 'assédio'],
+            'disciplinary_policy' => ['politica disciplinar', 'política disciplinar', 'disciplinary policy'],
+            'vacation_policy' => ['politica de ferias', 'política de férias', 'vacation policy', 'ferias anuais', 'férias anuais'],
+            'data_protection_policy' => ['protecao de dados', 'proteção de dados', 'data protection', 'privacy policy'],
+            'equipment_use_policy' => ['uso de equipamentos', 'uso de equipamento', 'equipment use policy'],
+            'remote_work_policy' => ['trabalho remoto', 'teletrabalho', 'remote work policy'],
+        ];
+    }
+
+    /**
+     * @param array<int, HrmDocument> $documents
+     * @param array<string, array<int, string>> $patternsByPolicy
+     * @return array<string, array<int, int>>
+     */
+    private function matchPolicyDocuments(array $documents, array $patternsByPolicy): array
+    {
+        $matches = [];
+        foreach (array_keys($patternsByPolicy) as $policyKey) {
+            $matches[$policyKey] = [];
+        }
+
+        foreach ($documents as $document) {
+            $text = mb_strtolower(trim((string) $document->title . ' ' . (string) ($document->description ?? '')));
+            if ($text === '') {
+                continue;
+            }
+
+            foreach ($patternsByPolicy as $policyKey => $patterns) {
+                foreach ($patterns as $pattern) {
+                    $needle = mb_strtolower(trim((string) $pattern));
+                    if ($needle === '') {
+                        continue;
+                    }
+
+                    if (str_contains($text, $needle)) {
+                        $matches[$policyKey][] = (int) $document->id;
+                        break;
+                    }
+                }
+            }
+        }
+
+        foreach ($matches as $policyKey => $ids) {
+            $matches[$policyKey] = array_values(array_unique(array_map(static fn ($id): int => (int) $id, $ids)));
+        }
+
+        return $matches;
+    }
+
     private function countWeeklyOvertimeBreaches(int $companyId, float $weeklyLimit): int
     {
         if ($weeklyLimit <= 0) {
@@ -732,6 +835,7 @@ class MozambiqueHrComplianceDashboardService
         $weeklyTotals = [];
 
         $overtimes = Overtime::query()
+            ->active()
             ->where('created_by', $companyId)
             ->get(['employee_id', 'hours', 'total_days', 'start_date', 'end_date']);
 
@@ -759,6 +863,7 @@ class MozambiqueHrComplianceDashboardService
         $windowEnd = $today->toDateString();
 
         $attendances = Attendance::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereNotNull('clock_in')
             ->whereDate('date', '>=', $windowStart)
@@ -815,6 +920,7 @@ class MozambiqueHrComplianceDashboardService
         $monthEnd = $today->copy()->endOfMonth();
 
         $absencesByEmployee = Attendance::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('status', 'absent')
             ->where(function ($query): void {

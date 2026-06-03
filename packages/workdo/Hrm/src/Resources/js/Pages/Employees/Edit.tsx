@@ -743,9 +743,26 @@ export default function Edit() {
                                                             variant="destructive"
                                                             size="sm"
                                                             onClick={() => {
-                                                                if (confirm(t('Are you sure you want to delete this document?'))) {
-                                                                    router.delete(route('hrm.employee-documents.destroy', [employee.id, doc.id]));
+                                                                if (!confirm(t('Are you sure you want to remove this document?'))) {
+                                                                    return;
                                                                 }
+
+                                                                const reasonInput = window.prompt(t('Provide cancellation reason (min 5 characters):'));
+                                                                if (reasonInput === null) {
+                                                                    return;
+                                                                }
+
+                                                                const cancellationReason = reasonInput.trim();
+                                                                if (cancellationReason.length < 5) {
+                                                                    window.alert(t('Cancellation reason must contain at least 5 characters.'));
+                                                                    return;
+                                                                }
+
+                                                                router.delete(route('hrm.employee-documents.destroy', [employee.id, doc.id]), {
+                                                                    data: {
+                                                                        cancellation_reason: cancellationReason,
+                                                                    },
+                                                                });
                                                             }}
                                                         >
                                                             <Trash2 className="h-4 w-4" />

@@ -21,6 +21,10 @@ class LeaveApplication extends Model
         'reason',
         'attachment',
         'status',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
         'approver_comment',
         'approved_at',
         'employee_id',  
@@ -38,9 +42,18 @@ class LeaveApplication extends Model
             'legal_reference_date' => 'date',
             'compensated_days' => 'integer',
             'effective_rest_days' => 'integer',
+            'is_cancelled' => 'boolean',
+            'cancelled_at' => 'datetime',
             'attachment' => 'string',
             'approved_at' => 'datetime'
         ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
     }
 
 
@@ -58,5 +71,10 @@ class LeaveApplication extends Model
     public function approved_by()
     {
         return $this->belongsTo(User::class,'approved_by','id');
+    }
+
+    public function cancelledBy()
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 }

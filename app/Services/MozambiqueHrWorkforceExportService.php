@@ -6,11 +6,15 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Workdo\Contract\Models\Contract;
+use Workdo\Hrm\Models\AnnualLeavePlan;
+use Workdo\Hrm\Models\Attendance;
 use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
+use Workdo\Hrm\Models\LeaveType;
 use Workdo\Hrm\Models\EmployeeProbationProfile;
 use Workdo\Hrm\Models\EmployeeSocialSecurityProfile;
 use Workdo\Hrm\Models\LeaveApplication;
+use Workdo\Hrm\Models\Shift;
 use Workdo\Hrm\Models\PayrollEntry;
 
 class MozambiqueHrWorkforceExportService
@@ -234,6 +238,295 @@ class MozambiqueHrWorkforceExportService
         ];
     }
 
+    public function importAttendanceCsv(int $companyId, string $filePath, ?int $actorUserId = null): array
+    {
+        $handle = fopen($filePath, 'r');
+        if (!$handle) {
+            return [
+                'processed' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => [['line' => 0, 'message' => __('Unable to open CSV file.')]],
+            ];
+        }
+
+        $header = fgetcsv($handle);
+        if (!$header || !is_array($header)) {
+            fclose($handle);
+
+            return [
+                'processed' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => [['line' => 0, 'message' => __('CSV header is missing or invalid.')]],
+            ];
+        }
+
+        $normalizedHeader = $this->normalizeHeader($header);
+        $line = 1;
+        $processed = 0;
+        $updated = 0;
+        $skipped = 0;
+        $errors = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $line++;
+
+            if (!is_array($row) || $this->isCsvRowEmpty($row)) {
+                continue;
+            }
+
+            $processed++;
+            $data = $this->mapRowToAssociative($normalizedHeader, $row);
+            $employee = $this->findEmployeeForImport($companyId, $data);
+
+            if (!$employee || (int) ($employee->user_id ?? 0) <= 0) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => __('Employee not found for supplied identifiers.')];
+                continue;
+            }
+
+            $date = $this->toDateOrNull($data['attendance_date'] ?? $data['date'] ?? null);
+            $clockIn = $this->toDateTimeOrNull($data['clock_in'] ?? null);
+            $clockOut = $this->toDateTimeOrNull($data['clock_out'] ?? null);
+            if ($date === null || $clockIn === null || $clockOut === null) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => __('Attendance date, clock in and clock out are required.')];
+                continue;
+            }
+
+            try {
+                $breakHours = $this->toFloatOrDefault($data['break_hours'] ?? $data['break_hour'] ?? null, 0.0);
+                $totalHours = $this->calculateWorkedHours($clockIn, $clockOut, $breakHours);
+                $status = $this->normalizeAttendanceStatus($data['status'] ?? null, $totalHours);
+                $isJustified = $this->toBoolOrNull($data['is_justified'] ?? $data['justified_absence'] ?? null);
+                $absenceCategory = $this->normalizeAbsenceCategory($data['absence_category'] ?? null);
+                $sourceChannel = $this->normalizeAttendanceSourceChannel($data['source_channel'] ?? null);
+                $shiftId = $this->resolveShiftId($employee, $companyId, $data);
+
+                if ($shiftId === null) {
+                    $skipped++;
+                    $errors[] = ['line' => $line, 'message' => __('Shift could not be resolved for attendance row.')];
+                    continue;
+                }
+
+                $attendance = Attendance::query()
+                    ->where('created_by', $companyId)
+                    ->where('employee_id', (int) $employee->user_id)
+                    ->whereDate('date', $date)
+                    ->first();
+
+                $payload = [
+                    'employee_id' => (int) $employee->user_id,
+                    'shift_id' => $shiftId,
+                    'date' => $date,
+                    'clock_in' => $clockIn,
+                    'clock_out' => $clockOut,
+                    'break_hour' => $breakHours,
+                    'total_hour' => $totalHours,
+                    'overtime_hours' => $this->toFloatOrDefault($data['overtime_hours'] ?? null, 0.0),
+                    'overtime_amount' => $this->toFloatOrDefault($data['overtime_amount'] ?? null, 0.0),
+                    'status' => $status,
+                    'is_justified' => $isJustified,
+                    'absence_category' => $absenceCategory,
+                    'notes' => $this->stringOrNull($data['notes'] ?? null),
+                    'source_channel' => $sourceChannel,
+                    'source_device_id' => $this->stringOrNull($data['source_device_id'] ?? null),
+                    'source_device_label' => $this->stringOrNull($data['source_device_label'] ?? null),
+                    'source_reference' => $this->stringOrNull($data['source_reference'] ?? null),
+                    'creator_id' => $actorUserId ?: $employee->creator_id,
+                    'created_by' => $companyId,
+                ];
+
+                if ($attendance) {
+                    if ((bool) ($attendance->is_cancelled ?? false)) {
+                        $attendance->is_cancelled = false;
+                        $attendance->cancelled_at = null;
+                        $attendance->cancelled_by = null;
+                        $attendance->cancellation_reason = null;
+                    }
+                    $attendance->fill($payload);
+                    $attendance->save();
+                } else {
+                    Attendance::query()->create($payload);
+                }
+
+                $updated++;
+            } catch (\Throwable $exception) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => $exception->getMessage()];
+            }
+        }
+
+        fclose($handle);
+
+        return [
+            'processed' => $processed,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 50),
+        ];
+    }
+
+    public function importAnnualLeavePlansCsv(int $companyId, string $filePath, ?int $actorUserId = null): array
+    {
+        $handle = fopen($filePath, 'r');
+        if (!$handle) {
+            return [
+                'processed' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => [['line' => 0, 'message' => __('Unable to open CSV file.')]],
+            ];
+        }
+
+        $header = fgetcsv($handle);
+        if (!$header || !is_array($header)) {
+            fclose($handle);
+
+            return [
+                'processed' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => [['line' => 0, 'message' => __('CSV header is missing or invalid.')]],
+            ];
+        }
+
+        $normalizedHeader = $this->normalizeHeader($header);
+        $line = 1;
+        $processed = 0;
+        $updated = 0;
+        $skipped = 0;
+        $errors = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $line++;
+
+            if (!is_array($row) || $this->isCsvRowEmpty($row)) {
+                continue;
+            }
+
+            $processed++;
+            $data = $this->mapRowToAssociative($normalizedHeader, $row);
+            $employee = $this->findEmployeeForImport($companyId, $data);
+
+            if (!$employee || (int) ($employee->user_id ?? 0) <= 0) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => __('Employee not found for supplied identifiers.')];
+                continue;
+            }
+
+            $leaveType = $this->resolveLeaveTypeForImport($companyId, $data);
+            if (!$leaveType) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => __('Annual leave type not found for import row.')];
+                continue;
+            }
+
+            $plannedStartDate = $this->toDateOrNull($data['planned_start_date'] ?? $data['start_date'] ?? null);
+            $plannedEndDate = $this->toDateOrNull($data['planned_end_date'] ?? $data['end_date'] ?? null);
+            if ($plannedStartDate === null || $plannedEndDate === null) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => __('Planned start and end dates are required.')];
+                continue;
+            }
+
+            try {
+                $startAt = Carbon::parse($plannedStartDate)->startOfDay();
+                $endAt = Carbon::parse($plannedEndDate)->startOfDay();
+                if ($endAt->lt($startAt)) {
+                    [$startAt, $endAt] = [$endAt, $startAt];
+                }
+
+                $leaveYear = (int) ($data['leave_year'] ?? $startAt->year);
+                if ($leaveYear <= 0) {
+                    $leaveYear = (int) $startAt->year;
+                }
+
+                $plannedDays = max(1, (int) ($startAt->diffInDays($endAt) + 1));
+                $status = $this->normalizeAnnualLeavePlanStatus($data['status'] ?? null);
+                $managerApprovedAt = $this->toDateTimeOrNull($data['manager_approved_at'] ?? null);
+                $hrApprovedAt = $this->toDateTimeOrNull($data['hr_approved_at'] ?? null);
+                $rejectedAt = $this->toDateTimeOrNull($data['rejected_at'] ?? null);
+
+                $plan = AnnualLeavePlan::query()
+                    ->where('created_by', $companyId)
+                    ->where('employee_id', (int) $employee->user_id)
+                    ->where('leave_type_id', (int) $leaveType->id)
+                    ->where('leave_year', $leaveYear)
+                    ->whereDate('planned_start_date', $startAt->toDateString())
+                    ->whereDate('planned_end_date', $endAt->toDateString())
+                    ->first();
+
+                $payload = [
+                    'employee_id' => (int) $employee->user_id,
+                    'leave_type_id' => (int) $leaveType->id,
+                    'leave_year' => $leaveYear,
+                    'planned_start_date' => $startAt->toDateString(),
+                    'planned_end_date' => $endAt->toDateString(),
+                    'planned_days' => $plannedDays,
+                    'status' => $status,
+                    'notes' => $this->stringOrNull($data['notes'] ?? null),
+                    'creator_id' => $actorUserId ?: $employee->creator_id,
+                    'created_by' => $companyId,
+                ];
+
+                if ($status === AnnualLeavePlan::STATUS_PENDING_HR || $status === AnnualLeavePlan::STATUS_APPROVED) {
+                    $payload['manager_approved_by'] = $actorUserId ?: $employee->creator_id;
+                    $payload['manager_approved_at'] = $managerApprovedAt ?: now();
+                } else {
+                    $payload['manager_approved_by'] = null;
+                    $payload['manager_approved_at'] = null;
+                }
+
+                if ($status === AnnualLeavePlan::STATUS_APPROVED) {
+                    $payload['hr_approved_by'] = $actorUserId ?: $employee->creator_id;
+                    $payload['hr_approved_at'] = $hrApprovedAt ?: now();
+                } else {
+                    $payload['hr_approved_by'] = null;
+                    $payload['hr_approved_at'] = null;
+                }
+
+                if ($status === AnnualLeavePlan::STATUS_REJECTED) {
+                    $payload['rejected_by'] = $actorUserId ?: $employee->creator_id;
+                    $payload['rejected_at'] = $rejectedAt ?: now();
+                    $payload['rejection_reason'] = $this->stringOrNull($data['rejection_reason'] ?? null) ?: __('Imported rejection');
+                } else {
+                    $payload['rejected_by'] = null;
+                    $payload['rejected_at'] = null;
+                    $payload['rejection_reason'] = null;
+                }
+
+                if ($plan) {
+                    if ((bool) ($plan->is_cancelled ?? false)) {
+                        $plan->is_cancelled = false;
+                        $plan->cancelled_at = null;
+                        $plan->cancelled_by = null;
+                        $plan->cancellation_reason = null;
+                    }
+                    $plan->fill($payload);
+                    $plan->save();
+                } else {
+                    AnnualLeavePlan::query()->create($payload);
+                }
+
+                $updated++;
+            } catch (\Throwable $exception) {
+                $skipped++;
+                $errors[] = ['line' => $line, 'message' => $exception->getMessage()];
+            }
+        }
+
+        fclose($handle);
+
+        return [
+            'processed' => $processed,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'errors' => array_slice($errors, 0, 50),
+        ];
+    }
+
     private function resolveReferenceDate(?string $referenceDate): Carbon
     {
         if ($referenceDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', $referenceDate)) {
@@ -250,6 +543,7 @@ class MozambiqueHrWorkforceExportService
         }
 
         $approvedLeaves = LeaveApplication::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('status', 'approved')
             ->whereIn('employee_id', $employeeUserIds->all())
@@ -612,6 +906,188 @@ class MozambiqueHrWorkforceExportService
             'created_by' => $companyId,
         ]);
         $profile->save();
+    }
+
+    private function resolveShiftId(Employee $employee, int $companyId, array $data = []): ?int
+    {
+        $rowShiftId = (int) ($data['shift_id'] ?? 0);
+        if (
+            $rowShiftId > 0
+            && Shift::query()->where('id', $rowShiftId)->where('created_by', $companyId)->exists()
+        ) {
+            return $rowShiftId;
+        }
+
+        $rowShiftName = trim((string) ($data['shift_name'] ?? ''));
+        if ($rowShiftName !== '') {
+            $matchedShift = Shift::query()
+                ->where('created_by', $companyId)
+                ->whereRaw('LOWER(shift_name) = ?', [strtolower($rowShiftName)])
+                ->value('id');
+
+            if ((int) $matchedShift > 0) {
+                return (int) $matchedShift;
+            }
+        }
+
+        $rawShift = $employee->getRawOriginal('shift');
+        $shiftId = (int) ($rawShift ?: $employee->getAttribute('shift'));
+
+        if (
+            $shiftId > 0
+            && Shift::query()->where('id', $shiftId)->where('created_by', $companyId)->exists()
+        ) {
+            return $shiftId;
+        }
+
+        $fallbackShiftId = Shift::query()
+            ->where('created_by', $companyId)
+            ->orderBy('id')
+            ->value('id');
+
+        return (int) $fallbackShiftId > 0 ? (int) $fallbackShiftId : null;
+    }
+
+    private function resolveLeaveTypeForImport(int $companyId, array $data): ?LeaveType
+    {
+        $leaveTypeId = (int) ($data['leave_type_id'] ?? 0);
+        if ($leaveTypeId > 0) {
+            $leaveType = LeaveType::query()
+                ->where('id', $leaveTypeId)
+                ->where('created_by', $companyId)
+                ->first();
+
+            if ($leaveType && ($leaveType->legal_code === null || $leaveType->legal_code === 'annual')) {
+                return $leaveType;
+            }
+        }
+
+        $leaveTypeName = trim((string) ($data['leave_type'] ?? $data['leave_type_name'] ?? ''));
+        if ($leaveTypeName !== '') {
+            $leaveType = LeaveType::query()
+                ->where('created_by', $companyId)
+                ->whereRaw('LOWER(name) = ?', [strtolower($leaveTypeName)])
+                ->first();
+
+            if ($leaveType && ($leaveType->legal_code === null || $leaveType->legal_code === 'annual')) {
+                return $leaveType;
+            }
+        }
+
+        return LeaveType::query()
+            ->where('created_by', $companyId)
+            ->where(function ($query): void {
+                $query->whereNull('legal_code')
+                    ->orWhere('legal_code', 'annual');
+            })
+            ->orderBy('id')
+            ->first();
+    }
+
+    private function normalizeAnnualLeavePlanStatus(?string $value): string
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        return match ($normalized) {
+            'pending hr', 'pending_hr', 'pending-hr' => AnnualLeavePlan::STATUS_PENDING_HR,
+            'approved', 'approve' => AnnualLeavePlan::STATUS_APPROVED,
+            'rejected', 'reject' => AnnualLeavePlan::STATUS_REJECTED,
+            default => AnnualLeavePlan::STATUS_PENDING_MANAGER,
+        };
+    }
+
+    private function normalizeAttendanceStatus(?string $value, float $totalHours): string
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        if (in_array($normalized, ['present', 'absent', 'half day', 'half_day', 'half-day'], true)) {
+            return in_array($normalized, ['half day', 'half_day', 'half-day'], true)
+                ? 'half day'
+                : $normalized;
+        }
+
+        if ($totalHours >= 8.0) {
+            return 'present';
+        }
+
+        if ($totalHours >= 4.0) {
+            return 'half day';
+        }
+
+        return 'absent';
+    }
+
+    private function normalizeAbsenceCategory(?string $value): ?string
+    {
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        $allowed = [
+            'unjustified',
+            'medical',
+            'work_accident',
+            'family_assistance',
+            'legal_leave',
+            'manager_authorized',
+            'public_service',
+            'other',
+        ];
+
+        return in_array($normalized, $allowed, true) ? $normalized : null;
+    }
+
+    private function normalizeAttendanceSourceChannel(?string $value): string
+    {
+        $normalized = strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return 'manual';
+        }
+
+        $allowed = ['manual', 'biometric', 'card', 'mobile', 'api', 'import'];
+
+        return in_array($normalized, $allowed, true) ? $normalized : 'import';
+    }
+
+    private function calculateWorkedHours(string $clockIn, string $clockOut, float $breakHours): float
+    {
+        $start = Carbon::parse($clockIn);
+        $end = Carbon::parse($clockOut);
+        if ($end->lt($start)) {
+            $end->addDay();
+        }
+
+        $minutes = max(0, $start->diffInMinutes($end) - (int) round($breakHours * 60));
+
+        return round($minutes / 60, 2);
+    }
+
+    private function toDateTimeOrNull(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d H:i:s');
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function toFloatOrDefault(mixed $value, float $default = 0.0): float
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return $default;
+        }
+
+        if (!is_numeric($value)) {
+            return $default;
+        }
+
+        return (float) $value;
     }
 
     private function toDateOrNull(?string $value): ?string

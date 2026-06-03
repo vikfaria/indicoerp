@@ -409,8 +409,8 @@ class DashboardController extends Controller
             return [];
         }
 
-        $start = Carbon::createFromFormat('Y-m', $months[0]['period'])->startOfMonth()->toDateTimeString();
-        $end = Carbon::createFromFormat('Y-m', $months[count($months) - 1]['period'])->endOfMonth()->toDateTimeString();
+        $start = Carbon::createFromFormat('Y-m-d', $months[0]['period'] . '-01')->startOfMonth()->toDateTimeString();
+        $end = Carbon::createFromFormat('Y-m-d', $months[count($months) - 1]['period'] . '-01')->endOfMonth()->toDateTimeString();
 
         $query = DB::table($table)->whereBetween('created_at', [$start, $end]);
         foreach ($where as $column => $value) {

@@ -47,7 +47,12 @@ class LeaveBalanceController extends Controller
                 ];
 
                 foreach ($leaveTypes as $leaveType) {
-                    $usedLeaves = LeaveApplication::where('employee_id', $employee->id)->where('leave_type_id', $leaveType->id)->where('status', 'approved')->whereYear('start_date', $currentYear)->sum('total_days');
+                    $usedLeaves = LeaveApplication::where('employee_id', $employee->id)
+                        ->active()
+                        ->where('leave_type_id', $leaveType->id)
+                        ->where('status', 'approved')
+                        ->whereYear('start_date', $currentYear)
+                        ->sum('total_days');
                     $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
                         creatorId(),
                         (int) $employee->id,

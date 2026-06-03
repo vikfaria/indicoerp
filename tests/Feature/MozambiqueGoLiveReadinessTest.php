@@ -67,6 +67,7 @@ class MozambiqueGoLiveReadinessTest extends TestCase
                     'accounting_local_validation_completed',
                     'accounting_real_cases_validated',
                     'e2e_scenarios_completed',
+                    'backup_restore_verified',
                     'formal_approval_granted',
                     'recommended_for_launch',
                 ],
@@ -87,6 +88,9 @@ class MozambiqueGoLiveReadinessTest extends TestCase
                     'e2e_pos_flow_status',
                     'e2e_payroll_flow_status',
                     'e2e_completed_at',
+                    'backup_restore_status',
+                    'backup_restore_tested_at',
+                    'backup_restore_evidence_ref',
                     'go_live_approved',
                     'go_live_approved_at',
                 ],
@@ -115,6 +119,10 @@ class MozambiqueGoLiveReadinessTest extends TestCase
             'e2e_pos_flow_status' => 'completed',
             'e2e_payroll_flow_status' => 'completed',
             'e2e_completed_at' => now()->toDateString(),
+            'backup_restore_status' => 'completed',
+            'backup_restore_tested_at' => now()->toDateString(),
+            'backup_restore_evidence_ref' => 'backup_indicoerp_20260603.manifest',
+            'backup_restore_notes' => 'Restore testado em base temporaria antes do go-live.',
             'go_live_approved' => 'on',
             'go_live_approved_at' => now()->toDateString(),
         ];
@@ -130,6 +138,8 @@ class MozambiqueGoLiveReadinessTest extends TestCase
             ->assertJsonPath('data.formal_go_live_criteria.accounting_local_validation_completed', true)
             ->assertJsonPath('data.attestations.e2e_sales_flow_status', 'completed')
             ->assertJsonPath('data.formal_go_live_criteria.e2e_scenarios_completed', true)
+            ->assertJsonPath('data.attestations.backup_restore_status', 'completed')
+            ->assertJsonPath('data.formal_go_live_criteria.backup_restore_verified', true)
             ->assertJsonPath('data.attestations.go_live_approved', 'on');
 
         $this->assertDatabaseHas('settings', [
@@ -158,6 +168,36 @@ class MozambiqueGoLiveReadinessTest extends TestCase
                 ->where('value', 'completed')
                 ->exists()
         );
+
+        $this->assertTrue(
+            Setting::where('created_by', $company->id)
+                ->where('key', 'mz_go_live_backup_restore_evidence_ref')
+                ->where('value', 'backup_indicoerp_20260603.manifest')
+            ->exists()
+        );
+    }
+
+    public function test_go_live_readiness_fails_when_saft_xsd_is_required_but_missing(): void
+    {
+        config([
+            'sce.saft.require_xsd_validation' => true,
+            'sce.saft.xsd_path' => '',
+        ]);
+
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+
+        $response = $this->actingAs($company)->get(route('account.reports.mozambique-go-live-readiness'));
+
+        $response->assertOk();
+
+        $check = collect($response->json('checks'))
+            ->firstWhere('code', 'exports.saft_xsd_validation_config');
+
+        $this->assertNotNull($check);
+        $this->assertSame('fail', $check['status']);
+        $this->assertTrue($check['critical']);
+        $this->assertFalse($response->json('formal_go_live_criteria.critical_checks_passed'));
     }
 
     public function test_pilot_company_registry_crud_requires_permission(): void

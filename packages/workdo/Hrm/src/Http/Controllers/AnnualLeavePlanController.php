@@ -91,6 +91,10 @@ class AnnualLeavePlanController extends Controller
             return redirect()->back()->with('error', __('Approved annual leave plans cannot be edited.'));
         }
 
+        if ((bool) ($annualLeavePlan->is_cancelled ?? false)) {
+            return redirect()->back()->with('error', __('Cancelled annual leave plans cannot be edited.'));
+        }
+
         $validated = $request->validated();
 
         if (!$this->employeeBelongsToCompany((int) $validated['employee_id'])) {
@@ -163,6 +167,10 @@ class AnnualLeavePlanController extends Controller
             return redirect()->back()->with('error', __('Permission denied'));
         }
 
+        if ((bool) ($annualLeavePlan->is_cancelled ?? false)) {
+            return redirect()->back()->with('error', __('Cancelled annual leave plans cannot be processed.'));
+        }
+
         $validated = $request->validated();
         $action = (string) $validated['action'];
 
@@ -233,12 +241,25 @@ class AnnualLeavePlanController extends Controller
         }
 
         if ($annualLeavePlan->status === AnnualLeavePlan::STATUS_APPROVED) {
-            return redirect()->back()->with('error', __('Approved annual leave plans cannot be deleted.'));
+            return redirect()->back()->with('error', __('Approved annual leave plans cannot be cancelled.'));
         }
 
-        $annualLeavePlan->delete();
+        if ((bool) ($annualLeavePlan->is_cancelled ?? false)) {
+            return redirect()->back()->with('error', __('Annual leave plan is already cancelled.'));
+        }
 
-        return redirect()->back()->with('success', __('Annual leave plan deleted successfully.'));
+        $validated = request()->validate([
+            'cancellation_reason' => 'required|string|min:5|max:1000',
+        ]);
+
+        $annualLeavePlan->update([
+            'is_cancelled' => true,
+            'cancelled_at' => now(),
+            'cancelled_by' => Auth::id(),
+            'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+        ]);
+
+        return redirect()->back()->with('success', __('Annual leave plan cancelled successfully.'));
     }
 
     private function canAccessPlan(AnnualLeavePlan $annualLeavePlan): bool
@@ -262,6 +283,7 @@ class AnnualLeavePlanController extends Controller
     private function hasOverlap(int $employeeUserId, string $startDate, string $endDate, ?int $excludeId): bool
     {
         return AnnualLeavePlan::query()
+            ->active()
             ->where('created_by', creatorId())
             ->where('employee_id', $employeeUserId)
             ->whereIn('status', [
@@ -298,6 +320,7 @@ class AnnualLeavePlanController extends Controller
         }
 
         $alreadyPlanned = (int) AnnualLeavePlan::query()
+            ->active()
             ->where('created_by', creatorId())
             ->where('employee_id', $employeeUserId)
             ->where('leave_type_id', $leaveTypeId)

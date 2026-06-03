@@ -30,6 +30,7 @@ class AttendanceController extends Controller
     {
         if (Auth::user()->can('manage-attendances')) {
             $attendances = Attendance::query()
+                ->active()
                 ->with(['user', 'shift'])
                 ->where(function ($q) {
                     if (Auth::user()->can('manage-any-attendances')) {
@@ -86,6 +87,7 @@ class AttendanceController extends Controller
 
             // Check if attendance already exists for this employee and date
             $exists = Attendance::where('employee_id', $validated['employee_id'])
+                ->active()
                 ->where('date', $validated['date'])
                 ->where('created_by', creatorId())
                 ->exists();
@@ -163,6 +165,10 @@ class AttendanceController extends Controller
                 return redirect()->route('hrm.attendances.index')->with('error', __('Permission denied'));
             }
 
+            if ((bool) ($attendance->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled attendance records cannot be edited.'));
+            }
+
             $validated = $request->validated();
             $employee = $this->resolveScopedEmployee((int) $validated['employee_id']);
             if (!$employee) {
@@ -176,6 +182,7 @@ class AttendanceController extends Controller
             if ($attendance->employee_id != $validated['employee_id'] || $attendance->date != $validated['date']) {
 
                 $exists = Attendance::where('employee_id', $validated['employee_id'])
+                    ->active()
                     ->where('date', $validated['date'])
                     ->where('id', '!=', $attendance->id)
                     ->where('created_by', creatorId())
@@ -250,10 +257,23 @@ class AttendanceController extends Controller
                 return redirect()->route('hrm.attendances.index')->with('error', __('Permission denied'));
             }
 
-            DestroyAttendance::dispatch($attendance);
-            $attendance->delete();
+            if ((bool) ($attendance->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Attendance is already cancelled.'));
+            }
 
-            return redirect()->back()->with('success', __('The attendance has been deleted.'));
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyAttendance::dispatch($attendance);
+            $attendance->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Attendance cancelled successfully.'));
         } else {
             return redirect()->route('hrm.attendances.index')->with('error', __('Permission denied'));
         }
@@ -406,6 +426,7 @@ class AttendanceController extends Controller
 
             // First check for any pending clock out and complete it
             $pendingClockOuts = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->whereNull('clock_out')
                 ->where('created_by', creatorId())
                 ->get();
@@ -449,6 +470,7 @@ class AttendanceController extends Controller
 
             // Check if already clocked in today
             $existingAttendance = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->where('date', $today)
                 ->where('created_by', creatorId())
                 ->first();
@@ -505,6 +527,7 @@ class AttendanceController extends Controller
             $employeeId = Auth::id();
 
             $attendance = Attendance::where('employee_id', $employeeId)
+                ->active()
                 ->where('date', $today)
                 ->where('created_by', creatorId())
                 ->first();
@@ -512,6 +535,7 @@ class AttendanceController extends Controller
             // If no today's attendance, check for pending attendance from previous days
             if (!$attendance || !$attendance->clock_in) {
                 $attendance = Attendance::where('employee_id', $employeeId)
+                    ->active()
                     ->whereNull('clock_out')
                     ->where('created_by', creatorId())
                     ->orderBy('clock_in', 'desc')
@@ -561,6 +585,7 @@ class AttendanceController extends Controller
         $employeeId = Auth::id();
 
         $attendance = Attendance::where('employee_id', $employeeId)
+            ->active()
             ->where('date', $today)
             ->where('created_by', creatorId())
             ->first();
@@ -590,6 +615,7 @@ class AttendanceController extends Controller
         }
 
         $isOnLeave = LeaveApplication::where('created_by', creatorId())
+            ->active()
             ->where('employee_id', $employeeUserId)
             ->where('status', 'approved')
             ->whereDate('start_date', '<=', $attendanceDate->toDateString())
@@ -722,6 +748,7 @@ class AttendanceController extends Controller
         $targetDate = Carbon::parse($date)->toDateString();
 
         return LeaveApplication::query()
+            ->active()
             ->where('created_by', creatorId())
             ->where('employee_id', $employeeUserId)
             ->where('status', 'approved')

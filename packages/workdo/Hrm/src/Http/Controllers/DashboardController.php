@@ -53,6 +53,7 @@ class DashboardController extends Controller
 
         // Present Today (employees with attendance today)
         $presentToday = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('date', $today)
             ->whereNotNull('clock_in')
             ->distinct('employee_id')
@@ -60,6 +61,7 @@ class DashboardController extends Controller
 
         // Absent Today (employees with attendance status 'absent' today)
         $absentToday = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('date', $today)
             ->where('status', 'absent')
             ->distinct('employee_id')
@@ -67,6 +69,7 @@ class DashboardController extends Controller
 
         // On Leave (approved leave applications for today)
         $onLeave = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('status', 'approved')
             ->where('start_date', '<=', $today)
             ->where('end_date', '>=', $today)
@@ -76,6 +79,7 @@ class DashboardController extends Controller
         $yesterday = Carbon::yesterday();
 
         $absentYesterday = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('date', $yesterday)
             ->where('status', 'absent')
             ->distinct('employee_id')
@@ -83,6 +87,7 @@ class DashboardController extends Controller
 
         // Pending leave applications (current month)
         $pendingLeaves = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('status', 'pending')
             ->whereMonth('start_date', $today->month)
             ->whereYear('start_date', $today->year)
@@ -132,6 +137,7 @@ class DashboardController extends Controller
 
         // Employees Without Attendance Today
         $attendedEmployeeIds = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('date', $today)
             ->pluck('employee_id')
             ->toArray();
@@ -143,6 +149,7 @@ class DashboardController extends Controller
 
         // Employees on Leave Today
         $leavesToday = LeaveApplication::with('employee')->where('created_by', $creatorId)
+            ->active()
             ->where('status', 'approved')
             ->where('start_date', '<=', $today)
             ->where('end_date', '>=', $today)
@@ -239,6 +246,7 @@ class DashboardController extends Controller
 
         // Recent Leave Applications
         $recentLeaveApplications = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->with(['employee', 'leave_type'])
             ->latest()
             ->take(5)
@@ -305,6 +313,7 @@ class DashboardController extends Controller
 
         // My Attendance (this month)
         $myAttendance = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->whereMonth('date', $currentMonth)
             ->whereYear('date', $currentYear)
@@ -315,6 +324,7 @@ class DashboardController extends Controller
 
         // Total Approved Leave (this year)
         $totalApprovedLeaveYear = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('status', 'approved')
             ->whereYear('start_date', $currentYear)
@@ -322,6 +332,7 @@ class DashboardController extends Controller
 
         // Total Approved Leave (this month)
         $totalApprovedLeaveMonth = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('status', 'approved')
             ->whereMonth('start_date', $currentMonth)
@@ -330,6 +341,7 @@ class DashboardController extends Controller
 
         // Pending Requests
         $pendingRequests = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('status', 'pending')
             ->whereMonth('start_date', $currentMonth)
@@ -338,6 +350,7 @@ class DashboardController extends Controller
 
         // Total Absent Days (this month)
         $totalAbsentDays = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('status', 'absent')
             ->whereMonth('date', $currentMonth)
@@ -438,6 +451,7 @@ class DashboardController extends Controller
 
         // Recent Leave Applications for Employee
         $recentLeaveApplications = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->with('leave_type')
             ->latest()
@@ -490,6 +504,7 @@ class DashboardController extends Controller
         $shift = $employee ? Shift::find($employee->shift) : null;
         // Check for pending attendance (including night shifts)
         $pendingAttendance = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
@@ -497,6 +512,7 @@ class DashboardController extends Controller
             ->first();
         // Today's Attendance for Clock In/Out
         $todayAttendance = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('date', $today)
             ->first();
@@ -508,6 +524,7 @@ class DashboardController extends Controller
         $isWorkingDay = in_array($todayDayIndex, $workingDaysArray);
         
         $isOnLeave = LeaveApplication::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->where('status', 'approved')
             ->where('start_date', '<=', $today)
@@ -564,6 +581,7 @@ class DashboardController extends Controller
 
         // Recent Attendance Records
         $recentAttendance = Attendance::where('created_by', $creatorId)
+            ->active()
             ->where('employee_id', $userId)
             ->orderBy('date', 'desc')
             ->take(5)

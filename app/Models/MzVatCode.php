@@ -37,11 +37,14 @@ class MzVatCode extends Model
     }
 
     /**
-     * Check if this VAT code is taxable (has a rate > 0).
+     * Check if this VAT code is taxable on a document line.
+     *
+     * Special taxable codes such as import, digital and reverse charge
+     * also carry a rate and therefore should participate in VAT calculations.
      */
     public function isTaxable(): bool
     {
-        return $this->rate > 0 && $this->type === 'normal';
+        return $this->rate > 0 && !in_array($this->type, ['exempt', 'not_subject', 'zero'], true);
     }
 
     /**
@@ -57,6 +60,7 @@ class MzVatCode extends Model
             ['code' => 'NSU', 'description' => 'Não sujeito a IVA', 'rate' => 0.00, 'type' => 'not_subject', 'saft_tax_code' => 'NS'],
             ['code' => 'AUT', 'description' => 'Autoliquidação / Reverse Charge', 'rate' => 16.00, 'type' => 'reverse_charge', 'saft_tax_code' => 'AUT'],
             ['code' => 'IMP', 'description' => 'IVA Importação', 'rate' => 16.00, 'type' => 'import', 'saft_tax_code' => 'IMP'],
+            ['code' => 'digital_services', 'description' => 'IVA Serviços Digitais', 'rate' => 16.00, 'type' => 'digital', 'saft_tax_code' => 'DIG'],
         ];
 
         foreach ($codes as $code) {

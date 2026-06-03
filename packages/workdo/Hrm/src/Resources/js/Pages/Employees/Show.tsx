@@ -704,7 +704,25 @@ export default function Show() {
                                                             <Button
                                                                 variant="destructive"
                                                                 size="sm"
-                                                                onClick={() => router.delete(route('hrm.employees.dependents.destroy', [employee.id, dependent.id]), { preserveScroll: true })}
+                                                                onClick={() => {
+                                                                    const reasonInput = window.prompt(t('Provide cancellation reason (min 5 characters):'));
+                                                                    if (reasonInput === null) {
+                                                                        return;
+                                                                    }
+
+                                                                    const cancellationReason = reasonInput.trim();
+                                                                    if (cancellationReason.length < 5) {
+                                                                        window.alert(t('Cancellation reason must contain at least 5 characters.'));
+                                                                        return;
+                                                                    }
+
+                                                                    router.delete(route('hrm.employees.dependents.destroy', [employee.id, dependent.id]), {
+                                                                        preserveScroll: true,
+                                                                        data: {
+                                                                            cancellation_reason: cancellationReason,
+                                                                        },
+                                                                    });
+                                                                }}
                                                             >
                                                                 {t('Remove')}
                                                             </Button>

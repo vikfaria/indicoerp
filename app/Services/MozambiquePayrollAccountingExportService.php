@@ -4,12 +4,23 @@ namespace App\Services;
 
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Hrm\Models\Payroll;
 use Workdo\Hrm\Models\PayrollEntry;
 
 class MozambiquePayrollAccountingExportService
 {
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    private array $timesheetAllocationCache = [];
+
+    /**
+     * @var array<int, array{project_name:string, client_name:string}>
+     */
+    private array $projectClientCache = [];
+
     public function __construct(
         private readonly PayrollCostCenterAllocatorService $costCenterAllocatorService
     ) {}
@@ -25,6 +36,7 @@ class MozambiquePayrollAccountingExportService
             $departmentName = $entry->employee?->department?->department_name;
             $branchName = $entry->employee?->branch?->branch_name;
             $designationName = $entry->employee?->designation?->designation_name;
+            $allocationDimensions = $this->resolveAllocationDimensions($entry, $companyId);
 
             return [
                 'reference_period' => $period,
@@ -36,8 +48,14 @@ class MozambiquePayrollAccountingExportService
                 'branch' => $branchName ?? '',
                 'department' => $departmentName ?? '',
                 'designation' => $designationName ?? '',
+                'business_unit' => $departmentName ?? '',
+                'worksite' => $branchName ?? '',
                 'cost_center_code' => $costCenter?->code ?? '',
                 'cost_center_name' => $costCenter?->name ?? '',
+                'project_name' => $allocationDimensions['project_name'],
+                'client_name' => $allocationDimensions['client_name'],
+                'allocation_source' => $allocationDimensions['allocation_source'],
+                'allocation_minutes' => $allocationDimensions['allocation_minutes'],
                 'gross_pay' => (float) ($entry->gross_pay ?? 0),
                 'total_allowances' => (float) ($entry->total_allowances ?? 0),
                 'total_manual_overtimes' => (float) ($entry->total_manual_overtimes ?? 0),
@@ -158,6 +176,105 @@ class MozambiquePayrollAccountingExportService
         ];
     }
 
+    public function buildMonthlyPayrollSummaryDataset(int $companyId, ?string $referencePeriod = null): array
+    {
+        [$period, $periodStart, $periodEnd] = $this->resolvePeriod($referencePeriod);
+
+        $payrolls = Payroll::query()
+            ->where('created_by', $companyId)
+            ->where('status', 'completed')
+            ->whereNull('cancelled_at')
+            ->where(function ($query) use ($periodStart, $periodEnd): void {
+                $query
+                    ->where(function ($q) use ($periodStart, $periodEnd): void {
+                        $q->whereDate('pay_period_end', '>=', $periodStart->toDateString())
+                            ->whereDate('pay_period_end', '<=', $periodEnd->toDateString());
+                    })
+                    ->orWhere(function ($q) use ($periodStart, $periodEnd): void {
+                        $q->whereDate('pay_date', '>=', $periodStart->toDateString())
+                            ->whereDate('pay_date', '<=', $periodEnd->toDateString());
+                    });
+            })
+            ->with([
+                'activePayrollEntries:id,payroll_id,gross_pay,total_allowances,total_manual_overtimes,total_deductions,total_loans,irps_amount,inss_employee_amount,inss_employer_amount,net_pay',
+            ])
+            ->withCount(['activePayrollEntries as active_entries_count'])
+            ->orderBy('pay_date')
+            ->orderBy('id')
+            ->get([
+                'id',
+                'title',
+                'pay_period_start',
+                'pay_period_end',
+                'pay_date',
+                'is_payroll_paid',
+                'employee_count',
+                'total_gross_pay',
+                'total_deductions',
+                'total_net_pay',
+                'total_irps',
+                'total_inss_employee',
+                'total_inss_employer',
+                'created_by',
+            ]);
+
+        $rows = $payrolls->map(function (Payroll $payroll) use ($period): array {
+            $entries = $payroll->activePayrollEntries;
+
+            $grossFromEntries = round((float) $entries->sum('gross_pay'), 2);
+            $deductionsFromEntries = round((float) $entries->sum('total_deductions'), 2);
+            $netFromEntries = round((float) $entries->sum('net_pay'), 2);
+            $irpsFromEntries = round((float) $entries->sum('irps_amount'), 2);
+            $inssEmployeeFromEntries = round((float) $entries->sum('inss_employee_amount'), 2);
+            $inssEmployerFromEntries = round((float) $entries->sum('inss_employer_amount'), 2);
+            $allowancesFromEntries = round((float) $entries->sum('total_allowances'), 2);
+            $manualOvertimeFromEntries = round((float) $entries->sum('total_manual_overtimes'), 2);
+            $loansFromEntries = round((float) $entries->sum('total_loans'), 2);
+
+            return [
+                'reference_period' => $period,
+                'payroll_id' => (int) $payroll->id,
+                'payroll_title' => (string) ($payroll->title ?? ''),
+                'pay_period_start' => optional($payroll->pay_period_start)->format('Y-m-d'),
+                'pay_period_end' => optional($payroll->pay_period_end)->format('Y-m-d'),
+                'pay_date' => optional($payroll->pay_date)->format('Y-m-d'),
+                'payment_status' => (string) ($payroll->is_payroll_paid ?? ''),
+                'active_entries_count' => (int) ($payroll->active_entries_count ?? 0),
+                'employee_count' => (int) ($payroll->employee_count ?? 0),
+                'gross_pay_total' => $grossFromEntries > 0 ? $grossFromEntries : round((float) ($payroll->total_gross_pay ?? 0), 2),
+                'deductions_total' => $deductionsFromEntries > 0 ? $deductionsFromEntries : round((float) ($payroll->total_deductions ?? 0), 2),
+                'net_pay_total' => $netFromEntries > 0 ? $netFromEntries : round((float) ($payroll->total_net_pay ?? 0), 2),
+                'irps_total' => $irpsFromEntries > 0 ? $irpsFromEntries : round((float) ($payroll->total_irps ?? 0), 2),
+                'inss_employee_total' => $inssEmployeeFromEntries > 0 ? $inssEmployeeFromEntries : round((float) ($payroll->total_inss_employee ?? 0), 2),
+                'inss_employer_total' => $inssEmployerFromEntries > 0 ? $inssEmployerFromEntries : round((float) ($payroll->total_inss_employer ?? 0), 2),
+                'allowances_total' => $allowancesFromEntries,
+                'manual_overtime_total' => $manualOvertimeFromEntries,
+                'loans_total' => $loansFromEntries,
+            ];
+        })->values();
+
+        return [
+            'reference_period' => $period,
+            'period_start' => $periodStart->toDateString(),
+            'period_end' => $periodEnd->toDateString(),
+            'summary' => [
+                'payroll_runs' => $rows->count(),
+                'active_entries' => (int) $rows->sum('active_entries_count'),
+                'employee_count_total' => (int) $rows->sum('employee_count'),
+                'gross_pay_total' => round((float) $rows->sum('gross_pay_total'), 2),
+                'deductions_total' => round((float) $rows->sum('deductions_total'), 2),
+                'net_pay_total' => round((float) $rows->sum('net_pay_total'), 2),
+                'irps_total' => round((float) $rows->sum('irps_total'), 2),
+                'inss_employee_total' => round((float) $rows->sum('inss_employee_total'), 2),
+                'inss_employer_total' => round((float) $rows->sum('inss_employer_total'), 2),
+                'allowances_total' => round((float) $rows->sum('allowances_total'), 2),
+                'manual_overtime_total' => round((float) $rows->sum('manual_overtime_total'), 2),
+                'loans_total' => round((float) $rows->sum('loans_total'), 2),
+            ],
+            'rows' => $rows->all(),
+        ];
+    }
+
     private function resolvePayrollEntriesForPeriod(int $companyId, Carbon $periodStart, Carbon $periodEnd): Collection
     {
         return PayrollEntry::query()
@@ -214,9 +331,118 @@ class MozambiquePayrollAccountingExportService
             ? $referencePeriod
             : now()->format('Y-m');
 
-        $periodStart = Carbon::createFromFormat('Y-m', $period)->startOfMonth();
+        $periodStart = Carbon::createFromFormat('Y-m-d', $period . '-01')->startOfMonth();
         $periodEnd = $periodStart->copy()->endOfMonth();
 
         return [$period, $periodStart, $periodEnd];
+    }
+
+    /**
+     * Resolve additional allocation dimensions (project/client) from timesheets when available.
+     *
+     * @return array{project_name:string, client_name:string, allocation_source:string, allocation_minutes:int}
+     */
+    private function resolveAllocationDimensions(PayrollEntry $entry, int $companyId): array
+    {
+        $default = [
+            'project_name' => '',
+            'client_name' => '',
+            'allocation_source' => 'employee',
+            'allocation_minutes' => 0,
+        ];
+
+        $employeeUserId = (int) ($entry->employee_id ?? 0);
+        if ($employeeUserId <= 0) {
+            return $default;
+        }
+
+        $periodStart = optional($entry->payroll?->pay_period_start)->toDateString()
+            ?: optional($entry->payroll?->pay_date)->toDateString();
+        $periodEnd = optional($entry->payroll?->pay_period_end)->toDateString()
+            ?: optional($entry->payroll?->pay_date)->toDateString();
+
+        if (!$periodStart || !$periodEnd) {
+            return $default;
+        }
+
+        $cacheKey = implode(':', [$companyId, $employeeUserId, $periodStart, $periodEnd]);
+        if (isset($this->timesheetAllocationCache[$cacheKey])) {
+            return $this->timesheetAllocationCache[$cacheKey];
+        }
+
+        if (!class_exists('\\Workdo\\Timesheet\\Models\\Timesheet') || !Schema::hasTable('timesheets')) {
+            $this->timesheetAllocationCache[$cacheKey] = $default;
+
+            return $default;
+        }
+
+        $timesheetClass = '\\Workdo\\Timesheet\\Models\\Timesheet';
+        $topProjectAllocation = $timesheetClass::query()
+            ->where('created_by', $companyId)
+            ->where('user_id', $employeeUserId)
+            ->whereBetween('date', [$periodStart, $periodEnd])
+            ->whereNotNull('project_id')
+            ->select('project_id')
+            ->selectRaw('SUM((COALESCE(hours, 0) * 60) + COALESCE(minutes, 0)) as total_minutes')
+            ->groupBy('project_id')
+            ->orderByDesc('total_minutes')
+            ->first();
+
+        if (!$topProjectAllocation || empty($topProjectAllocation->project_id)) {
+            $this->timesheetAllocationCache[$cacheKey] = $default;
+
+            return $default;
+        }
+
+        $projectId = (int) $topProjectAllocation->project_id;
+        $projectMeta = $this->resolveProjectMetadata($projectId);
+
+        $resolved = [
+            'project_name' => (string) ($projectMeta['project_name'] ?? ''),
+            'client_name' => (string) ($projectMeta['client_name'] ?? ''),
+            'allocation_source' => 'timesheet',
+            'allocation_minutes' => (int) ($topProjectAllocation->total_minutes ?? 0),
+        ];
+
+        $this->timesheetAllocationCache[$cacheKey] = $resolved;
+
+        return $resolved;
+    }
+
+    /**
+     * @return array{project_name:string, client_name:string}
+     */
+    private function resolveProjectMetadata(int $projectId): array
+    {
+        if ($projectId <= 0) {
+            return ['project_name' => '', 'client_name' => ''];
+        }
+
+        if (isset($this->projectClientCache[$projectId])) {
+            return $this->projectClientCache[$projectId];
+        }
+
+        if (!class_exists('\\Workdo\\Taskly\\Models\\Project') || !Schema::hasTable('projects')) {
+            return ['project_name' => '', 'client_name' => ''];
+        }
+
+        $projectClass = '\\Workdo\\Taskly\\Models\\Project';
+        $project = $projectClass::query()
+            ->where('id', $projectId)
+            ->with(['clients:id,name'])
+            ->first(['id', 'name']);
+
+        if (!$project) {
+            return ['project_name' => '', 'client_name' => ''];
+        }
+
+        $resolved = [
+            'project_name' => (string) ($project->name ?? ''),
+            'client_name' => (string) ($project->clients->first()->name ?? ''),
+        ];
+
+        $this->projectClientCache[$projectId] = $resolved;
+
+        return $resolved;
     }
 }

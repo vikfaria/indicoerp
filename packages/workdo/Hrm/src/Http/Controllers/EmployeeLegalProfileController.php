@@ -162,6 +162,10 @@ class EmployeeLegalProfileController extends Controller
             return redirect()->back()->with('error', __('Dependent not found.'));
         }
 
+        if ((bool) ($dependent->is_cancelled ?? false)) {
+            return redirect()->back()->with('error', __('Cancelled dependents cannot be edited.'));
+        }
+
         $validated = $request->validated();
         $dependent->update([
             ...$validated,
@@ -184,9 +188,22 @@ class EmployeeLegalProfileController extends Controller
             return redirect()->back()->with('error', __('Dependent not found.'));
         }
 
-        $dependent->delete();
+        if ((bool) ($dependent->is_cancelled ?? false)) {
+            return redirect()->back()->with('error', __('Dependent is already cancelled.'));
+        }
 
-        return redirect()->back()->with('success', __('Employee dependent deleted successfully.'));
+        $validated = request()->validate([
+            'cancellation_reason' => 'required|string|min:5|max:1000',
+        ]);
+
+        $dependent->update([
+            'is_cancelled' => true,
+            'cancelled_at' => now(),
+            'cancelled_by' => Auth::id(),
+            'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+        ]);
+
+        return redirect()->back()->with('success', __('Employee dependent cancelled successfully.'));
     }
 
     private function canManageEmployee(Employee $employee): bool

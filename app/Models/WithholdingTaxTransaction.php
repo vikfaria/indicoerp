@@ -10,9 +10,14 @@ class WithholdingTaxTransaction extends Model
     protected $fillable = [
         'company_id', 'withholding_rule_id', 'vendor_id',
         'vendor_nuit', 'vendor_name', 'transaction_date',
-        'document_reference', 'gross_amount', 'withholding_rate',
+        'beneficiary_country', 'beneficiary_residency_status', 'income_type_snapshot',
+        'document_reference', 'source_reference_type', 'source_reference_id',
+        'gross_amount', 'withholding_rate', 'withholding_treatment', 'adt_applied',
+        'adt_certificate_reference', 'fiscal_compliance_reference', 'financial_approval_reference',
+        'fx_authorization_reference',
         'withholding_amount', 'net_amount', 'fiscal_year',
-        'fiscal_month', 'status', 'journal_entry_id', 'created_by',
+        'fiscal_month', 'status', 'declaration_reference', 'declared_at', 'declared_by',
+        'state_payment_reference', 'paid_at', 'paid_by', 'journal_entry_id', 'created_by',
     ];
 
     protected function casts(): array
@@ -24,6 +29,9 @@ class WithholdingTaxTransaction extends Model
             'withholding_amount' => 'decimal:2',
             'net_amount' => 'decimal:2',
             'fiscal_month' => 'integer',
+            'adt_applied' => 'boolean',
+            'declared_at' => 'datetime',
+            'paid_at' => 'datetime',
         ];
     }
 

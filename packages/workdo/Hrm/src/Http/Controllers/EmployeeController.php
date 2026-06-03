@@ -43,6 +43,33 @@ class EmployeeController extends Controller
         if (Auth::user()->can('manage-employees')) {
             $employees = Employee::query()
                 ->with(['user:id,name,avatar,is_disable', 'branch', 'department', 'designation', 'shift'])
+                ->select([
+                    'id',
+                    'employee_id',
+                    'date_of_birth',
+                    'gender',
+                    'shift',
+                    'date_of_joining',
+                    'employment_type',
+                    'address_line_1',
+                    'address_line_2',
+                    'city',
+                    'state',
+                    'country',
+                    'postal_code',
+                    'basic_salary',
+                    'hours_per_day',
+                    'days_per_week',
+                    'rate_per_hour',
+                    'user_id',
+                    'branch_id',
+                    'department_id',
+                    'designation_id',
+                    'creator_id',
+                    'created_by',
+                    'created_at',
+                    'updated_at',
+                ])
                 ->where(function ($q) {
                     if (Auth::user()->can('manage-any-employees')) {
                         $q->where('created_by', creatorId());
@@ -176,7 +203,9 @@ class EmployeeController extends Controller
             if(!$this->checkEmployeeAccess($employee)) {
                 return redirect()->route('hrm.employees.index')->with('error', __('Permission denied'));
             }
-            $existingDocuments = EmployeeDocument::where('user_id', $employee->id)
+            $existingDocuments = EmployeeDocument::query()
+                ->active()
+                ->where('user_id', $employee->id)
                 ->with('documentType')
                 ->get()
                 ->map(function ($doc) {
@@ -313,7 +342,9 @@ class EmployeeController extends Controller
                 $this->maskSensitiveEmployeeData($employee);
             }
             
-            $documents = EmployeeDocument::where('user_id', $employee->id)
+            $documents = EmployeeDocument::query()
+                ->active()
+                ->where('user_id', $employee->id)
                 ->with('documentType')
                 ->get()
                 ->map(function($doc) {
@@ -354,10 +385,22 @@ class EmployeeController extends Controller
                 return redirect()->back()->with('error', __('Document not found'));
             }
 
-            delete_file($document->file_path);
-            $document->delete();
+            if ((bool) ($document->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Document is already cancelled'));
+            }
 
-            return redirect()->back()->with('success', __('Document deleted successfully'));
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            $document->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Document cancelled successfully'));
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }

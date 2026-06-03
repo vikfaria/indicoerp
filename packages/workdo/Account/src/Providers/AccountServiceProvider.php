@@ -8,6 +8,7 @@ use Workdo\Account\Models\CreditNote;
 use Workdo\Account\Models\Customer;
 use Workdo\Account\Models\CustomerPayment;
 use Workdo\Account\Models\DebitNote;
+use Workdo\Account\Models\ExchangeControlDossier;
 use Workdo\Account\Models\Expense;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\MozFiscalClosing;
@@ -50,6 +51,7 @@ class AccountServiceProvider extends ServiceProvider
             Customer::class,
             CustomerPayment::class,
             DebitNote::class,
+            ExchangeControlDossier::class,
             Expense::class,
             JournalEntry::class,
             MozFiscalClosing::class,

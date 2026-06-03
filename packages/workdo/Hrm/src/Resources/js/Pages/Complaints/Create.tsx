@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Textarea } from '@/components/ui/textarea';
+import { MultiSelectEnhanced } from '@/components/ui/multi-select-enhanced';
 import MediaPicker from '@/components/MediaPicker';
 import { useFormFields } from '@/hooks/useFormFields';
 import { CreateComplaintProps, CreateComplaintFormData } from './types';
@@ -27,6 +28,7 @@ export default function Create({ onSuccess }: CreateComplaintProps) {
         is_harassment_report: false,
         confidential_channel: '',
         confidentiality_level: 'internal',
+        confidential_access_user_ids: [],
         handling_owner_id: '',
         investigation_started_at: '',
         investigation_closed_at: '',
@@ -40,6 +42,10 @@ export default function Create({ onSuccess }: CreateComplaintProps) {
     const filteredAgainstEmployees = allEmployees?.filter((emp: any) => 
         emp.id.toString() !== data.employee_id
     ) || [];
+    const confidentialAccessOptions = allEmployees?.map((employee: any) => ({
+        value: employee.id.toString(),
+        label: employee.name,
+    })) || [];
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -195,6 +201,17 @@ export default function Create({ onSuccess }: CreateComplaintProps) {
                             placeholder={t('e.g. hotline, email, manager')}
                         />
                         <InputError message={errors.confidential_channel} />
+                    </div>
+                    <div className="md:col-span-2">
+                        <Label>{t('Additional Case Access')}</Label>
+                        <MultiSelectEnhanced
+                            options={confidentialAccessOptions}
+                            value={data.confidential_access_user_ids}
+                            onValueChange={(value) => setData('confidential_access_user_ids', value)}
+                            placeholder={t('Select additional reviewers')}
+                            searchable={true}
+                        />
+                        <InputError message={errors.confidential_access_user_ids} />
                     </div>
                     <div>
                         <Label>{t('Handling Owner')}</Label>

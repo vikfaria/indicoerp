@@ -58,7 +58,17 @@ export default function Index() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.leave-applications.destroy',
-        defaultMessage: t('Are you sure you want to delete this leaveapplication?')
+        defaultMessage: t('Are you sure you want to cancel this leave application?'),
+        buildRequestData: () => {
+            const reason = window.prompt(t('Enter cancellation reason (required):'));
+            if (!reason || reason.trim().length < 5) {
+                return null;
+            }
+
+            return {
+                cancellation_reason: reason.trim(),
+            };
+        }
     });
 
     const handleFilter = () => {
@@ -569,9 +579,9 @@ export default function Index() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete LeaveApplication')}
+                title={t('Cancel Leave Application')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />

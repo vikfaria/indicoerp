@@ -58,6 +58,8 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
     Route::prefix('account/vendor-payments')->name('account.vendor-payments.')->group(function () {
         Route::get('/', [VendorPaymentController::class, 'index'])->name('index');
         Route::post('/store', [VendorPaymentController::class, 'store'])->name('store');
+        Route::post('/{vendorPayment}/approve', [VendorPaymentController::class, 'approve'])->name('approve');
+        Route::post('/{vendorPayment}/reject', [VendorPaymentController::class, 'reject'])->name('reject');
         Route::delete('/{vendorPayment}', [VendorPaymentController::class, 'destroy'])->name('destroy');
         Route::get('/vendors/{vendorId}/outstanding', [VendorPaymentController::class, 'getOutstandingInvoices'])->name('vendors.outstanding');
         Route::post('/{vendorPayment}/update-status', [VendorPaymentController::class, 'updateStatus'])->name('update-status');
@@ -102,6 +104,8 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
     Route::prefix('account/customer-payments')->name('account.customer-payments.')->group(function () {
         Route::get('/', [CustomerPaymentController::class, 'index'])->name('index');
         Route::post('/', [CustomerPaymentController::class, 'store'])->name('store');
+        Route::patch('/{customerPayment}/approve', [CustomerPaymentController::class, 'approve'])->name('approve');
+        Route::patch('/{customerPayment}/reject', [CustomerPaymentController::class, 'reject'])->name('reject');
         Route::delete('/{customerPayment}', [CustomerPaymentController::class, 'destroy'])->name('destroy');
         Route::get('/customers/{customerId}/outstanding', [CustomerPaymentController::class, 'getOutstandingInvoices'])->name('outstanding-invoices');
         Route::patch('/{customerPayment}/update-status', [CustomerPaymentController::class, 'updateStatus'])->name('update-status');
@@ -163,6 +167,31 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::get('/mozambique-vat-declaration/export', [ReportsController::class, 'exportMozambiqueVatDeclaration'])->name('mozambique-vat-declaration.export');
         Route::get('/mozambique-fiscal-submission-register', [ReportsController::class, 'mozambiqueFiscalSubmissionRegister'])->name('mozambique-fiscal-submission-register');
         Route::get('/mozambique-fiscal-submission-register/export', [ReportsController::class, 'exportMozambiqueFiscalSubmissionRegister'])->name('mozambique-fiscal-submission-register.export');
+        Route::get('/mozambique-fiscal-compliance-alerts', [ReportsController::class, 'mozambiqueFiscalComplianceAlerts'])->name('mozambique-fiscal-compliance-alerts');
+        Route::get('/mozambique-exchange-control-report', [ReportsController::class, 'mozambiqueExchangeControlReport'])->name('mozambique-exchange-control-report');
+        Route::get('/mozambique-exchange-control-report/export', [ReportsController::class, 'exportMozambiqueExchangeControlReport'])->name('mozambique-exchange-control-report.export');
+        Route::get('/mozambique-reverse-charge-report', [ReportsController::class, 'mozambiqueReverseChargeReport'])->name('mozambique-reverse-charge-report');
+        Route::get('/mozambique-reverse-charge-report/export', [ReportsController::class, 'exportMozambiqueReverseChargeReport'])->name('mozambique-reverse-charge-report.export');
+        Route::get('/mozambique-international-withholding-report', [ReportsController::class, 'mozambiqueInternationalWithholdingReport'])->name('mozambique-international-withholding-report');
+        Route::get('/mozambique-international-withholding-report/export', [ReportsController::class, 'exportMozambiqueInternationalWithholdingReport'])->name('mozambique-international-withholding-report.export');
+        Route::get('/mozambique-invoicing-report', [ReportsController::class, 'mozambiqueInvoicingReport'])->name('mozambique-invoicing-report');
+        Route::get('/mozambique-invoicing-report/export', [ReportsController::class, 'exportMozambiqueInvoicingReport'])->name('mozambique-invoicing-report.export');
+        Route::get('/mozambique-currency-report', [ReportsController::class, 'mozambiqueCurrencyReport'])->name('mozambique-currency-report');
+        Route::get('/mozambique-currency-report/export', [ReportsController::class, 'exportMozambiqueCurrencyReport'])->name('mozambique-currency-report.export');
+        Route::get('/mozambique-treasury-report', [ReportsController::class, 'mozambiqueTreasuryReport'])->name('mozambique-treasury-report');
+        Route::get('/mozambique-treasury-report/export', [ReportsController::class, 'exportMozambiqueTreasuryReport'])->name('mozambique-treasury-report.export');
+        Route::get('/mozambique-financial-compliance-dashboard', [ReportsController::class, 'mozambiqueFinancialComplianceDashboard'])->name('mozambique-financial-compliance-dashboard');
+        Route::get('/mozambique-financial-compliance-dashboard/export', [ReportsController::class, 'exportMozambiqueFinancialComplianceDashboard'])->name('mozambique-financial-compliance-dashboard.export');
+        Route::post('/mozambique-exchange-control-report/repatriation', [ReportsController::class, 'markMozambiqueExchangeRepatriation'])->name('mozambique-exchange-control-report.repatriation');
+        Route::post('/mozambique-exchange-control-report/dossier', [ReportsController::class, 'upsertMozambiqueExchangeDossier'])->name('mozambique-exchange-control-report.dossier');
+        Route::get('/mozambique-gifim-compliance-report', [ReportsController::class, 'mozambiqueGifimComplianceReport'])->name('mozambique-gifim-compliance-report');
+        Route::get('/mozambique-gifim-compliance-report/export', [ReportsController::class, 'exportMozambiqueGifimComplianceReport'])->name('mozambique-gifim-compliance-report.export');
+        Route::post('/mozambique-gifim-compliance-report/communicate', [ReportsController::class, 'markMozambiqueGifimCommunication'])->name('mozambique-gifim-compliance-report.communicate');
+        Route::get('/mozambique-electronic-money-compliance-report', [ReportsController::class, 'mozambiqueElectronicMoneyComplianceReport'])->name('mozambique-electronic-money-compliance-report');
+        Route::get('/mozambique-electronic-money-compliance-report/export', [ReportsController::class, 'exportMozambiqueElectronicMoneyComplianceReport'])->name('mozambique-electronic-money-compliance-report.export');
+        Route::get('/mozambique-fiscal-exports-history', [ReportsController::class, 'mozambiqueFiscalExportsHistory'])->name('mozambique-fiscal-exports-history');
+        Route::get('/mozambique-fiscal-exports-history/{history}/download', [ReportsController::class, 'downloadMozambiqueFiscalExport'])->name('mozambique-fiscal-exports-history.download');
+        Route::post('/mozambique-fiscal-exports-history/{history}/submit', [ReportsController::class, 'confirmMozambiqueFiscalExportSubmission'])->name('mozambique-fiscal-exports-history.submit');
         Route::get('/mozambique-saft/export', [ReportsController::class, 'exportMozambiqueSaft'])->name('mozambique-saft.export');
         Route::get('/mozambique-go-live-readiness', [ReportsController::class, 'mozambiqueGoLiveReadiness'])->name('mozambique-go-live-readiness');
         Route::post('/mozambique-go-live-readiness/attestation', [ReportsController::class, 'updateMozambiqueGoLiveReadinessAttestation'])->name('mozambique-go-live-readiness.attestation');
@@ -175,8 +204,13 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::put('/mozambique-go-live-readiness/validation-cases/{validationCase}', [ReportsController::class, 'updateMozambiquePilotValidationCase'])->name('mozambique-go-live-readiness.validation-cases.update');
         Route::delete('/mozambique-go-live-readiness/validation-cases/{validationCase}', [ReportsController::class, 'destroyMozambiquePilotValidationCase'])->name('mozambique-go-live-readiness.validation-cases.destroy');
         Route::get('/fiscal-closings', [ReportsController::class, 'fiscalClosings'])->name('fiscal-closings');
+        Route::get('/fiscal-closings/export', [ReportsController::class, 'exportFiscalClosings'])->name('fiscal-closings.export');
         Route::post('/fiscal-closings/close', [ReportsController::class, 'closeFiscalPeriod'])->name('fiscal-closings.close');
         Route::post('/fiscal-closings/{closing}/reopen', [ReportsController::class, 'reopenFiscalPeriod'])->name('fiscal-closings.reopen');
+        Route::get('/cash-closings', [ReportsController::class, 'cashClosings'])->name('cash-closings');
+        Route::get('/cash-closings/export', [ReportsController::class, 'exportCashClosings'])->name('cash-closings.export');
+        Route::post('/cash-closings/close', [ReportsController::class, 'closeCashClosing'])->name('cash-closings.close');
+        Route::post('/cash-closings/{closing}/reopen', [ReportsController::class, 'reopenCashClosing'])->name('cash-closings.reopen');
         Route::get('/customer-balance', [ReportsController::class, 'customerBalance'])->name('customer-balance');
         Route::get('/customer-balance/print', [ReportsController::class, 'printCustomerBalance'])->name('customer-balance.print');
         Route::get('/vendor-balance', [ReportsController::class, 'vendorBalance'])->name('vendor-balance');

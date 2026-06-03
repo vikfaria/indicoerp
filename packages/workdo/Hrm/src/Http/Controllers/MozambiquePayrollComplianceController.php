@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Models\CostCenter;
+use App\Models\Setting;
 use App\Services\MozambiqueHrDisciplinaryReportService;
 use App\Services\MozambiqueForeignWorkerComplianceReportService;
 use App\Services\MozambiqueHrComplianceAlertService;
@@ -16,6 +17,7 @@ use App\Services\MozambiqueHrWorkforceExportService;
 use App\Services\MozambiqueLabourComplianceService;
 use App\Services\MozambiquePayrollSubmissionReportService;
 use App\Services\PayrollCostCenterAllocatorService;
+use Carbon\Carbon;
 use App\Models\MozInssRate;
 use App\Models\MozIrpsBracket;
 use App\Models\MozIrpsTable;
@@ -24,7 +26,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Workdo\Hrm\Models\Branch;
+use Workdo\Hrm\Models\Attendance;
 use Workdo\Hrm\Models\Department;
 use Workdo\Hrm\Models\Employee;
 
@@ -124,6 +129,8 @@ class MozambiquePayrollComplianceController extends Controller
             'branches' => $branchOptions,
             'employees' => $employeeOptions,
             'costCenterMappingConfig' => $this->payrollCostCenterAllocatorService->getConfiguration($companyId),
+            'attendanceDeviceConfig' => $this->buildAttendanceDeviceConfig($companyId),
+            'attendanceDeviceHealth' => $this->buildAttendanceDeviceHealthDataset($companyId, 12),
         ]);
     }
 
@@ -176,6 +183,41 @@ class MozambiquePayrollComplianceController extends Controller
         ]);
 
         return back()->with('success', __('Payroll cost center mappings updated successfully.'));
+    }
+
+    public function updateAttendanceDeviceSettings(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'enabled' => 'required|boolean',
+            'token' => 'nullable|string|min:16|max:255',
+            'default_device_label' => 'nullable|string|max:160',
+        ]);
+
+        $companyId = creatorId();
+        $existingToken = trim((string) company_setting('mz_attendance_device_ingest_token'));
+        $nextToken = trim((string) ($validated['token'] ?? ''));
+
+        if (($validated['enabled'] ?? false) && $nextToken === '' && $existingToken === '') {
+            return back()->withErrors([
+                'token' => __('Device token is required when biometric ingest is enabled.'),
+            ]);
+        }
+
+        if ($nextToken !== '') {
+            setSetting('mz_attendance_device_ingest_token', $nextToken, null, false);
+        }
+
+        setSetting('mz_attendance_device_ingest_enabled', !empty($validated['enabled']) ? '1' : '0', null, false);
+
+        if (array_key_exists('default_device_label', $validated)) {
+            setSetting('mz_attendance_device_default_label', trim((string) $validated['default_device_label']));
+        }
+
+        return back()->with('success', __('Biometric attendance device settings updated successfully.'));
     }
 
     public function updateLabourPolicy(Request $request)
@@ -236,6 +278,12 @@ class MozambiquePayrollComplianceController extends Controller
         }
 
         $validated = $request->validate([
+            'company_profile' => 'required|array',
+            'company_profile.sector_activity' => 'nullable|string|max:191',
+            'company_profile.operation_province' => 'nullable|string|max:191',
+            'company_profile.labour_regime' => 'nullable|string|max:191',
+            'company_profile.collective_agreements' => 'nullable|string|max:255',
+            'company_profile.labour_directorate' => 'nullable|string|max:191',
             'foreign_quota' => 'required|array',
             'foreign_quota.micro_max_workers' => 'required|integer|min:1|max:500000',
             'foreign_quota.small_max_workers' => 'required|integer|min:2|max:500000',
@@ -253,6 +301,16 @@ class MozambiquePayrollComplianceController extends Controller
             'probation_alert_days' => 'required|array',
             'probation_alert_days.primary' => 'required|integer|min:1|max:365',
             'probation_alert_days.secondary' => 'required|integer|min:0|max:365',
+            'policy_requirements' => 'required|array',
+            'policy_requirements.require_internal_regulation' => 'required|boolean',
+            'policy_requirements.require_code_of_conduct' => 'required|boolean',
+            'policy_requirements.require_anti_harassment_policy' => 'required|boolean',
+            'policy_requirements.require_disciplinary_policy' => 'required|boolean',
+            'policy_requirements.require_vacation_policy' => 'required|boolean',
+            'policy_requirements.require_data_protection_policy' => 'required|boolean',
+            'policy_requirements.require_equipment_use_policy' => 'required|boolean',
+            'policy_requirements.require_remote_work_policy' => 'required|boolean',
+            'policy_requirements.code_of_conduct_min_workers' => 'required|integer|min:1|max:100000',
         ]);
 
         $quota = $validated['foreign_quota'];
@@ -555,49 +613,81 @@ class MozambiquePayrollComplianceController extends Controller
             now()->format('Ymd-His')
         );
 
-        $headers = [
-            'Reference Period',
-            'Submission Due Date',
-            'Payroll ID',
-            'Payroll Title',
-            'Pay Date',
-            'Employee',
-            'Employee NUIT',
-            'Residency Status',
-            'Eligible Dependents',
-            'Gross Pay',
-            'Taxable Income',
-            'Dependent Deduction',
-            'Adjusted Taxable Income',
-            'IRPS Rule',
-            'IRPS Rate %',
-            'IRPS Withheld',
-            'Net Pay',
-        ];
+        return $this->exportCsv(
+            $filename,
+            $this->modelo19Headers(),
+            $this->buildModelo19Rows($dataset)
+        );
+    }
 
-        $rows = collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
-            return [
-                $row['reference_period'],
-                $dataset['submission_due_date'],
-                $row['payroll_id'],
-                $row['payroll_title'],
-                $row['pay_date'],
-                $row['employee_name'],
-                $row['employee_nuit'],
-                $row['residency_status'],
-                $row['eligible_dependents_count'],
-                $row['gross_pay'],
-                $row['taxable_income'],
-                $row['dependent_deduction_total'],
-                $row['adjusted_taxable_income'],
-                $row['irps_rule'],
-                $row['irps_rate_percent'],
-                $row['irps_amount'],
-                $row['net_pay'],
-            ];
-        })->values()->all();
+    public function exportModelo19SupportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
 
-        return $this->exportCsv($filename, $headers, $rows);
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildModelo19Dataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportModelo19SupportXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildModelo19Dataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'modelo19-irps-support-%s-%s.xml',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('modelo19_irps_support', $dataset, $filename);
+    }
+
+    public function exportModelo19SupportXlsx(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildModelo19Dataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'modelo19-irps-support-%s-%s.xlsx',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXlsx(
+            $filename,
+            $this->modelo19Headers(),
+            $this->buildModelo19Rows($dataset)
+        );
     }
 
     public function exportInssGuide(Request $request)
@@ -621,7 +711,137 @@ class MozambiquePayrollComplianceController extends Controller
             now()->format('Ymd-His')
         );
 
-        $headers = [
+        return $this->exportCsv(
+            $filename,
+            $this->inssHeaders(),
+            $this->buildInssRows($dataset)
+        );
+    }
+
+    public function exportInssGuideJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildInssDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportInssGuideXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildInssDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'inss-monthly-guide-%s-%s.xml',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('inss_monthly_guide', $dataset, $filename);
+    }
+
+    public function exportInssGuideXlsx(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollSubmissionReportService->buildInssDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'inss-monthly-guide-%s-%s.xlsx',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXlsx(
+            $filename,
+            $this->inssHeaders(),
+            $this->buildInssRows($dataset)
+        );
+    }
+
+    private function modelo19Headers(): array
+    {
+        return [
+            'Reference Period',
+            'Submission Due Date',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Residency Status',
+            'Eligible Dependents',
+            'Gross Pay',
+            'Taxable Income',
+            'Dependent Deduction',
+            'Adjusted Taxable Income',
+            'IRPS Rule',
+            'IRPS Rate %',
+            'IRPS Withheld',
+            'Net Pay',
+        ];
+    }
+
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    private function buildModelo19Rows(array $dataset): array
+    {
+        return collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
+            return [
+                $row['reference_period'],
+                $dataset['submission_due_date'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['residency_status'],
+                $row['eligible_dependents_count'],
+                $row['gross_pay'],
+                $row['taxable_income'],
+                $row['dependent_deduction_total'],
+                $row['adjusted_taxable_income'],
+                $row['irps_rule'],
+                $row['irps_rate_percent'],
+                $row['irps_amount'],
+                $row['net_pay'],
+            ];
+        })->values()->all();
+    }
+
+    private function inssHeaders(): array
+    {
+        return [
             'Reference Period',
             'Submission Due Date',
             'Payroll ID',
@@ -636,8 +856,14 @@ class MozambiquePayrollComplianceController extends Controller
             'Employer Contribution',
             'Total INSS Contribution',
         ];
+    }
 
-        $rows = collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    private function buildInssRows(array $dataset): array
+    {
+        return collect($dataset['rows'])->map(static function (array $row) use ($dataset): array {
             return [
                 $row['reference_period'],
                 $dataset['submission_due_date'],
@@ -654,8 +880,6 @@ class MozambiquePayrollComplianceController extends Controller
                 $row['total_contribution'],
             ];
         })->values()->all();
-
-        return $this->exportCsv($filename, $headers, $rows);
     }
 
     public function exportBankPaymentFile(Request $request)
@@ -697,7 +921,21 @@ class MozambiquePayrollComplianceController extends Controller
             'Payroll Entry Status',
         ];
 
-        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+        $maskSensitive = $this->shouldMaskSensitiveEmployeeData();
+        $rows = collect($dataset['rows'])->map(function (array $row) use ($maskSensitive): array {
+            $employeeNuit = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2)
+                : ($row['employee_nuit'] ?? '');
+            $accountHolderName = $maskSensitive
+                ? $this->maskPersonName((string) ($row['account_holder_name'] ?? ''))
+                : ($row['account_holder_name'] ?? '');
+            $bankIdentifierCode = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['bank_identifier_code'] ?? ''), 2, 2)
+                : ($row['bank_identifier_code'] ?? '');
+            $accountNumber = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['account_number'] ?? ''), 0, 4)
+                : ($row['account_number'] ?? '');
+
             return [
                 $row['reference_period'],
                 $row['payment_reference'],
@@ -705,12 +943,12 @@ class MozambiquePayrollComplianceController extends Controller
                 $row['payroll_title'],
                 $row['pay_date'],
                 $row['employee_name'],
-                $row['employee_nuit'],
-                $row['account_holder_name'],
+                $employeeNuit,
+                $accountHolderName,
                 $row['bank_name'],
                 $row['bank_branch'],
-                $row['bank_identifier_code'],
-                $row['account_number'],
+                $bankIdentifierCode,
+                $accountNumber,
                 $row['currency'],
                 $row['net_pay'],
                 $row['payroll_entry_status'],
@@ -766,14 +1004,19 @@ class MozambiquePayrollComplianceController extends Controller
             'Adjusted Taxable Income Total',
         ];
 
-        $rows = collect($dataset['rows'])->map(function (array $row) use ($dataset): array {
+        $maskSensitive = $this->shouldMaskSensitiveEmployeeData();
+        $rows = collect($dataset['rows'])->map(function (array $row) use ($dataset, $maskSensitive): array {
+            $employeeNuit = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2)
+                : ($row['employee_nuit'] ?? '');
+
             return [
                 $row['fiscal_year'],
                 $dataset['period_start'],
                 $dataset['period_end'],
                 $row['employee_internal_id'],
                 $row['employee_name'],
-                $row['employee_nuit'],
+                $employeeNuit,
                 $row['residency_status'],
                 $row['payroll_runs'],
                 $row['payroll_entries'],
@@ -810,6 +1053,17 @@ class MozambiquePayrollComplianceController extends Controller
             creatorId(),
             isset($validated['fiscal_year']) ? (string) $validated['fiscal_year'] : null
         );
+
+        if ($this->shouldMaskSensitiveEmployeeData()) {
+            $dataset['rows'] = collect((array) ($dataset['rows'] ?? []))
+                ->map(function (array $row): array {
+                    $row['employee_nuit'] = $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2);
+
+                    return $row;
+                })
+                ->values()
+                ->all();
+        }
 
         return response()->json($dataset);
     }
@@ -910,7 +1164,18 @@ class MozambiquePayrollComplianceController extends Controller
             ]]);
         }
 
-        $rows = $detailRows->map(function (array $row) use ($dataset, $summary, $quota): array {
+        $maskSensitive = $this->shouldMaskSensitiveEmployeeData();
+        $rows = $detailRows->map(function (array $row) use ($dataset, $summary, $quota, $maskSensitive): array {
+            $employeeNuit = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2)
+                : ($row['employee_nuit'] ?? '');
+            $passportNumber = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['passport_number'] ?? ''), 1, 2)
+                : ($row['passport_number'] ?? '');
+            $workAuthorizationNumber = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['work_authorization_number'] ?? ''), 1, 2)
+                : ($row['work_authorization_number'] ?? '');
+
             return [
                 $dataset['report_date'],
                 $dataset['window_days'],
@@ -927,18 +1192,18 @@ class MozambiquePayrollComplianceController extends Controller
                 $summary['migration_notifications_overdue'] ?? 0,
                 $row['employee_name'] ?? '',
                 $row['employee_internal_id'] ?? '',
-                $row['employee_nuit'] ?? '',
+                $employeeNuit,
                 $row['nationality'] ?? '',
                 $row['residency_status'] ?? '',
                 $row['hiring_regime'] ?? '',
                 $row['work_province'] ?? '',
-                $row['passport_number'] ?? '',
+                $passportNumber,
                 $row['passport_expires_at'] ?? '',
                 $row['passport_status'] ?? '',
                 $row['visa_type'] ?? '',
                 $row['visa_expires_at'] ?? '',
                 $row['visa_status'] ?? '',
-                $row['work_authorization_number'] ?? '',
+                $workAuthorizationNumber,
                 $row['work_authorization_expires_at'] ?? '',
                 $row['work_authorization_status'] ?? '',
                 $row['contract_number'] ?? '',
@@ -1339,6 +1604,119 @@ class MozambiquePayrollComplianceController extends Controller
         return response()->json($dataset);
     }
 
+    public function exportAttendanceDeviceHealthReport(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $dataset = $this->buildAttendanceDeviceHealthDataset(
+            creatorId(),
+            (int) ($validated['limit'] ?? 100)
+        );
+
+        $filename = sprintf(
+            'attendance-device-health-%s.csv',
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Generated At',
+            'Window Start',
+            'Window Hours',
+            'Last Event At',
+            'Events Last 24h',
+            'Unique Devices Last 24h',
+            'Clock-ins Last 24h',
+            'Clock-outs Last 24h',
+            'Open Attendances',
+            'Attendance ID',
+            'Employee',
+            'Attendance Date',
+            'Action',
+            'Clock In',
+            'Clock Out',
+            'Device ID',
+            'Device Label',
+            'Source Reference',
+            'Last Activity At',
+        ];
+
+        $rows = collect($dataset['rows'] ?? [])->map(static function (array $row) use ($dataset): array {
+            $summary = $dataset['summary'] ?? [];
+
+            return [
+                $dataset['generated_at'] ?? '',
+                $dataset['window_start'] ?? '',
+                $dataset['window_hours'] ?? 24,
+                $summary['last_event_at'] ?? '',
+                $summary['total_events_last_24h'] ?? 0,
+                $summary['unique_devices_last_24h'] ?? 0,
+                $summary['clockins_last_24h'] ?? 0,
+                $summary['clockouts_last_24h'] ?? 0,
+                $summary['open_attendances'] ?? 0,
+                $row['attendance_id'] ?? '',
+                $row['employee_name'] ?? '',
+                $row['attendance_date'] ?? '',
+                $row['action'] ?? '',
+                $row['clock_in'] ?? '',
+                $row['clock_out'] ?? '',
+                $row['source_device_id'] ?? '',
+                $row['source_device_label'] ?? '',
+                $row['source_reference'] ?? '',
+                $row['last_activity_at'] ?? '',
+            ];
+        })->values()->all();
+
+        if (empty($rows)) {
+            $rows[] = [
+                $dataset['generated_at'] ?? '',
+                $dataset['window_start'] ?? '',
+                $dataset['window_hours'] ?? 24,
+                $dataset['summary']['last_event_at'] ?? '',
+                $dataset['summary']['total_events_last_24h'] ?? 0,
+                $dataset['summary']['unique_devices_last_24h'] ?? 0,
+                $dataset['summary']['clockins_last_24h'] ?? 0,
+                $dataset['summary']['clockouts_last_24h'] ?? 0,
+                $dataset['summary']['open_attendances'] ?? 0,
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+            ];
+        }
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportAttendanceDeviceHealthReportJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:200',
+        ]);
+
+        $dataset = $this->buildAttendanceDeviceHealthDataset(
+            creatorId(),
+            (int) ($validated['limit'] ?? 50)
+        );
+
+        return response()->json($dataset);
+    }
+
     public function exportCostAllocationReport(Request $request)
     {
         if (!Auth::user()->can('view-payrolls')) {
@@ -1370,8 +1748,14 @@ class MozambiquePayrollComplianceController extends Controller
             'Branch',
             'Department',
             'Designation',
+            'Business Unit',
+            'Worksite',
             'Cost Center Code',
             'Cost Center Name',
+            'Project',
+            'Client',
+            'Allocation Source',
+            'Allocation Minutes',
             'Gross Pay',
             'Allowances',
             'Manual Overtime',
@@ -1394,8 +1778,14 @@ class MozambiquePayrollComplianceController extends Controller
                 $row['branch'],
                 $row['department'],
                 $row['designation'],
+                $row['business_unit'],
+                $row['worksite'],
                 $row['cost_center_code'],
                 $row['cost_center_name'],
+                $row['project_name'],
+                $row['client_name'],
+                $row['allocation_source'],
+                $row['allocation_minutes'],
                 $row['gross_pay'],
                 $row['total_allowances'],
                 $row['total_manual_overtimes'],
@@ -1497,6 +1887,90 @@ class MozambiquePayrollComplianceController extends Controller
         return response()->json($dataset);
     }
 
+    public function exportCostAllocationXlsx(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildCostAllocationDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-cost-allocation-%s-%s.xlsx',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Date',
+            'Employee',
+            'Employee NUIT',
+            'Branch',
+            'Department',
+            'Designation',
+            'Business Unit',
+            'Worksite',
+            'Cost Center Code',
+            'Cost Center Name',
+            'Project',
+            'Client',
+            'Allocation Source',
+            'Allocation Minutes',
+            'Gross Pay',
+            'Allowances',
+            'Manual Overtime',
+            'Deductions',
+            'Loans',
+            'IRPS',
+            'INSS Employee',
+            'INSS Employer',
+            'Net Pay',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_date'],
+                $row['employee_name'],
+                $row['employee_nuit'],
+                $row['branch'],
+                $row['department'],
+                $row['designation'],
+                $row['business_unit'],
+                $row['worksite'],
+                $row['cost_center_code'],
+                $row['cost_center_name'],
+                $row['project_name'],
+                $row['client_name'],
+                $row['allocation_source'],
+                $row['allocation_minutes'],
+                $row['gross_pay'],
+                $row['total_allowances'],
+                $row['total_manual_overtimes'],
+                $row['total_deductions'],
+                $row['total_loans'],
+                $row['irps_amount'],
+                $row['inss_employee_amount'],
+                $row['inss_employer_amount'],
+                $row['net_pay'],
+            ];
+        })->values()->all();
+
+        return $this->exportXlsx($filename, $headers, $rows);
+    }
+
     public function exportAccountingJournalLinesJson(Request $request)
     {
         if (!Auth::user()->can('view-payrolls')) {
@@ -1513,6 +1987,252 @@ class MozambiquePayrollComplianceController extends Controller
         );
 
         return response()->json($dataset);
+    }
+
+    public function exportAccountingJournalLinesXlsx(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildJournalLinesDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-journal-lines-%s-%s.xlsx',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Journal ID',
+            'Journal Number',
+            'Journal Date',
+            'Journal Code',
+            'Journal Name',
+            'Line Number',
+            'Payroll Entry ID',
+            'Payroll ID',
+            'Payroll Title',
+            'Employee',
+            'Account Code',
+            'Account Name',
+            'Cost Center Code',
+            'Cost Center Name',
+            'Debit',
+            'Credit',
+            'Description',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['journal_id'],
+                $row['journal_number'],
+                $row['journal_date'],
+                $row['journal_code'],
+                $row['journal_name'],
+                $row['line_number'],
+                $row['payroll_entry_id'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['employee_name'],
+                $row['account_code'],
+                $row['account_name'],
+                $row['cost_center_code'],
+                $row['cost_center_name'],
+                $row['debit_amount'],
+                $row['credit_amount'],
+                $row['description'],
+            ];
+        })->values()->all();
+
+        return $this->exportXlsx($filename, $headers, $rows);
+    }
+
+    public function exportPayrollMonthlySummary(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildMonthlyPayrollSummaryDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-monthly-summary-%s-%s.csv',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Period Start',
+            'Pay Period End',
+            'Pay Date',
+            'Payment Status',
+            'Active Entries',
+            'Employee Count',
+            'Gross Pay Total',
+            'Deductions Total',
+            'Net Pay Total',
+            'IRPS Total',
+            'INSS Employee Total',
+            'INSS Employer Total',
+            'Allowances Total',
+            'Manual Overtime Total',
+            'Loans Total',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_period_start'],
+                $row['pay_period_end'],
+                $row['pay_date'],
+                $row['payment_status'],
+                $row['active_entries_count'],
+                $row['employee_count'],
+                $row['gross_pay_total'],
+                $row['deductions_total'],
+                $row['net_pay_total'],
+                $row['irps_total'],
+                $row['inss_employee_total'],
+                $row['inss_employer_total'],
+                $row['allowances_total'],
+                $row['manual_overtime_total'],
+                $row['loans_total'],
+            ];
+        })->values()->all();
+
+        return $this->exportCsv($filename, $headers, $rows);
+    }
+
+    public function exportPayrollMonthlySummaryJson(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildMonthlyPayrollSummaryDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        return response()->json($dataset);
+    }
+
+    public function exportPayrollMonthlySummaryXml(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildMonthlyPayrollSummaryDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-monthly-summary-%s-%s.xml',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        return $this->exportXml('payroll_monthly_summary', $dataset, $filename);
+    }
+
+    public function exportPayrollMonthlySummaryXlsx(Request $request)
+    {
+        if (!Auth::user()->can('view-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'reference_period' => 'nullable|date_format:Y-m',
+        ]);
+
+        $dataset = $this->payrollAccountingExportService->buildMonthlyPayrollSummaryDataset(
+            creatorId(),
+            $validated['reference_period'] ?? null
+        );
+
+        $filename = sprintf(
+            'payroll-monthly-summary-%s-%s.xlsx',
+            $dataset['reference_period'],
+            now()->format('Ymd-His')
+        );
+
+        $headers = [
+            'Reference Period',
+            'Payroll ID',
+            'Payroll Title',
+            'Pay Period Start',
+            'Pay Period End',
+            'Pay Date',
+            'Payment Status',
+            'Active Entries',
+            'Employee Count',
+            'Gross Pay Total',
+            'Deductions Total',
+            'Net Pay Total',
+            'IRPS Total',
+            'INSS Employee Total',
+            'INSS Employer Total',
+            'Allowances Total',
+            'Manual Overtime Total',
+            'Loans Total',
+        ];
+
+        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+            return [
+                $row['reference_period'],
+                $row['payroll_id'],
+                $row['payroll_title'],
+                $row['pay_period_start'],
+                $row['pay_period_end'],
+                $row['pay_date'],
+                $row['payment_status'],
+                $row['active_entries_count'],
+                $row['employee_count'],
+                $row['gross_pay_total'],
+                $row['deductions_total'],
+                $row['net_pay_total'],
+                $row['irps_total'],
+                $row['inss_employee_total'],
+                $row['inss_employer_total'],
+                $row['allowances_total'],
+                $row['manual_overtime_total'],
+                $row['loans_total'],
+            ];
+        })->values()->all();
+
+        return $this->exportXlsx($filename, $headers, $rows);
     }
 
     public function exportCostAllocationXml(Request $request)
@@ -1553,6 +2273,9 @@ class MozambiquePayrollComplianceController extends Controller
             creatorId(),
             $validated['reference_date'] ?? null
         );
+        if ($this->shouldMaskSensitiveEmployeeData()) {
+            $dataset = $this->maskWorkforceDataset($dataset);
+        }
 
         $filename = sprintf(
             'hr-workforce-register-%s-%s.csv',
@@ -1709,6 +2432,74 @@ class MozambiquePayrollComplianceController extends Controller
         return back()->with('success', $message);
     }
 
+    public function importAttendanceRegister(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
+
+        $summary = $this->workforceExportService->importAttendanceCsv(
+            creatorId(),
+            $validated['csv_file']->getRealPath() ?: '',
+            Auth::id()
+        );
+
+        if (($summary['processed'] ?? 0) === 0 && !empty($summary['errors'])) {
+            return back()->with('error', $summary['errors'][0]['message'] ?? __('Attendance import failed.'));
+        }
+
+        $errorCount = count($summary['errors'] ?? []);
+        $message = __('Attendance import completed. Processed: :processed, Updated: :updated, Skipped: :skipped.', [
+            'processed' => (int) ($summary['processed'] ?? 0),
+            'updated' => (int) ($summary['updated'] ?? 0),
+            'skipped' => (int) ($summary['skipped'] ?? 0),
+        ]);
+
+        if ($errorCount > 0) {
+            $message .= ' ' . __('Rows with issues: :count.', ['count' => $errorCount]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    public function importAnnualLeavePlans(Request $request)
+    {
+        if (!Auth::user()->can('edit-payrolls')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240',
+        ]);
+
+        $summary = $this->workforceExportService->importAnnualLeavePlansCsv(
+            creatorId(),
+            $validated['csv_file']->getRealPath() ?: '',
+            Auth::id()
+        );
+
+        if (($summary['processed'] ?? 0) === 0 && !empty($summary['errors'])) {
+            return back()->with('error', $summary['errors'][0]['message'] ?? __('Annual leave plans import failed.'));
+        }
+
+        $errorCount = count($summary['errors'] ?? []);
+        $message = __('Annual leave plans import completed. Processed: :processed, Updated: :updated, Skipped: :skipped.', [
+            'processed' => (int) ($summary['processed'] ?? 0),
+            'updated' => (int) ($summary['updated'] ?? 0),
+            'skipped' => (int) ($summary['skipped'] ?? 0),
+        ]);
+
+        if ($errorCount > 0) {
+            $message .= ' ' . __('Rows with issues: :count.', ['count' => $errorCount]);
+        }
+
+        return back()->with('success', $message);
+    }
+
     public function exportWorkforceRegisterJson(Request $request)
     {
         if (!Auth::user()->can('view-payrolls')) {
@@ -1723,6 +2514,9 @@ class MozambiquePayrollComplianceController extends Controller
             creatorId(),
             $validated['reference_date'] ?? null
         );
+        if ($this->shouldMaskSensitiveEmployeeData()) {
+            $dataset = $this->maskWorkforceDataset($dataset);
+        }
 
         return response()->json($dataset);
     }
@@ -1741,6 +2535,9 @@ class MozambiquePayrollComplianceController extends Controller
             creatorId(),
             $validated['reference_date'] ?? null
         );
+        if ($this->shouldMaskSensitiveEmployeeData()) {
+            $dataset = $this->maskWorkforceDataset($dataset);
+        }
 
         $filename = sprintf(
             'hr-workforce-register-%s-%s.xml',
@@ -1773,6 +2570,221 @@ class MozambiquePayrollComplianceController extends Controller
         );
 
         return $this->exportXml('payroll_journal_lines', $dataset, $filename);
+    }
+
+    private function buildAttendanceDeviceConfig(int $companyId): array
+    {
+        $settings = Setting::query()
+            ->where('created_by', $companyId)
+            ->whereIn('key', [
+                'mz_attendance_device_ingest_enabled',
+                'mz_attendance_device_ingest_token',
+                'mz_attendance_device_default_label',
+            ])
+            ->get()
+            ->keyBy('key');
+
+        /** @var Setting|null $tokenSetting */
+        $tokenSetting = $settings->get('mz_attendance_device_ingest_token');
+        $tokenValue = trim((string) ($tokenSetting?->value ?? ''));
+
+        /** @var Setting|null $enabledSetting */
+        $enabledSetting = $settings->get('mz_attendance_device_ingest_enabled');
+        $enabled = $enabledSetting
+            ? $this->parseBooleanSetting($enabledSetting->value)
+            : ($tokenValue !== '');
+
+        /** @var Setting|null $labelSetting */
+        $labelSetting = $settings->get('mz_attendance_device_default_label');
+        $defaultLabel = trim((string) ($labelSetting?->value ?? ''));
+
+        return [
+            'enabled' => $enabled,
+            'has_token' => $tokenValue !== '',
+            'token_preview' => $this->maskSensitiveToken($tokenValue),
+            'token_updated_at' => $tokenSetting?->updated_at?->toIso8601String(),
+            'default_device_label' => $defaultLabel !== '' ? $defaultLabel : null,
+            'ingest_url' => url('/api/hrm/attendance/device-ingest'),
+        ];
+    }
+
+    private function buildAttendanceDeviceHealthDataset(int $companyId, int $limit = 50): array
+    {
+        $now = now();
+        $windowStart = $now->copy()->subDay();
+        $safeLimit = max(1, min($limit, 200));
+
+        $baseQuery = Attendance::query()
+            ->active()
+            ->where('created_by', $companyId)
+            ->where('source_channel', 'biometric');
+
+        $lastEventAt = (clone $baseQuery)->max('updated_at');
+        $windowQuery = (clone $baseQuery)->where(function ($query) use ($windowStart): void {
+            $query->where('created_at', '>=', $windowStart)->orWhere('updated_at', '>=', $windowStart);
+        });
+
+        $totalEventsLast24h = (clone $windowQuery)->count();
+        $uniqueDevicesLast24h = (clone $windowQuery)
+            ->whereNotNull('source_device_id')
+            ->where('source_device_id', '<>', '')
+            ->distinct('source_device_id')
+            ->count('source_device_id');
+
+        $clockinsLast24h = (clone $baseQuery)
+            ->whereNotNull('clock_in')
+            ->where('clock_in', '>=', $windowStart)
+            ->count();
+        $clockoutsLast24h = (clone $baseQuery)
+            ->whereNotNull('clock_out')
+            ->where('clock_out', '>=', $windowStart)
+            ->count();
+
+        $openAttendances = (clone $baseQuery)
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->count();
+
+        $rows = (clone $baseQuery)
+            ->with('user:id,name')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit($safeLimit)
+            ->get([
+                'id',
+                'employee_id',
+                'date',
+                'clock_in',
+                'clock_out',
+                'source_device_id',
+                'source_device_label',
+                'source_reference',
+                'created_at',
+                'updated_at',
+            ])
+            ->map(static function (Attendance $attendance): array {
+                $updatedAt = $attendance->updated_at instanceof Carbon
+                    ? $attendance->updated_at
+                    : ($attendance->updated_at ? Carbon::parse((string) $attendance->updated_at) : null);
+                $createdAt = $attendance->created_at instanceof Carbon
+                    ? $attendance->created_at
+                    : ($attendance->created_at ? Carbon::parse((string) $attendance->created_at) : null);
+
+                $action = 'clockin';
+                if ($attendance->clock_out) {
+                    if ($updatedAt && $createdAt && $updatedAt->gt($createdAt)) {
+                        $action = 'clockout';
+                    } else {
+                        $action = 'clockin_and_clockout';
+                    }
+                }
+
+                return [
+                    'attendance_id' => (int) $attendance->id,
+                    'employee_name' => $attendance->user?->name ?? ('User #' . (int) $attendance->employee_id),
+                    'attendance_date' => $attendance->date?->format('Y-m-d'),
+                    'action' => $action,
+                    'clock_in' => $attendance->clock_in ? Carbon::parse((string) $attendance->clock_in)->toDateTimeString() : null,
+                    'clock_out' => $attendance->clock_out ? Carbon::parse((string) $attendance->clock_out)->toDateTimeString() : null,
+                    'source_device_id' => $attendance->source_device_id,
+                    'source_device_label' => $attendance->source_device_label,
+                    'source_reference' => $attendance->source_reference,
+                    'last_activity_at' => $updatedAt?->toIso8601String() ?? $createdAt?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'generated_at' => $now->toIso8601String(),
+            'window_start' => $windowStart->toIso8601String(),
+            'window_hours' => 24,
+            'summary' => [
+                'total_events_last_24h' => $totalEventsLast24h,
+                'unique_devices_last_24h' => $uniqueDevicesLast24h,
+                'clockins_last_24h' => $clockinsLast24h,
+                'clockouts_last_24h' => $clockoutsLast24h,
+                'open_attendances' => $openAttendances,
+                'last_event_at' => $lastEventAt ? Carbon::parse((string) $lastEventAt)->toIso8601String() : null,
+            ],
+            'rows' => $rows,
+        ];
+    }
+
+    private function parseBooleanSetting(mixed $value): bool
+    {
+        $normalized = strtolower(trim((string) ($value ?? '')));
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function shouldMaskSensitiveEmployeeData(): bool
+    {
+        return !Auth::user()->can('view-sensitive-employee-data');
+    }
+
+    private function maskSensitiveToken(string $token): string
+    {
+        if ($token === '') {
+            return '';
+        }
+
+        $length = strlen($token);
+        if ($length <= 8) {
+            return str_repeat('*', $length);
+        }
+
+        return substr($token, 0, 4)
+            . str_repeat('*', max(4, $length - 8))
+            . substr($token, -4);
+    }
+
+    private function maskIdentifier(string $value, int $visiblePrefix = 2, int $visibleSuffix = 2): string
+    {
+        $clean = trim($value);
+        if ($clean === '') {
+            return '';
+        }
+
+        $length = strlen($clean);
+        if ($length <= ($visiblePrefix + $visibleSuffix)) {
+            return str_repeat('*', $length);
+        }
+
+        $maskedLength = max(4, $length - ($visiblePrefix + $visibleSuffix));
+
+        return substr($clean, 0, $visiblePrefix)
+            . str_repeat('*', $maskedLength)
+            . substr($clean, -$visibleSuffix);
+    }
+
+    private function maskPersonName(string $value): string
+    {
+        $clean = trim($value);
+        if ($clean === '') {
+            return '';
+        }
+
+        $firstChar = substr($clean, 0, 1);
+
+        return sprintf('%s%s', $firstChar, str_repeat('*', max(3, strlen($clean) - 1)));
+    }
+
+    private function maskWorkforceDataset(array $dataset): array
+    {
+        $dataset['rows'] = collect((array) ($dataset['rows'] ?? []))
+            ->map(function (array $row): array {
+                $row['employee_nuit'] = $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2);
+                $row['inss_number'] = $this->maskIdentifier((string) ($row['inss_number'] ?? ''), 2, 2);
+                $row['passport_number'] = $this->maskIdentifier((string) ($row['passport_number'] ?? ''), 1, 2);
+                $row['work_authorization_number'] = $this->maskIdentifier((string) ($row['work_authorization_number'] ?? ''), 1, 2);
+
+                return $row;
+            })
+            ->values()
+            ->all();
+
+        return $dataset;
     }
 
     private function exportCsv(string $filename, array $headers, array $rows)
@@ -1827,6 +2839,38 @@ class MozambiquePayrollComplianceController extends Controller
 
         return response($xml->outputMemory(), 200, [
             'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
+        ]);
+    }
+
+    private function exportXlsx(string $filename, array $headers, array $rows)
+    {
+        $spreadsheet = new Spreadsheet();
+        $worksheet = $spreadsheet->getActiveSheet();
+        $worksheet->fromArray($headers, null, 'A1');
+
+        if (!empty($rows)) {
+            $worksheet->fromArray($rows, null, 'A2');
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        $tempPath = tempnam(sys_get_temp_dir(), 'hrm-xlsx-');
+        if ($tempPath === false) {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
+            return response('', 500);
+        }
+
+        $writer->save($tempPath);
+        $xlsxContent = file_get_contents($tempPath) ?: '';
+        @unlink($tempPath);
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return response($xlsxContent, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => sprintf('attachment; filename="%s"', $filename),
         ]);
     }

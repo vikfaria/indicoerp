@@ -438,6 +438,332 @@ class HrmCompensationIsolationTest extends TestCase
         ]);
     }
 
+    public function test_allowance_destroy_requires_reason_and_soft_cancels_record(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-allowances']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Allowance Cancel Worker');
+        $this->attachEmployeeProfile($company, $employeeUser, 'EMP-ALL-CANCEL-001');
+
+        $allowanceType = AllowanceType::query()->create([
+            'name' => 'Allowance Cancel Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $allowance = Allowance::query()->create([
+            'employee_id' => $employeeUser->id,
+            'allowance_type_id' => $allowanceType->id,
+            'type' => 'fixed',
+            'amount' => 900,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $missingReasonResponse = $this->actingAs($company)->delete(route('hrm.allowances.destroy', $allowance->id));
+        $missingReasonResponse->assertSessionHasErrors('cancellation_reason');
+
+        $this->assertDatabaseHas('allowances', [
+            'id' => $allowance->id,
+            'is_cancelled' => false,
+        ]);
+
+        $reason = 'Allowance duplicado substituido por novo registo.';
+        $response = $this->actingAs($company)->delete(route('hrm.allowances.destroy', $allowance->id), [
+            'cancellation_reason' => $reason,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('allowances', [
+            'id' => $allowance->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => $reason,
+        ]);
+    }
+
+    public function test_deduction_destroy_requires_reason_and_soft_cancels_record(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-deductions']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Deduction Cancel Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-DED-CANCEL-001');
+
+        $deductionType = DeductionType::query()->create([
+            'name' => 'Deduction Cancel Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $deduction = Deduction::query()->create([
+            'employee_id' => $employeeUser->id,
+            'deduction_type_id' => $deductionType->id,
+            'type' => 'fixed',
+            'amount' => 400,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $missingReasonResponse = $this->actingAs($company)->delete(route('hrm.deductions.destroy', [$deduction->id, $employee->id]));
+        $missingReasonResponse->assertSessionHasErrors('cancellation_reason');
+
+        $this->assertDatabaseHas('deductions', [
+            'id' => $deduction->id,
+            'is_cancelled' => false,
+        ]);
+
+        $reason = 'Dedução anterior anulada por erro de parametrização.';
+        $response = $this->actingAs($company)->delete(route('hrm.deductions.destroy', [$deduction->id, $employee->id]), [
+            'cancellation_reason' => $reason,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('deductions', [
+            'id' => $deduction->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => $reason,
+        ]);
+    }
+
+    public function test_loan_destroy_requires_reason_and_soft_cancels_record(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-loans']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Loan Cancel Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-LOAN-CANCEL-001');
+
+        $loanType = LoanType::query()->create([
+            'name' => 'Loan Cancel Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $loan = Loan::query()->create([
+            'title' => 'Loan cancel test',
+            'employee_id' => $employeeUser->id,
+            'loan_type_id' => $loanType->id,
+            'type' => 'fixed',
+            'amount' => 1800,
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-07-01',
+            'reason' => 'Testing cancel flow',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $missingReasonResponse = $this->actingAs($company)->delete(route('hrm.loans.destroy', [$loan->id, $employee->id]));
+        $missingReasonResponse->assertSessionHasErrors('cancellation_reason');
+
+        $this->assertDatabaseHas('loans', [
+            'id' => $loan->id,
+            'is_cancelled' => false,
+        ]);
+
+        $reason = 'Empréstimo cancelado após revisão documental.';
+        $response = $this->actingAs($company)->delete(route('hrm.loans.destroy', [$loan->id, $employee->id]), [
+            'cancellation_reason' => $reason,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('loans', [
+            'id' => $loan->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => $reason,
+        ]);
+    }
+
+    public function test_overtime_destroy_requires_reason_and_soft_cancels_record(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-overtimes']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Overtime Cancel Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-OT-CANCEL-001');
+
+        $overtime = Overtime::query()->create([
+            'title' => 'Overtime cancel test',
+            'employee_id' => $employeeUser->id,
+            'total_days' => 1,
+            'hours' => 4,
+            'rate' => 120,
+            'start_date' => '2026-06-15',
+            'end_date' => '2026-06-15',
+            'status' => 'active',
+            'approval_status' => 'approved',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $missingReasonResponse = $this->actingAs($company)->delete(route('hrm.overtimes.destroy', [$overtime->id, $employee->id]));
+        $missingReasonResponse->assertSessionHasErrors('cancellation_reason');
+
+        $this->assertDatabaseHas('overtimes', [
+            'id' => $overtime->id,
+            'is_cancelled' => false,
+        ]);
+
+        $reason = 'Horas extra canceladas após correção de ponto.';
+        $response = $this->actingAs($company)->delete(route('hrm.overtimes.destroy', [$overtime->id, $employee->id]), [
+            'cancellation_reason' => $reason,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('overtimes', [
+            'id' => $overtime->id,
+            'is_cancelled' => true,
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => $reason,
+        ]);
+    }
+
+    public function test_cancelled_allowance_does_not_block_creation_of_same_type(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-allowances', 'delete-allowances']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Allowance Recreate Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-ALL-RECREATE-001');
+
+        $allowanceType = AllowanceType::query()->create([
+            'name' => 'Allowance Recreate Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $allowance = Allowance::query()->create([
+            'employee_id' => $employeeUser->id,
+            'allowance_type_id' => $allowanceType->id,
+            'type' => 'fixed',
+            'amount' => 500,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->actingAs($company)->delete(route('hrm.allowances.destroy', $allowance->id), [
+            'cancellation_reason' => 'Registo inicial cancelado para novo valor.',
+        ]);
+
+        $response = $this->actingAs($company)->post(route('hrm.allowances.store'), [
+            'employee_id' => $employee->id,
+            'allowance_type_id' => $allowanceType->id,
+            'type' => 'fixed',
+            'amount' => 650,
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseCount('allowances', 2);
+        $this->assertDatabaseHas('allowances', [
+            'employee_id' => $employeeUser->id,
+            'allowance_type_id' => $allowanceType->id,
+            'amount' => 650,
+            'is_cancelled' => false,
+        ]);
+    }
+
+    public function test_cancelled_deduction_does_not_block_creation_of_same_type(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-deductions', 'delete-deductions']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Deduction Recreate Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-DED-RECREATE-001');
+
+        $deductionType = DeductionType::query()->create([
+            'name' => 'Deduction Recreate Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $deduction = Deduction::query()->create([
+            'employee_id' => $employeeUser->id,
+            'deduction_type_id' => $deductionType->id,
+            'type' => 'fixed',
+            'amount' => 250,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->actingAs($company)->delete(route('hrm.deductions.destroy', [$deduction->id, $employee->id]), [
+            'cancellation_reason' => 'Registo inicial cancelado para novo valor.',
+        ]);
+
+        $response = $this->actingAs($company)->post(route('hrm.deductions.store'), [
+            'employee_id' => $employee->id,
+            'deduction_type_id' => $deductionType->id,
+            'type' => 'fixed',
+            'amount' => 300,
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseCount('deductions', 2);
+        $this->assertDatabaseHas('deductions', [
+            'employee_id' => $employeeUser->id,
+            'deduction_type_id' => $deductionType->id,
+            'amount' => 300,
+            'is_cancelled' => false,
+        ]);
+    }
+
+    public function test_cancelled_loan_does_not_block_creation_of_same_type(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-loans', 'delete-loans']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Loan Recreate Worker');
+        $employee = $this->attachEmployeeProfile($company, $employeeUser, 'EMP-LOAN-RECREATE-001');
+
+        $loanType = LoanType::query()->create([
+            'name' => 'Loan Recreate Type',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $loan = Loan::query()->create([
+            'title' => 'Loan original',
+            'employee_id' => $employeeUser->id,
+            'loan_type_id' => $loanType->id,
+            'type' => 'fixed',
+            'amount' => 1300,
+            'start_date' => '2026-06-01',
+            'end_date' => '2026-07-01',
+            'reason' => 'Initial',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->actingAs($company)->delete(route('hrm.loans.destroy', [$loan->id, $employee->id]), [
+            'cancellation_reason' => 'Registo inicial cancelado para novo valor.',
+        ]);
+
+        $response = $this->actingAs($company)->post(route('hrm.loans.store'), [
+            'employee_id' => $employee->id,
+            'title' => 'Loan replacement',
+            'loan_type_id' => $loanType->id,
+            'type' => 'fixed',
+            'amount' => 1500,
+            'start_date' => '2026-06-15',
+            'end_date' => '2026-07-15',
+            'reason' => 'Replacement',
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseCount('loans', 2);
+        $this->assertDatabaseHas('loans', [
+            'employee_id' => $employeeUser->id,
+            'loan_type_id' => $loanType->id,
+            'title' => 'Loan replacement',
+            'is_cancelled' => false,
+        ]);
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([

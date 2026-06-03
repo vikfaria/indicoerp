@@ -39,6 +39,7 @@ interface ReadinessPayload {
         accounting_local_validation_completed: boolean;
         accounting_real_cases_validated: boolean;
         e2e_scenarios_completed: boolean;
+        backup_restore_verified: boolean;
         formal_approval_granted: boolean;
         recommended_for_launch: boolean;
     };
@@ -65,6 +66,10 @@ interface ReadinessPayload {
         e2e_payroll_flow_status: string;
         e2e_completed_at: string;
         e2e_notes: string;
+        backup_restore_status: string;
+        backup_restore_tested_at: string;
+        backup_restore_evidence_ref: string;
+        backup_restore_notes: string;
         go_live_approved: string;
         go_live_approved_at: string;
         go_live_approval_notes: string;
@@ -161,6 +166,10 @@ export default function MozambiqueGoLiveReadiness() {
         e2e_payroll_flow_status: 'not_started',
         e2e_completed_at: '',
         e2e_notes: '',
+        backup_restore_status: 'not_started',
+        backup_restore_tested_at: '',
+        backup_restore_evidence_ref: '',
+        backup_restore_notes: '',
         go_live_approved: 'off',
         go_live_approved_at: '',
         go_live_approval_notes: '',
@@ -918,6 +927,45 @@ export default function MozambiqueGoLiveReadiness() {
                                         className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
                                         value={form.e2e_notes || ''}
                                         onChange={(e) => setForm((prev) => ({ ...prev, e2e_notes: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Backup/Restore Verification')}</label>
+                                    <select
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.backup_restore_status}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, backup_restore_status: e.target.value }))}
+                                    >
+                                        <option value="not_started">{t('Not Started')}</option>
+                                        <option value="in_progress">{t('In Progress')}</option>
+                                        <option value="completed">{t('Completed')}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Backup/Restore Test Date')}</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.backup_restore_tested_at || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, backup_restore_tested_at: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Backup/Restore Evidence Reference')}</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.backup_restore_evidence_ref || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, backup_restore_evidence_ref: e.target.value }))}
+                                        placeholder="backup_YYYYMMDD_HHMMSS.manifest"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Backup/Restore Notes')}</label>
+                                    <textarea
+                                        className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
+                                        value={form.backup_restore_notes || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, backup_restore_notes: e.target.value }))}
                                     />
                                 </div>
                                 <div>

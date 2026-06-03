@@ -29,6 +29,7 @@ class LeaveApplicationController extends Controller
     {
         if (Auth::user()->can('manage-leave-applications')) {
             $leaveapplications = LeaveApplication::query()
+                ->active()
                 ->with(['employee', 'leave_type', 'approved_by'])
                 ->where(function ($q) {
                     if (Auth::user()->can('manage-any-leave-applications')) {
@@ -122,6 +123,7 @@ class LeaveApplicationController extends Controller
 
             // Calculate used leaves for this employee, leave type and current year
             $usedLeaves = LeaveApplication::where('employee_id', $validated['employee_id'])
+                ->active()
                 ->where('leave_type_id', $validated['leave_type_id'])
                 ->whereIn('status', ['approved', 'pending'])
                 ->whereYear('start_date', $currentYear)
@@ -129,6 +131,7 @@ class LeaveApplicationController extends Controller
 
             // Check for overlapping leave applications
             $overlappingLeave = LeaveApplication::where('employee_id', $validated['employee_id'])
+                ->active()
                 ->where(function ($query) use ($validated) {
                     $query
                         ->whereBetween('start_date', [$validated['start_date'], $validated['end_date']])
@@ -202,6 +205,10 @@ class LeaveApplicationController extends Controller
                 return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
             }
 
+            if ((bool) ($leaveapplication->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled leave applications cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
             // Get leave type details
@@ -249,6 +256,7 @@ class LeaveApplicationController extends Controller
 
             // Calculate used leaves for this employee, leave type and current year (excluding current application)
             $usedLeaves = LeaveApplication::where('employee_id', $validated['employee_id'])
+                ->active()
                 ->where('leave_type_id', $validated['leave_type_id'])
                 ->whereIn('status', ['approved', 'pending'])
                 ->whereYear('start_date', $currentYear)
@@ -257,6 +265,7 @@ class LeaveApplicationController extends Controller
 
             // Check for overlapping leave applications (excluding current application)
             $overlappingLeave = LeaveApplication::where('employee_id', $validated['employee_id'])
+                ->active()
                 ->where('id', '!=', $leaveapplication->id)
                 ->where(function ($query) use ($validated) {
                     $query
@@ -327,10 +336,23 @@ class LeaveApplicationController extends Controller
                 return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
             }
 
-            DestroyLeaveApplication::dispatch($leaveapplication);
-            $leaveapplication->delete();
+            if ((bool) ($leaveapplication->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Leave application is already cancelled.'));
+            }
 
-            return redirect()->back()->with('success', __('The leaveapplication has been deleted.'));
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyLeaveApplication::dispatch($leaveapplication);
+            $leaveapplication->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('Leave application cancelled successfully.'));
         } else {
             return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
         }
@@ -341,6 +363,10 @@ class LeaveApplicationController extends Controller
         if (Auth::user()->can('manage-leave-status')) {
             if (!$this->canAccessLeaveApplication($leaveapplication)) {
                 return redirect()->route('hrm.leave-applications.index')->with('error', __('Permission denied'));
+            }
+
+            if ((bool) ($leaveapplication->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled leave applications cannot be processed.'));
             }
 
             $request->validate([
@@ -388,6 +414,7 @@ class LeaveApplicationController extends Controller
 
             $currentYear = (int) date('Y');
             $baseQuery = LeaveApplication::query()
+                ->active()
                 ->where('created_by', creatorId())
                 ->where('employee_id', $employeeId)
                 ->where('leave_type_id', $leaveTypeId)

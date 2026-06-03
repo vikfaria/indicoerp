@@ -28,6 +28,7 @@ class LoanController extends Controller
             if ($employee) {
                 // Check if employee already has a loan
                 $existingLoan = Loan::query()
+                    ->active()
                     ->where('created_by', creatorId())
                     ->where('employee_id', $employee->user_id)
                     ->where('loan_type_id', $validated['loan_type_id'])
@@ -68,10 +69,15 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
+            if ((bool) ($loan->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Cancelled loan cannot be edited.'));
+            }
+
             $validated = $request->validated();
 
             // Check if another employee already has a loan (excluding current loan)
             $existingLoan = Loan::query()
+                ->active()
                 ->where('created_by', creatorId())
                 ->where('employee_id', $loan->employee_id)
                 ->where('loan_type_id', $validated['loan_type_id'])
@@ -106,10 +112,23 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', __('Permission denied'));
             }
 
-            DestroyLoan::dispatch($loan);
-            $loan->delete();
+            if ((bool) ($loan->is_cancelled ?? false)) {
+                return redirect()->back()->with('error', __('Loan is already cancelled.'));
+            }
 
-            return redirect()->back()->with('success', __('The loan has been deleted.'))->with('timestamp', time());
+            $validated = request()->validate([
+                'cancellation_reason' => 'required|string|min:5|max:1000',
+            ]);
+
+            DestroyLoan::dispatch($loan);
+            $loan->update([
+                'is_cancelled' => true,
+                'cancelled_at' => now(),
+                'cancelled_by' => Auth::id(),
+                'cancellation_reason' => trim((string) $validated['cancellation_reason']),
+            ]);
+
+            return redirect()->back()->with('success', __('The loan has been cancelled.'))->with('timestamp', time());
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
         }

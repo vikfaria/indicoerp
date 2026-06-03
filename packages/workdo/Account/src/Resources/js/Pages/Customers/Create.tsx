@@ -23,6 +23,18 @@ interface CreateCustomerProps {
 
 export default function Create({ onSuccess, users = [], auth }: CreateCustomerProps) {
     const { t } = useTranslation();
+    const residencyOptions = [
+        { value: 'resident', label: t('Resident') },
+        { value: 'non_resident', label: t('Non-resident') },
+    ];
+    const customerTypeOptions = [
+        { value: 'consumer_final', label: t('Consumer final') },
+        { value: 'public_entity', label: t('Public entity') },
+        { value: 'private_company', label: t('Private company') },
+        { value: 'exempt', label: t('Exempt') },
+        { value: 'special_regime', label: t('Special regime') },
+    ];
+
     const { data, setData, post, processing, errors } = useForm<CustomerFormData>({
         user_id: undefined,
         company_name: '',
@@ -30,6 +42,13 @@ export default function Create({ onSuccess, users = [], auth }: CreateCustomerPr
         contact_person_email: '',
         contact_person_mobile: '',
         tax_number: '',
+        fiscal_residency_status: 'resident',
+        customer_type: '',
+        fiscal_country: '',
+        vat_regime: '',
+        operation_type: '',
+        billing_currency_code: 'MZN',
+        accounting_account_code: '',
         payment_terms: '',
         billing_address: {
             name: '',
@@ -178,6 +197,95 @@ export default function Create({ onSuccess, users = [], auth }: CreateCustomerPr
                         />
                         <InputError message={errors.payment_terms} />
                     </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="fiscal_residency_status">{t('Fiscal Residency')}</Label>
+                        <Select value={data.fiscal_residency_status} onValueChange={(value) => setData('fiscal_residency_status', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select residency')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {residencyOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.fiscal_residency_status} />
+                    </div>
+                    <div>
+                        <Label htmlFor="customer_type" required>{t('Customer Type')}</Label>
+                        <Select value={data.customer_type} onValueChange={(value) => setData('customer_type', value)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select customer type')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {customerTypeOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.customer_type} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="fiscal_country">{t('Fiscal Country')}</Label>
+                        <Input
+                            id="fiscal_country"
+                            value={data.fiscal_country}
+                            onChange={(e) => setData('fiscal_country', e.target.value)}
+                            placeholder={t('Enter fiscal country')}
+                        />
+                        <InputError message={errors.fiscal_country} />
+                    </div>
+                    <div>
+                        <Label htmlFor="billing_currency_code">{t('Billing Currency')}</Label>
+                        <Input
+                            id="billing_currency_code"
+                            value={data.billing_currency_code}
+                            onChange={(e) => setData('billing_currency_code', e.target.value.toUpperCase())}
+                            placeholder="MZN"
+                            maxLength={3}
+                        />
+                        <InputError message={errors.billing_currency_code} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="vat_regime">{t('VAT Regime')}</Label>
+                        <Input
+                            id="vat_regime"
+                            value={data.vat_regime}
+                            onChange={(e) => setData('vat_regime', e.target.value)}
+                            placeholder={t('e.g., standard, exempt')}
+                        />
+                        <InputError message={errors.vat_regime} />
+                    </div>
+                    <div>
+                        <Label htmlFor="operation_type" required>{t('Operation Type')}</Label>
+                        <Input
+                            id="operation_type"
+                            value={data.operation_type}
+                            onChange={(e) => setData('operation_type', e.target.value)}
+                            placeholder={t('e.g., domestic_sale, export_service')}
+                        />
+                        <InputError message={errors.operation_type} />
+                    </div>
+                </div>
+                <div>
+                    <Label htmlFor="accounting_account_code">{t('Accounting Account Code')}</Label>
+                    <Input
+                        id="accounting_account_code"
+                        value={data.accounting_account_code}
+                        onChange={(e) => setData('accounting_account_code', e.target.value)}
+                        placeholder={t('Optional accounting account code')}
+                    />
+                    <InputError message={errors.accounting_account_code} />
                 </div>
                 <div>
                     <Label htmlFor="billing_name">{t('Billing Name')}</Label>

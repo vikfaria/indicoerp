@@ -74,7 +74,7 @@ class SetSalaryController extends Controller
                 ->select('id', 'name')
                 ->get();
 
-            $allowances = Allowance::with('allowanceType')->where(function ($q) use ($employee) {
+            $allowances = Allowance::with('allowanceType')->active()->where(function ($q) use ($employee) {
                 if (Auth::user()->can('manage-any-set-salary')) {
                     $q->where('created_by', creatorId())->where('employee_id', $employee->user_id);
                 } elseif (Auth::user()->can('manage-own-set-salary')) {
@@ -95,7 +95,7 @@ class SetSalaryController extends Controller
                 ->select('id', 'name')
                 ->get();
 
-            $loans = Loan::with('loanType')->where(function ($q) use ($employee) {
+            $loans = Loan::with('loanType')->active()->where(function ($q) use ($employee) {
                 if (Auth::user()->can('manage-any-set-salary')) {
                     $q->where('created_by', creatorId())->where('employee_id', $employee->user_id);
                 } elseif (Auth::user()->can('manage-own-set-salary')) {
@@ -107,7 +107,7 @@ class SetSalaryController extends Controller
                 ->orderby('id', 'desc')
                 ->get();
 
-            $overtimes = Overtime::where(function ($q) use ($employee) {
+            $overtimes = Overtime::active()->where(function ($q) use ($employee) {
                 if (Auth::user()->can('manage-any-set-salary')) {
                     $q->where('created_by', creatorId())->where('employee_id', $employee->user_id);
                 } elseif (Auth::user()->can('manage-own-set-salary')) {
@@ -118,7 +118,7 @@ class SetSalaryController extends Controller
             })
                 ->orderby('id', 'desc')
                 ->get();
-            $deductions = Deduction::with('deductionType')->where(function ($q) use ($employee) {
+            $deductions = Deduction::with('deductionType')->active()->where(function ($q) use ($employee) {
                 if (Auth::user()->can('manage-any-set-salary')) {
                     $q->where('created_by', creatorId())->where('employee_id', $employee->user_id);
                 } elseif (Auth::user()->can('manage-own-set-salary')) {

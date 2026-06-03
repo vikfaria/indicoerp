@@ -124,6 +124,21 @@ export default function Show() {
         setLoans(initialLoans || []);
         setOvertimes(initialOvertimes || []);
     }, [initialAllowances, initialDeductions, initialLoans, initialOvertimes]);
+
+    const requestCancellationReason = (): string | null => {
+        const reasonInput = window.prompt(t('Provide cancellation reason (min 5 characters):'));
+        if (reasonInput === null) {
+            return null;
+        }
+
+        const cancellationReason = reasonInput.trim();
+        if (cancellationReason.length < 5) {
+            window.alert(t('Cancellation reason must have at least 5 characters.'));
+            return null;
+        }
+
+        return cancellationReason;
+    };
     const [allowanceModalState, setAllowanceModalState] = useState<{
         isOpen: boolean;
         mode: string;
@@ -158,22 +173,54 @@ export default function Show() {
 
     const { deleteState, openDeleteDialog, closeDeleteDialog, confirmDelete } = useDeleteHandler({
         routeName: 'hrm.allowances.destroy',
-        defaultMessage: t('Are you sure you want to delete this allowance?')
+        defaultMessage: t('Are you sure you want to cancel this allowance?'),
+        buildRequestData: () => {
+            const cancellationReason = requestCancellationReason();
+            if (cancellationReason === null) {
+                return null;
+            }
+
+            return { cancellation_reason: cancellationReason };
+        }
     });
 
     const { deleteState: deductionDeleteState, openDeleteDialog: openDeductionDeleteDialog, closeDeleteDialog: closeDeductionDeleteDialog, confirmDelete: confirmDeductionDelete } = useDeleteHandler({
         routeName: 'hrm.deductions.destroy',
-        defaultMessage: t('Are you sure you want to delete this deduction?')
+        defaultMessage: t('Are you sure you want to cancel this deduction?'),
+        buildRequestData: () => {
+            const cancellationReason = requestCancellationReason();
+            if (cancellationReason === null) {
+                return null;
+            }
+
+            return { cancellation_reason: cancellationReason };
+        }
     });
 
     const { deleteState: loanDeleteState, openDeleteDialog: openLoanDeleteDialog, closeDeleteDialog: closeLoanDeleteDialog, confirmDelete: confirmLoanDelete } = useDeleteHandler({
         routeName: 'hrm.loans.destroy',
-        defaultMessage: t('Are you sure you want to delete this loan?')
+        defaultMessage: t('Are you sure you want to cancel this loan?'),
+        buildRequestData: () => {
+            const cancellationReason = requestCancellationReason();
+            if (cancellationReason === null) {
+                return null;
+            }
+
+            return { cancellation_reason: cancellationReason };
+        }
     });
 
     const { deleteState: overtimeDeleteState, openDeleteDialog: openOvertimeDeleteDialog, closeDeleteDialog: closeOvertimeDeleteDialog, confirmDelete: confirmOvertimeDelete } = useDeleteHandler({
         routeName: 'hrm.overtimes.destroy',
-        defaultMessage: t('Are you sure you want to delete this overtime?')
+        defaultMessage: t('Are you sure you want to cancel this overtime?'),
+        buildRequestData: () => {
+            const cancellationReason = requestCancellationReason();
+            if (cancellationReason === null) {
+                return null;
+            }
+
+            return { cancellation_reason: cancellationReason };
+        }
     });
 
 
@@ -458,7 +505,7 @@ export default function Show() {
                                                                 </Button>
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p>{t('Delete')}</p>
+                                                                <p>{t('Cancel')}</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
@@ -565,7 +612,7 @@ export default function Show() {
                                                                 </Button>
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p>{t('Delete')}</p>
+                                                                <p>{t('Cancel')}</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
@@ -693,7 +740,7 @@ export default function Show() {
                                                                 </Button>
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p>{t('Delete')}</p>
+                                                                <p>{t('Cancel')}</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
@@ -848,7 +895,7 @@ export default function Show() {
                                                                 </Button>
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p>{t('Delete')}</p>
+                                                                <p>{t('Cancel')}</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     )}
@@ -958,9 +1005,9 @@ export default function Show() {
             <ConfirmationDialog
                 open={deleteState.isOpen}
                 onOpenChange={closeDeleteDialog}
-                title={t('Delete Allowance')}
+                title={t('Cancel Allowance')}
                 message={deleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDelete}
                 variant="destructive"
             />
@@ -968,9 +1015,9 @@ export default function Show() {
             <ConfirmationDialog
                 open={deductionDeleteState.isOpen}
                 onOpenChange={closeDeductionDeleteDialog}
-                title={t('Delete Deduction')}
+                title={t('Cancel Deduction')}
                 message={deductionDeleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmDeductionDelete}
                 variant="destructive"
             />
@@ -978,9 +1025,9 @@ export default function Show() {
             <ConfirmationDialog
                 open={loanDeleteState.isOpen}
                 onOpenChange={closeLoanDeleteDialog}
-                title={t('Delete Loan')}
+                title={t('Cancel Loan')}
                 message={loanDeleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmLoanDelete}
                 variant="destructive"
             />
@@ -988,9 +1035,9 @@ export default function Show() {
             <ConfirmationDialog
                 open={overtimeDeleteState.isOpen}
                 onOpenChange={closeOvertimeDeleteDialog}
-                title={t('Delete Overtime')}
+                title={t('Cancel Overtime')}
                 message={overtimeDeleteState.message}
-                confirmText={t('Delete')}
+                confirmText={t('Cancel')}
                 onConfirm={confirmOvertimeDelete}
                 variant="destructive"
             />

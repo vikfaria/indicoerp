@@ -21,6 +21,17 @@ class AuditTrailService
         'api_token',
     ];
 
+    private const SENSITIVE_ATTRIBUTES = [
+        'tax_payer_id',
+        'inss_number',
+        'identification_document_number',
+        'passport_number',
+        'work_authorization_number',
+        'account_number',
+        'bank_identifier_code',
+        'emergency_contact_number',
+    ];
+
     /**
      * Persist an immutable audit record for critical model changes.
      */
@@ -144,6 +155,12 @@ class AuditTrailService
                 continue;
             }
 
+            if ($this->isSensitiveAttribute($attribute)) {
+                $filtered[$attribute] = $this->maskSensitiveValue($value);
+
+                continue;
+            }
+
             $filtered[$attribute] = $this->normalizeValue($value);
         }
 
@@ -187,5 +204,54 @@ class AuditTrailService
         $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return $encoded === false ? null : $encoded;
+    }
+
+    private function isSensitiveAttribute(string $attribute): bool
+    {
+        $normalized = strtolower($attribute);
+
+        if (in_array($normalized, self::SENSITIVE_ATTRIBUTES, true)) {
+            return true;
+        }
+
+        return str_contains($normalized, 'passport')
+            || str_contains($normalized, 'inss')
+            || str_contains($normalized, 'tax_payer')
+            || str_contains($normalized, 'account_number')
+            || str_contains($normalized, 'bank_identifier')
+            || str_contains($normalized, 'identification_document')
+            || str_contains($normalized, 'work_authorization');
+    }
+
+    private function maskSensitiveValue(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+
+            if ($trimmed === '') {
+                return '';
+            }
+
+            $length = strlen($trimmed);
+            if ($length <= 4) {
+                return str_repeat('*', $length);
+            }
+
+            return str_repeat('*', max(0, $length - 4)) . substr($trimmed, -4);
+        }
+
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return '[redacted]';
+        }
+
+        if (is_array($value)) {
+            return array_map(fn ($item) => $this->maskSensitiveValue($item), $value);
+        }
+
+        return '[redacted]';
     }
 }

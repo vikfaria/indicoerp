@@ -70,17 +70,27 @@ class SaftExportService
         return $path;
     }
 
+    public function validateGeneratedXml(string $xml): void
+    {
+        $this->validateXml($xml);
+    }
+
     private function writeHeader(\XMLWriter $xml): void
     {
         $profile = CompanyFiscalProfile::where('company_id', $this->companyId)->first();
         $company = DB::table('users')->find($this->companyId);
+        $companyName = $profile?->legal_name ?: ($company?->name ?? '');
+        $softwareCertificateNumber = trim((string) ($profile?->software_certificate_number ?? ''));
+        if ($softwareCertificateNumber === '') {
+            $softwareCertificateNumber = '0';
+        }
 
         $xml->startElement('Header');
         $xml->writeElement('AuditFileVersion', '1.0_01');
         $xml->writeElement('CompanyID', $profile?->nuit ?? '');
         $xml->writeElement('TaxRegistrationNumber', $profile?->nuit ?? '');
         $xml->writeElement('TaxAccountingBasis', 'C'); // Contabilidade
-        $xml->writeElement('CompanyName', $company?->name ?? '');
+        $xml->writeElement('CompanyName', $companyName);
         $xml->writeElement('FiscalYear', $this->fiscalYear);
         $xml->writeElement('StartDate', $this->startDate);
         $xml->writeElement('EndDate', $this->endDate);
@@ -88,7 +98,7 @@ class SaftExportService
         $xml->writeElement('DateCreated', now()->toDateString());
         $xml->writeElement('TaxEntity', 'Global');
         $xml->writeElement('ProductCompanyTaxID', '');
-        $xml->writeElement('SoftwareCertificateNumber', '0');
+        $xml->writeElement('SoftwareCertificateNumber', $softwareCertificateNumber);
         $xml->writeElement('ProductID', 'SysGest ERP');
         $xml->writeElement('ProductVersion', '1.0');
 

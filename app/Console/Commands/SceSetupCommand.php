@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\AccountingJournal;
 use App\Models\AccountingPeriod;
 use App\Models\CompanyFiscalProfile;
+use App\Models\FiscalCalendarEvent;
 use App\Models\FiscalDocumentType;
 use App\Models\MzVatCode;
 use App\Models\WithholdingTaxRule;
@@ -162,13 +163,19 @@ class SceSetupCommand extends Command
                 return false;
             }
 
+            $company = \App\Models\User::find($companyId);
+
             $profile = CompanyFiscalProfile::firstOrCreate(
                 ['company_id' => $companyId],
                 [
+                    'legal_name' => $company?->name ?? null,
                     'accounting_framework' => $framework,
                     'fiscal_regime' => 'normal',
                     'entity_classification' => 'small',
                     'fiscal_year_start_month' => 1,
+                    'taxpayer_type' => 'ordinary',
+                    'state_of_certification' => 'not_certified',
+                    'software_certificate_number' => '0',
                     'is_active' => true,
                     'created_by' => $companyId,
                 ]
@@ -178,8 +185,24 @@ class SceSetupCommand extends Command
             return true;
         });
 
-        // Step 9: Validate PGC structure
-        $this->task("9. Validar estrutura PGC", function () use ($pgcImportService, $companyId) {
+        // Step 9: Generate fiscal calendar
+        $this->task("9. Gerar calendário fiscal {$year}", function () use ($companyId, $year) {
+            if (!Schema::hasTable('fiscal_calendar_events')) {
+                $this->warn('   Tabela fiscal_calendar_events não existe. Execute as migrações primeiro.');
+                return false;
+            }
+
+            FiscalCalendarEvent::generateForYear($companyId, $year);
+            $count = FiscalCalendarEvent::where('company_id', $companyId)
+                ->whereYear('due_date', $year)
+                ->count();
+
+            $this->line("   → {$count} eventos fiscais gerados");
+            return true;
+        });
+
+        // Step 10: Validate PGC structure
+        $this->task("10. Validar estrutura PGC", function () use ($pgcImportService, $companyId) {
             $issues = $pgcImportService->validateStructure($companyId);
 
             if (empty($issues)) {

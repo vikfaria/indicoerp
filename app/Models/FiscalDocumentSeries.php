@@ -10,6 +10,7 @@ class FiscalDocumentSeries extends Model
 {
     protected $fillable = [
         'company_id', 'fiscal_document_type_id', 'series_code',
+        'assigned_user_id', 'terminal_code', 'fiscal_regime_code',
         'fiscal_year', 'last_sequence', 'last_hash',
         'is_active', 'valid_from', 'valid_to', 'created_by',
     ];
@@ -27,6 +28,11 @@ class FiscalDocumentSeries extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(User::class, 'company_id');
+    }
+
+    public function assignedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function fiscalDocumentType(): BelongsTo

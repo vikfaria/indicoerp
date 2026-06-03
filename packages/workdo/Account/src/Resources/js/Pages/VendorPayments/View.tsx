@@ -95,6 +95,24 @@ export default function View({ payment }: VendorPaymentViewProps) {
                                     </span>
                                 </div>
                             </div>
+                            <div>
+                                <span className="font-semibold">{t('Approval')}</span>
+                                <p className="mt-1 text-gray-500">
+                                    {!payment.approval_required ? t('Not Required') : t(payment.approval_status || 'pending')}
+                                </p>
+                            </div>
+                            {payment.approval_reference && (
+                                <div>
+                                    <span className="font-semibold">{t('Approval Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.approval_reference}</p>
+                                </div>
+                            )}
+                            {payment.rejection_reason && (
+                                <div>
+                                    <span className="font-semibold">{t('Rejection Reason')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.rejection_reason}</p>
+                                </div>
+                            )}
                             {payment.reference_number && (
                                 <div>
                                     <span className="font-semibold">{t('Reference Number')}</span>

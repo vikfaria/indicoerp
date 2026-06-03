@@ -62,6 +62,10 @@ class BankAccountController extends Controller
         if(Auth::user()->can('create-bank-accounts')){
             $validated = $request->validated();
             $validated['is_active'] = $request->boolean('is_active', false);
+            $validated['is_electronic_money_account'] = $request->boolean('is_electronic_money_account', false);
+            $validated['electronic_money_limit_exempt_for_enterprise'] = $request->boolean('electronic_money_limit_exempt_for_enterprise', false);
+            $validated = $this->normalizeElectronicMoneyPayload($validated);
+            $validated['account_type'] = $this->normalizeAccountType($validated['account_type']);
 
             $bankaccount = new BankAccount();
             $bankaccount->account_number = $validated['account_number'];
@@ -76,6 +80,13 @@ class BankAccountController extends Controller
             $bankaccount->swift_code = $validated['swift_code'];
             $bankaccount->routing_number = $validated['routing_number'];
             $bankaccount->is_active = $validated['is_active'];
+            $bankaccount->is_electronic_money_account = $validated['is_electronic_money_account'];
+            $bankaccount->electronic_money_entity = $validated['electronic_money_entity'];
+            $bankaccount->electronic_money_level = $validated['electronic_money_level'];
+            $bankaccount->electronic_money_daily_limit_mzn = $validated['electronic_money_daily_limit_mzn'];
+            $bankaccount->electronic_money_monthly_limit_mzn = $validated['electronic_money_monthly_limit_mzn'];
+            $bankaccount->electronic_money_limit_exempt_for_enterprise = $validated['electronic_money_limit_exempt_for_enterprise'];
+            $bankaccount->electronic_money_account_purpose = $validated['electronic_money_account_purpose'];
             $bankaccount->gl_account_id = $validated['gl_account_id'];
             $bankaccount->creator_id = Auth::id();
             $bankaccount->created_by = creatorId();
@@ -95,6 +106,10 @@ class BankAccountController extends Controller
         if(Auth::user()->can('edit-bank-accounts')){
             $validated = $request->validated();
             $validated['is_active'] = $request->boolean('is_active', false);
+            $validated['is_electronic_money_account'] = $request->boolean('is_electronic_money_account', false);
+            $validated['electronic_money_limit_exempt_for_enterprise'] = $request->boolean('electronic_money_limit_exempt_for_enterprise', false);
+            $validated = $this->normalizeElectronicMoneyPayload($validated);
+            $validated['account_type'] = $this->normalizeAccountType($validated['account_type']);
 
             $bankaccount->account_number = $validated['account_number'];
             $bankaccount->account_name = $validated['account_name'];
@@ -108,6 +123,13 @@ class BankAccountController extends Controller
             $bankaccount->swift_code = $validated['swift_code'];
             $bankaccount->routing_number = $validated['routing_number'];
             $bankaccount->is_active = $validated['is_active'];
+            $bankaccount->is_electronic_money_account = $validated['is_electronic_money_account'];
+            $bankaccount->electronic_money_entity = $validated['electronic_money_entity'];
+            $bankaccount->electronic_money_level = $validated['electronic_money_level'];
+            $bankaccount->electronic_money_daily_limit_mzn = $validated['electronic_money_daily_limit_mzn'];
+            $bankaccount->electronic_money_monthly_limit_mzn = $validated['electronic_money_monthly_limit_mzn'];
+            $bankaccount->electronic_money_limit_exempt_for_enterprise = $validated['electronic_money_limit_exempt_for_enterprise'];
+            $bankaccount->electronic_money_account_purpose = $validated['electronic_money_account_purpose'];
             $bankaccount->gl_account_id = $validated['gl_account_id'];
             $bankaccount->save();
 
@@ -135,11 +157,71 @@ class BankAccountController extends Controller
 
     public function bankAccounts()
     {
+        if (!$this->canAccessBankAccountList()) {
+            return response()->json(['message' => __('Permission denied')], 403);
+        }
+
         $bankAccounts = BankAccount::where('created_by', creatorId())
             ->where('is_active', true)
             ->select('id', 'account_name', 'account_number')
             ->get();
 
         return response()->json($bankAccounts);
+    }
+
+    private function canAccessBankAccountList(): bool
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->can('manage-bank-accounts')
+            || $user->can('create-vendor-payments')
+            || $user->can('create-customer-payments')
+            || $user->can('create-bank-transfers')
+            || $user->can('manage-revenues')
+            || $user->can('manage-expenses')
+            || $user->can('create-revenues')
+            || $user->can('create-expenses');
+    }
+
+    private function normalizeElectronicMoneyPayload(array $validated): array
+    {
+        $validated['electronic_money_entity'] = $validated['electronic_money_entity'] ?? null;
+        $validated['electronic_money_level'] = $validated['electronic_money_level'] ?? null;
+        $validated['electronic_money_daily_limit_mzn'] = $validated['electronic_money_daily_limit_mzn'] ?? null;
+        $validated['electronic_money_monthly_limit_mzn'] = $validated['electronic_money_monthly_limit_mzn'] ?? null;
+        $validated['electronic_money_limit_exempt_for_enterprise'] = (bool) ($validated['electronic_money_limit_exempt_for_enterprise'] ?? false);
+        $validated['electronic_money_account_purpose'] = $validated['electronic_money_account_purpose'] ?? null;
+
+        $isElectronicMoneyAccount = (bool) ($validated['is_electronic_money_account'] ?? false);
+
+        if ($isElectronicMoneyAccount) {
+            return $validated;
+        }
+
+        $validated['electronic_money_entity'] = null;
+        $validated['electronic_money_level'] = null;
+        $validated['electronic_money_daily_limit_mzn'] = null;
+        $validated['electronic_money_monthly_limit_mzn'] = null;
+        $validated['electronic_money_limit_exempt_for_enterprise'] = false;
+        $validated['electronic_money_account_purpose'] = null;
+
+        return $validated;
+    }
+
+    private function normalizeAccountType(string|int|null $accountType): string
+    {
+        $normalized = strtolower(trim((string) $accountType));
+
+        return match ($normalized) {
+            '0' => 'current',
+            '1' => 'savings',
+            '2' => 'credit',
+            '3' => 'loan',
+            default => $normalized !== '' ? $normalized : 'current',
+        };
     }
 }

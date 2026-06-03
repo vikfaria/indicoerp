@@ -10,6 +10,7 @@ class CompanyFiscalProfile extends Model
     protected $fillable = [
         'company_id',
         'nuit',
+        'legal_name',
         'fiscal_regime',
         'entity_classification',
         'accounting_framework',
@@ -19,6 +20,9 @@ class CompanyFiscalProfile extends Model
         'business_license_number',
         'license_expiry_date',
         'entity_type',
+        'taxpayer_type',
+        'state_of_certification',
+        'software_certificate_number',
         'structured_bank_details',
         'tax_office',
         'province',

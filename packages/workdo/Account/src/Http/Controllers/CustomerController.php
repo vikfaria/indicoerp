@@ -2,10 +2,13 @@
 
 namespace Workdo\Account\Http\Controllers;
 
+use App\Models\AuditTrail;
+use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Support\MozambiqueTaxNumber;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Workdo\Account\Models\Customer;
 use Workdo\Account\Http\Requests\StoreCustomerRequest;
@@ -63,6 +66,15 @@ class CustomerController extends Controller
             $customer->contact_person_email = $validated['contact_person_email'] ?? null;
             $customer->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
             $customer->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
+            $customer->fiscal_residency_status = $validated['fiscal_residency_status'] ?? 'resident';
+            $customer->customer_type = $validated['customer_type'] ?? null;
+            $customer->fiscal_country = $validated['fiscal_country'] ?? null;
+            $customer->vat_regime = $validated['vat_regime'] ?? null;
+            $customer->operation_type = $validated['operation_type'] ?? null;
+            $customer->billing_currency_code = isset($validated['billing_currency_code'])
+                ? strtoupper((string) $validated['billing_currency_code'])
+                : null;
+            $customer->accounting_account_code = $validated['accounting_account_code'] ?? null;
             $customer->payment_terms = $validated['payment_terms'] ?? null;
             $customer->billing_address = $validated['billing_address'];
             $customer->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
@@ -82,19 +94,61 @@ class CustomerController extends Controller
     public function update(UpdateCustomerRequest $request, Customer $customer)
     {
         if(Auth::user()->can('edit-customers')){
+            if ((int) $customer->created_by !== (int) creatorId()) {
+                return back()->with('error', __('Permission denied'));
+            }
+
             $validated = $request->validated();
+            $hasFiscalHistory = $this->customerHasFiscalHistory($customer);
+            $criticalFiscalChange = $this->hasCriticalFiscalChange($customer, $validated);
+            $fiscalOverrideSnapshot = $criticalFiscalChange
+                ? $this->buildFiscalAuditSnapshot($customer, $validated)
+                : null;
 
             $customer->company_name = $validated['company_name'];
             $customer->contact_person_name = $validated['contact_person_name'];
             $customer->contact_person_email = $validated['contact_person_email'] ?? null;
             $customer->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
             $customer->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
+            $customer->fiscal_residency_status = $validated['fiscal_residency_status'] ?? $customer->fiscal_residency_status ?? 'resident';
+            $customer->customer_type = $validated['customer_type'] ?? $customer->customer_type;
+            $customer->fiscal_country = $validated['fiscal_country'] ?? $customer->fiscal_country;
+            $customer->vat_regime = $validated['vat_regime'] ?? $customer->vat_regime;
+            $customer->operation_type = $validated['operation_type'] ?? $customer->operation_type;
+            $customer->billing_currency_code = isset($validated['billing_currency_code'])
+                ? strtoupper((string) $validated['billing_currency_code'])
+                : $customer->billing_currency_code;
+            $customer->accounting_account_code = $validated['accounting_account_code'] ?? $customer->accounting_account_code;
             $customer->payment_terms = $validated['payment_terms'] ?? null;
             $customer->billing_address = $validated['billing_address'];
             $customer->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
             $customer->same_as_billing = $validated['same_as_billing'] ?? false;
             $customer->notes = $validated['notes'] ?? null;
+
+            if ($hasFiscalHistory && $customer->fiscal_identity_locked_at === null) {
+                $customer->fiscal_identity_locked_at = now();
+                if (empty($customer->fiscal_identity_lock_reason)) {
+                    $customer->fiscal_identity_lock_reason = 'fiscal_documents_issued';
+                }
+            }
+
+            if ($criticalFiscalChange && !empty($validated['fiscal_identity_lock_reason'])) {
+                $customer->fiscal_identity_lock_reason = trim((string) $validated['fiscal_identity_lock_reason']);
+                if ($customer->fiscal_identity_locked_at === null) {
+                    $customer->fiscal_identity_locked_at = now();
+                }
+            }
+
             $customer->save();
+
+            if ($criticalFiscalChange && !empty($validated['fiscal_identity_lock_reason'])) {
+                $this->recordFiscalOverrideAudit(
+                    $customer,
+                    $fiscalOverrideSnapshot['old'] ?? [],
+                    $fiscalOverrideSnapshot['new'] ?? [],
+                    trim((string) $validated['fiscal_identity_lock_reason'])
+                );
+            }
 
             UpdateCustomer::dispatch($request, $customer);
 
@@ -106,10 +160,96 @@ class CustomerController extends Controller
     public function destroy(Customer $customer)
     {
         if(Auth::user()->can('delete-customers')){
+            if ((int) $customer->created_by !== (int) creatorId()) {
+                return back()->with('error', __('Permission denied'));
+            }
+
             DestroyCustomer::dispatch($customer);
             $customer->delete();
             return back()->with('success', __('The customer has been deleted.'));
         }
         return back()->with('error', __('Permission denied'));
+    }
+
+    private function hasCriticalFiscalChange(Customer $customer, array $validated): bool
+    {
+        $incomingTaxNumber = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null) ?: '';
+        $currentTaxNumber = MozambiqueTaxNumber::normalize($customer->tax_number) ?: '';
+
+        $incomingCompanyName = trim((string) ($validated['company_name'] ?? $customer->company_name));
+        $incomingResidency = strtolower((string) ($validated['fiscal_residency_status'] ?? $customer->fiscal_residency_status ?: 'resident'));
+        $incomingType = strtolower((string) ($validated['customer_type'] ?? $customer->customer_type ?: ''));
+        $incomingCountry = strtolower((string) ($validated['fiscal_country'] ?? $customer->fiscal_country ?: ''));
+
+        return $incomingTaxNumber !== $currentTaxNumber
+            || $incomingCompanyName !== trim((string) $customer->company_name)
+            || $incomingResidency !== strtolower((string) ($customer->fiscal_residency_status ?: 'resident'))
+            || $incomingType !== strtolower((string) ($customer->customer_type ?: ''))
+            || $incomingCountry !== strtolower((string) ($customer->fiscal_country ?: ''));
+    }
+
+    private function customerHasFiscalHistory(Customer $customer): bool
+    {
+        if (!Schema::hasTable('sales_invoices') || $customer->user_id === null) {
+            return false;
+        }
+
+        $query = SalesInvoice::query()
+            ->where('created_by', (int) $customer->created_by)
+            ->where('customer_id', (int) $customer->user_id);
+
+        if (Schema::hasColumn('sales_invoices', 'status')) {
+            $query->whereNotIn('status', ['draft']);
+        }
+
+        return $query->exists();
+    }
+
+    private function buildFiscalAuditSnapshot(Customer $customer, array $validated): array
+    {
+        return [
+            'old' => [
+                'company_name' => $customer->company_name,
+                'tax_number' => $customer->tax_number,
+                'fiscal_residency_status' => $customer->fiscal_residency_status,
+                'customer_type' => $customer->customer_type,
+                'fiscal_country' => $customer->fiscal_country,
+                'vat_regime' => $customer->vat_regime,
+                'operation_type' => $customer->operation_type,
+                'billing_currency_code' => $customer->billing_currency_code,
+            ],
+            'new' => [
+                'company_name' => $validated['company_name'] ?? $customer->company_name,
+                'tax_number' => MozambiqueTaxNumber::normalize($validated['tax_number'] ?? $customer->tax_number),
+                'fiscal_residency_status' => $validated['fiscal_residency_status'] ?? $customer->fiscal_residency_status,
+                'customer_type' => $validated['customer_type'] ?? $customer->customer_type,
+                'fiscal_country' => $validated['fiscal_country'] ?? $customer->fiscal_country,
+                'vat_regime' => $validated['vat_regime'] ?? $customer->vat_regime,
+                'operation_type' => $validated['operation_type'] ?? $customer->operation_type,
+                'billing_currency_code' => isset($validated['billing_currency_code'])
+                    ? strtoupper((string) $validated['billing_currency_code'])
+                    : $customer->billing_currency_code,
+            ],
+        ];
+    }
+
+    private function recordFiscalOverrideAudit(Customer $customer, array $oldValues, array $newValues, string $reason): void
+    {
+        AuditTrail::query()->create([
+            'company_id' => (int) $customer->created_by,
+            'user_id' => Auth::id(),
+            'event' => 'fiscal_override',
+            'auditable_type' => Customer::class,
+            'auditable_id' => (int) $customer->id,
+            'route' => request()?->route()?->getName(),
+            'ip_address' => request()?->ip(),
+            'user_agent' => request()?->userAgent(),
+            'old_values' => $oldValues,
+            'new_values' => $newValues,
+            'changes' => [
+                'fiscal_identity_lock_reason' => $reason,
+                'fields' => array_keys(array_diff_assoc($newValues, $oldValues)),
+            ],
+        ]);
     }
 }

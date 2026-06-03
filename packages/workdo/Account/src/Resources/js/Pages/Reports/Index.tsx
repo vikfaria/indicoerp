@@ -8,6 +8,12 @@ import InvoiceAging from './InvoiceAging';
 import BillAging from './BillAging';
 import MozambiqueGoLiveReadiness from './MozambiqueGoLiveReadiness';
 import FiscalClosing from './FiscalClosing';
+import FiscalExportsHistory from './FiscalExportsHistory';
+import FinancialComplianceDashboard from './FinancialComplianceDashboard';
+import ExchangeControlReport from './ExchangeControlReport';
+import GifimComplianceReport from './GifimComplianceReport';
+import ElectronicMoneyComplianceReport from './ElectronicMoneyComplianceReport';
+import CashClosing from './CashClosing';
 import CustomerBalance from './CustomerBalance';
 import VendorBalance from './VendorBalance';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
@@ -32,13 +38,19 @@ export default function Index() {
 
 
     const tabs = [
-        { id: 'invoice-aging', label: t('Invoice Aging'), permission: 'view-invoice-aging' },
-        { id: 'bill-aging', label: t('Bill Aging'), permission: 'view-bill-aging' },
+        { id: 'invoice-aging', label: t('Invoice Aging'), permissions: ['manage-account-reports', 'view-invoice-aging'] },
+        { id: 'bill-aging', label: t('Bill Aging'), permissions: ['manage-account-reports', 'view-bill-aging'] },
         { id: 'fiscal-compliance', label: t('Conformidade Fiscal (SCE)'), permissions: ['view-tax-summary', 'manage-account-reports'] },
         { id: 'mozambique-go-live-readiness', label: t('Go-Live Readiness'), permission: 'manage-account-reports' },
         { id: 'fiscal-closing', label: t('Fiscal Closing'), permission: 'manage-account-reports' },
-        { id: 'customer-balance', label: t('Customer Balance'), permission: 'view-customer-balance' },
-        { id: 'vendor-balance', label: t('Vendor Balance'), permission: 'view-vendor-balance' },
+        { id: 'fiscal-exports-history', label: t('Fiscal Export History'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'financial-compliance-dashboard', label: t('Financial Compliance'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'exchange-control-report', label: t('Exchange Control'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'gifim-compliance-report', label: t('GIFiM Compliance'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'electronic-money-compliance-report', label: t('Electronic Money'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'cash-closing', label: t('Cash Closing'), permission: 'manage-account-reports' },
+        { id: 'customer-balance', label: t('Customer Balance'), permissions: ['manage-account-reports', 'view-customer-balance'] },
+        { id: 'vendor-balance', label: t('Vendor Balance'), permissions: ['manage-account-reports', 'view-vendor-balance'] },
     ].filter((tab: any) => {
         if (tab.permission) {
             return userPermissions.includes(tab.permission);
@@ -133,6 +145,30 @@ export default function Index() {
 
                         <TabsContent value="fiscal-closing" className="mt-4">
                             <FiscalClosing financialYear={financialYear} />
+                        </TabsContent>
+
+                        <TabsContent value="fiscal-exports-history" className="mt-4">
+                            <FiscalExportsHistory />
+                        </TabsContent>
+
+                        <TabsContent value="financial-compliance-dashboard" className="mt-4">
+                            <FinancialComplianceDashboard />
+                        </TabsContent>
+
+                        <TabsContent value="exchange-control-report" className="mt-4">
+                            <ExchangeControlReport />
+                        </TabsContent>
+
+                        <TabsContent value="gifim-compliance-report" className="mt-4">
+                            <GifimComplianceReport />
+                        </TabsContent>
+
+                        <TabsContent value="electronic-money-compliance-report" className="mt-4">
+                            <ElectronicMoneyComplianceReport />
+                        </TabsContent>
+
+                        <TabsContent value="cash-closing" className="mt-4">
+                            <CashClosing />
                         </TabsContent>
 
                         <TabsContent value="customer-balance" className="mt-4">

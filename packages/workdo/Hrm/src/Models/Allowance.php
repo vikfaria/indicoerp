@@ -17,13 +17,26 @@ class Allowance extends Model
         'amount',
         'creator_id',
         'created_by',
+        'is_cancelled',
+        'cancelled_at',
+        'cancelled_by',
+        'cancellation_reason',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'is_cancelled' => 'boolean',
+            'cancelled_at' => 'datetime',
         ];
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($statusQuery): void {
+            $statusQuery->whereNull('is_cancelled')->orWhere('is_cancelled', false);
+        });
     }
 
     public function employee(): BelongsTo
@@ -39,5 +52,10 @@ class Allowance extends Model
     public function allowanceType(): BelongsTo
     {
         return $this->belongsTo(AllowanceType::class);
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'cancelled_by');
     }
 }

@@ -14,6 +14,8 @@ use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Events\CreateComplaint;
 use Workdo\Hrm\Events\DestroyComplaint;
 use Workdo\Hrm\Events\UpdateComplaint;
+use Workdo\Hrm\Models\Warning;
+use Workdo\Hrm\Models\WarningType;
 
 class ComplaintController extends Controller
 {
@@ -34,7 +36,8 @@ class ComplaintController extends Controller
                                 ->orWhere('employee_id', Auth::id())
                                 ->orWhere('against_employee_id', Auth::id())
                                 ->orWhere('handling_owner_id', Auth::id())
-                                ->orWhere('resolved_by', Auth::id());
+                                ->orWhere('resolved_by', Auth::id())
+                                ->orWhereJsonContains('confidential_access_user_ids', Auth::id());
                         });
                     } else {
                         $q->whereRaw('1 = 0');
@@ -49,7 +52,8 @@ class ComplaintController extends Controller
                             ->orWhere('employee_id', $currentUserId)
                             ->orWhere('against_employee_id', $currentUserId)
                             ->orWhere('handling_owner_id', $currentUserId)
-                            ->orWhere('resolved_by', $currentUserId);
+                            ->orWhere('resolved_by', $currentUserId)
+                            ->orWhereJsonContains('confidential_access_user_ids', $currentUserId);
                     });
                 })
                 ->when(request('subject'), function ($q) {
@@ -106,6 +110,7 @@ class ComplaintController extends Controller
             $complaint->creator_id = Auth::id();
             $complaint->created_by = creatorId();
             $complaint->save();
+            $this->ensureHarassmentDisciplinaryCase($complaint);
 
             CreateComplaint::dispatch($request, $complaint);
 
@@ -137,6 +142,7 @@ class ComplaintController extends Controller
             $complaint->document = $validated['document'] ?? null;
             $this->applyCaseComplianceFields($complaint, $validated);
             $complaint->save();
+            $this->ensureHarassmentDisciplinaryCase($complaint);
 
             UpdateComplaint::dispatch($request, $complaint);
 
@@ -184,6 +190,7 @@ class ComplaintController extends Controller
             }
 
             $complaint->save();
+            $this->ensureHarassmentDisciplinaryCase($complaint);
 
             return redirect()->back()->with('success', __('The complaint status has been updated successfully.'));
         } else {
@@ -258,6 +265,24 @@ class ComplaintController extends Controller
         $complaint->handling_owner_id = $validated['handling_owner_id'] ?? null;
         $complaint->investigation_started_at = $validated['investigation_started_at'] ?? null;
         $complaint->investigation_closed_at = $validated['investigation_closed_at'] ?? null;
+
+        $requestedAccessUserIds = collect((array) ($validated['confidential_access_user_ids'] ?? []))
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique();
+
+        $baseAccessUserIds = collect([
+            (int) Auth::id(),
+            (int) ($complaint->creator_id ?? 0),
+            (int) ($validated['employee_id'] ?? 0),
+            (int) ($validated['against_employee_id'] ?? 0),
+            (int) ($validated['handling_owner_id'] ?? 0),
+            (int) ($complaint->resolved_by ?? 0),
+        ])->filter(static fn (int $id): bool => $id > 0)->unique();
+
+        $complaint->confidential_access_user_ids = $isConfidential
+            ? $requestedAccessUserIds->merge($baseAccessUserIds)->unique()->values()->all()
+            : null;
     }
 
     private function canAccessComplaint(Complaint $complaint): bool
@@ -272,13 +297,11 @@ class ComplaintController extends Controller
 
         $currentUserId = (int) Auth::id();
 
-        return in_array($currentUserId, [
-            (int) $complaint->creator_id,
-            (int) ($complaint->employee_id ?? 0),
-            (int) ($complaint->against_employee_id ?? 0),
-            (int) ($complaint->handling_owner_id ?? 0),
-            (int) ($complaint->resolved_by ?? 0),
-        ], true);
+        if (in_array($currentUserId, $this->relatedComplaintUserIds($complaint), true)) {
+            return true;
+        }
+
+        return in_array($currentUserId, $this->normalizedConfidentialAccessUserIds($complaint), true);
     }
 
     private function canViewConfidentialComplaint(Complaint $complaint): bool
@@ -293,12 +316,108 @@ class ComplaintController extends Controller
 
         $currentUserId = (int) Auth::id();
 
-        return in_array($currentUserId, [
-            (int) $complaint->creator_id,
+        if (in_array($currentUserId, $this->relatedComplaintUserIds($complaint), true)) {
+            return true;
+        }
+
+        return in_array($currentUserId, $this->normalizedConfidentialAccessUserIds($complaint), true);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function relatedComplaintUserIds(Complaint $complaint): array
+    {
+        return array_values(array_unique(array_filter([
+            (int) ($complaint->creator_id ?? 0),
             (int) ($complaint->employee_id ?? 0),
             (int) ($complaint->against_employee_id ?? 0),
             (int) ($complaint->handling_owner_id ?? 0),
             (int) ($complaint->resolved_by ?? 0),
-        ], true);
+        ], static fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function normalizedConfidentialAccessUserIds(Complaint $complaint): array
+    {
+        return collect((array) ($complaint->confidential_access_user_ids ?? []))
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function ensureHarassmentDisciplinaryCase(Complaint $complaint): void
+    {
+        if (!(bool) ($complaint->is_harassment_report ?? false)) {
+            return;
+        }
+
+        if ((bool) ($complaint->is_cancelled ?? false)) {
+            return;
+        }
+
+        if (!empty($complaint->disciplinary_warning_id)) {
+            return;
+        }
+
+        if (empty($complaint->handling_owner_id)) {
+            return;
+        }
+
+        $companyId = (int) ($complaint->created_by ?? creatorId());
+        $employeeId = (int) ($complaint->against_employee_id ?: $complaint->employee_id);
+
+        if ($companyId <= 0 || $employeeId <= 0) {
+            return;
+        }
+
+        $warningType = $this->resolveHarassmentWarningType($companyId);
+        $subject = trim(sprintf('[%s #%d] %s', 'Harassment report', (int) $complaint->id, (string) $complaint->subject));
+        $subject = mb_substr($subject, 0, 255);
+
+        $description = trim((string) $complaint->description);
+        if ($description === '') {
+            $description = __('Complaint requires disciplinary follow-up.');
+        }
+
+        $warning = new Warning();
+        $warning->subject = $subject;
+        $warning->severity = 'high';
+        $warning->warning_date = $complaint->complaint_date ?: now()->toDateString();
+        $warning->description = $description;
+        $warning->document = $complaint->document;
+        $warning->employee_id = $employeeId;
+        $warning->warning_by = (int) $complaint->handling_owner_id;
+        $warning->warning_type_id = $warningType?->id;
+        $warning->creator_id = Auth::id();
+        $warning->created_by = $companyId;
+        $warning->save();
+
+        $complaint->forceFill([
+            'disciplinary_warning_id' => $warning->id,
+            'disciplinary_case_opened_at' => now()->toDateString(),
+        ])->saveQuietly();
+    }
+
+    private function resolveHarassmentWarningType(int $companyId): ?WarningType
+    {
+        $existing = WarningType::query()
+            ->where('created_by', $companyId)
+            ->where('warning_type_name', 'Harassment Investigation')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        return WarningType::query()->create([
+            'warning_type_name' => 'Harassment Investigation',
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
     }
 }

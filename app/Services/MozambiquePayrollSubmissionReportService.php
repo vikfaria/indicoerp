@@ -350,7 +350,7 @@ class MozambiquePayrollSubmissionReportService
             ? $referencePeriod
             : now()->format('Y-m');
 
-        $periodStart = Carbon::createFromFormat('Y-m', $period)->startOfMonth();
+        $periodStart = Carbon::createFromFormat('Y-m-d', $period . '-01')->startOfMonth();
         $periodEnd = $periodStart->copy()->endOfMonth();
 
         return [$period, $periodStart, $periodEnd];

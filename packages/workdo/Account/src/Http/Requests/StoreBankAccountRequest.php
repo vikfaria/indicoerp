@@ -3,6 +3,8 @@
 namespace Workdo\Account\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreBankAccountRequest extends FormRequest
 {
@@ -13,6 +15,9 @@ class StoreBankAccountRequest extends FormRequest
 
     public function rules(): array
     {
+        $isElectronicMoneyAccount = $this->boolean('is_electronic_money_account');
+        $hasEnterpriseExemption = $this->boolean('electronic_money_limit_exempt_for_enterprise');
+
         return [
             'account_number' => 'required|string|max:255',
             'account_name' => 'required|string|max:100',
@@ -26,7 +31,65 @@ class StoreBankAccountRequest extends FormRequest
             'swift_code' => 'nullable|string|max:11',
             'routing_number' => 'nullable|string|max:20',
             'is_active' => 'boolean',
-            'gl_account_id' => 'required|exists:chart_of_accounts,id'
+            'is_electronic_money_account' => 'boolean',
+            'electronic_money_entity' => [
+                Rule::requiredIf($isElectronicMoneyAccount),
+                'nullable',
+                'string',
+                'max:120',
+            ],
+            'electronic_money_level' => [
+                Rule::requiredIf($isElectronicMoneyAccount),
+                'nullable',
+                'string',
+                Rule::in(['I', 'II', 'III', 'IV']),
+            ],
+            'electronic_money_daily_limit_mzn' => [
+                Rule::requiredIf($isElectronicMoneyAccount && !$hasEnterpriseExemption),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'electronic_money_monthly_limit_mzn' => [
+                Rule::requiredIf($isElectronicMoneyAccount && !$hasEnterpriseExemption),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'electronic_money_limit_exempt_for_enterprise' => 'boolean',
+            'electronic_money_account_purpose' => 'nullable|string|max:255',
+            'gl_account_id' => 'required|exists:chart_of_accounts,id',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'is_electronic_money_account' => $this->boolean('is_electronic_money_account'),
+            'electronic_money_limit_exempt_for_enterprise' => $this->boolean('electronic_money_limit_exempt_for_enterprise'),
+        ]);
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            if (!$this->boolean('is_electronic_money_account')) {
+                return;
+            }
+
+            $dailyLimit = $this->input('electronic_money_daily_limit_mzn');
+            $monthlyLimit = $this->input('electronic_money_monthly_limit_mzn');
+
+            if (
+                is_numeric($dailyLimit)
+                && is_numeric($monthlyLimit)
+                && (float) $dailyLimit > (float) $monthlyLimit
+            ) {
+                $validator->errors()->add(
+                    'electronic_money_daily_limit_mzn',
+                    __('The daily electronic money limit cannot be greater than the monthly limit.')
+                );
+            }
+        });
     }
 }

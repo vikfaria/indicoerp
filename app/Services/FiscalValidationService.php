@@ -23,7 +23,7 @@ class FiscalValidationService
      *
      * @throws ValidationException
      */
-    public function validatePeriodOpen(string $date, int $companyId): AccountingPeriod
+    public function validatePeriodOpen(string $date, int $companyId, string $field = 'date'): AccountingPeriod
     {
         if (!Schema::hasTable('accounting_periods')) {
             // Table not yet migrated — skip validation
@@ -36,13 +36,13 @@ class FiscalValidationService
 
         if ($period === null) {
             throw ValidationException::withMessages([
-                'date' => __('Não existe período contabilístico definido para a data :date.', ['date' => $date]),
+                $field => __('Não existe período contabilístico definido para a data :date.', ['date' => $date]),
             ]);
         }
 
         if (!$period->isOpen()) {
             throw ValidationException::withMessages([
-                'date' => __('O período ":period" está :status. Não é possível registar operações.', [
+                $field => __('O período ":period" está :status. Não é possível registar operações.', [
                     'period' => $period->period_name,
                     'status' => $period->status === 'closed' ? 'fechado' : 'em fecho',
                 ]),

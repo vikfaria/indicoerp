@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\WithholdingTaxRule;
 use App\Models\WithholdingTaxTransaction;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\JournalEntryItem;
@@ -122,13 +123,19 @@ class WithholdingTaxService
     /**
      * Get monthly withholding summary for a declaration.
      */
-    public function getMonthlyDeclaration(int $companyId, string $year, int $month): array
+    public function getMonthlyDeclaration(int $companyId, string $year, int $month, array $filters = []): array
     {
-        $transactions = WithholdingTaxTransaction::where('company_id', $companyId)
+        $transactionsQuery = WithholdingTaxTransaction::query()
+            ->where('company_id', $companyId)
             ->where('fiscal_year', $year)
             ->where('fiscal_month', $month)
-            ->with('rule')
+            ->with('rule');
+
+        $transactionsQuery = $this->applyDeclarationFilters($transactionsQuery, $filters);
+
+        $transactions = $transactionsQuery
             ->orderBy('transaction_date')
+            ->orderBy('id')
             ->get();
 
         $summary = $transactions->groupBy('withholding_rule_id')->map(function ($group) {
@@ -145,16 +152,136 @@ class WithholdingTaxService
             ];
         })->values();
 
+        $detailedMap = $transactions->map(function (WithholdingTaxTransaction $transaction): array {
+            $rule = $transaction->rule;
+            $incomeType = (string) ($transaction->income_type_snapshot ?: $rule?->income_type ?: 'other');
+            $beneficiaryCountry = $transaction->beneficiary_country;
+            $residencyStatus = $transaction->beneficiary_residency_status;
+
+            return [
+                'id' => (int) $transaction->id,
+                'transaction_date' => optional($transaction->transaction_date)?->toDateString(),
+                'document_reference' => $transaction->document_reference,
+                'source_reference_type' => $transaction->source_reference_type,
+                'source_reference_id' => $transaction->source_reference_id,
+                'vendor_id' => $transaction->vendor_id ? (int) $transaction->vendor_id : null,
+                'beneficiary' => $transaction->vendor_name,
+                'beneficiary_tax_number' => $transaction->vendor_nuit,
+                'beneficiary_country' => $beneficiaryCountry,
+                'beneficiary_residency_status' => $residencyStatus,
+                'income_type' => $incomeType,
+                'rule_code' => $rule?->code,
+                'rule_name' => $rule?->name,
+                'withholding_treatment' => $transaction->withholding_treatment,
+                'rate' => (float) $transaction->withholding_rate,
+                'gross_amount' => (float) $transaction->gross_amount,
+                'withholding_amount' => (float) $transaction->withholding_amount,
+                'net_amount' => (float) $transaction->net_amount,
+                'status' => $transaction->status,
+                'declaration_reference' => $transaction->declaration_reference,
+                'declared_at' => optional($transaction->declared_at)?->toDateTimeString(),
+                'state_payment_reference' => $transaction->state_payment_reference,
+                'paid_at' => optional($transaction->paid_at)?->toDateTimeString(),
+                'adt_applied' => (bool) $transaction->adt_applied,
+                'adt_certificate_reference' => $transaction->adt_certificate_reference,
+                'fiscal_compliance_reference' => $transaction->fiscal_compliance_reference,
+                'financial_approval_reference' => $transaction->financial_approval_reference,
+                'fx_authorization_reference' => $transaction->fx_authorization_reference,
+            ];
+        })->values();
+
+        $historyByVendor = $detailedMap
+            ->groupBy(fn (array $line): string => sprintf(
+                '%s|%s|%s',
+                (string) ($line['beneficiary_tax_number'] ?? ''),
+                (string) ($line['beneficiary'] ?? ''),
+                (string) ($line['income_type'] ?? '')
+            ))
+            ->map(function ($group): array {
+                $first = $group->first();
+
+                return [
+                    'beneficiary' => $first['beneficiary'] ?? null,
+                    'beneficiary_tax_number' => $first['beneficiary_tax_number'] ?? null,
+                    'beneficiary_country' => $first['beneficiary_country'] ?? null,
+                    'beneficiary_residency_status' => $first['beneficiary_residency_status'] ?? null,
+                    'income_type' => $first['income_type'] ?? null,
+                    'transactions' => count($group),
+                    'gross_amount' => (float) collect($group)->sum('gross_amount'),
+                    'withholding_amount' => (float) collect($group)->sum('withholding_amount'),
+                    'net_amount' => (float) collect($group)->sum('net_amount'),
+                ];
+            })
+            ->values();
+
+        $statusSummary = $detailedMap
+            ->groupBy(fn (array $line): string => (string) ($line['status'] ?? 'pending'))
+            ->map(function ($group, string $status): array {
+                return [
+                    'status' => $status,
+                    'transactions' => count($group),
+                    'withholding_amount' => (float) collect($group)->sum('withholding_amount'),
+                    'gross_amount' => (float) collect($group)->sum('gross_amount'),
+                ];
+            })
+            ->values();
+
+        $totalWithholding = (float) $transactions->sum('withholding_amount');
+        $paidWithholding = (float) $transactions->where('status', 'paid')->sum('withholding_amount');
+        $declaredWithholding = (float) $transactions->where('status', 'declared')->sum('withholding_amount');
+
         return [
             'period' => ['year' => $year, 'month' => $month],
             'transactions' => $transactions->toArray(),
+            'detailed_map' => $detailedMap->all(),
+            'history_by_vendor' => $historyByVendor->all(),
+            'status_summary' => $statusSummary->all(),
             'summary' => $summary->toArray(),
             'totals' => [
                 'gross' => $transactions->sum('gross_amount'),
-                'withholding' => $transactions->sum('withholding_amount'),
+                'withholding' => $totalWithholding,
                 'net' => $transactions->sum('net_amount'),
+                'withholding_paid' => $paidWithholding,
+                'withholding_declared' => $declaredWithholding,
+                'withholding_pending' => max(0, $totalWithholding - $paidWithholding),
+            ],
+            'filters' => [
+                'vendor_id' => $filters['vendor_id'] ?? null,
+                'vendor_nuit' => $filters['vendor_nuit'] ?? null,
+                'income_type' => $filters['income_type'] ?? null,
+                'status' => $filters['status'] ?? null,
             ],
         ];
+    }
+
+    private function applyDeclarationFilters(Builder $query, array $filters): Builder
+    {
+        $vendorId = $filters['vendor_id'] ?? null;
+        if ($vendorId !== null && $vendorId !== '') {
+            $query->where('vendor_id', (int) $vendorId);
+        }
+
+        $vendorNuit = trim((string) ($filters['vendor_nuit'] ?? ''));
+        if ($vendorNuit !== '') {
+            $query->where('vendor_nuit', 'like', '%' . $vendorNuit . '%');
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, ['pending', 'declared', 'paid'], true)) {
+            $query->where('status', $status);
+        }
+
+        $incomeType = trim((string) ($filters['income_type'] ?? ''));
+        if ($incomeType !== '') {
+            $query->where(function (Builder $incomeTypeQuery) use ($incomeType): void {
+                $incomeTypeQuery->where('income_type_snapshot', $incomeType)
+                    ->orWhereHas('rule', function (Builder $ruleQuery) use ($incomeType): void {
+                        $ruleQuery->where('income_type', $incomeType);
+                    });
+            });
+        }
+
+        return $query;
     }
 
     /**

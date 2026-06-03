@@ -182,6 +182,116 @@ class HrmAnnualLeavePlanWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_destroy_requires_cancellation_reason(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-leave-applications']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Cancel Reason Worker');
+        $this->attachEmployeeProfile($company, $employeeUser, 'EMP-LP-C-001');
+        $leaveType = $this->makeAnnualLeaveType($company, 'Annual Leave Cancel Reason');
+
+        $plan = AnnualLeavePlan::query()->create([
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'leave_year' => 2026,
+            'planned_start_date' => '2026-11-01',
+            'planned_end_date' => '2026-11-05',
+            'planned_days' => 5,
+            'status' => AnnualLeavePlan::STATUS_PENDING_MANAGER,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->delete(route('hrm.annual-leave-plans.destroy', $plan->id));
+
+        $response->assertSessionHasErrors('cancellation_reason');
+        $this->assertDatabaseHas('annual_leave_plans', [
+            'id' => $plan->id,
+            'is_cancelled' => 0,
+        ]);
+    }
+
+    public function test_destroy_cancels_plan_instead_of_deleting(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['delete-leave-applications']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Cancel Worker');
+        $this->attachEmployeeProfile($company, $employeeUser, 'EMP-LP-C-002');
+        $leaveType = $this->makeAnnualLeaveType($company, 'Annual Leave Cancel');
+
+        $plan = AnnualLeavePlan::query()->create([
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'leave_year' => 2026,
+            'planned_start_date' => '2026-11-10',
+            'planned_end_date' => '2026-11-14',
+            'planned_days' => 5,
+            'status' => AnnualLeavePlan::STATUS_PENDING_MANAGER,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $reason = 'Plano submetido com datas incorretas.';
+        $response = $this->actingAs($company)->delete(route('hrm.annual-leave-plans.destroy', $plan->id), [
+            'cancellation_reason' => $reason,
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertDatabaseHas('annual_leave_plans', [
+            'id' => $plan->id,
+            'is_cancelled' => 1,
+            'cancellation_reason' => $reason,
+            'cancelled_by' => $company->id,
+        ]);
+    }
+
+    public function test_cancelled_plan_does_not_block_new_plan_overlap(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-leave-applications']);
+
+        $employeeUser = $this->makeStaffUser($company, 'Overlap Cancel Worker');
+        $this->attachEmployeeProfile($company, $employeeUser, 'EMP-LP-C-003');
+        $leaveType = $this->makeAnnualLeaveType($company, 'Annual Leave Overlap');
+
+        AnnualLeavePlan::query()->create([
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'leave_year' => 2026,
+            'planned_start_date' => '2026-12-01',
+            'planned_end_date' => '2026-12-05',
+            'planned_days' => 5,
+            'status' => AnnualLeavePlan::STATUS_PENDING_MANAGER,
+            'is_cancelled' => true,
+            'cancelled_at' => now(),
+            'cancelled_by' => $company->id,
+            'cancellation_reason' => 'Plano anterior substituido.',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->post(route('hrm.annual-leave-plans.store'), [
+            'employee_id' => $employeeUser->id,
+            'leave_type_id' => $leaveType->id,
+            'leave_year' => 2026,
+            'planned_start_date' => '2026-12-01',
+            'planned_end_date' => '2026-12-05',
+            'notes' => 'Novo plano para substituir o cancelado',
+        ]);
+
+        $response->assertSessionHas('success');
+        $this->assertSame(
+            2,
+            AnnualLeavePlan::query()->where('created_by', $company->id)->count()
+        );
+        $this->assertSame(
+            1,
+            AnnualLeavePlan::query()->active()->where('created_by', $company->id)->count()
+        );
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([

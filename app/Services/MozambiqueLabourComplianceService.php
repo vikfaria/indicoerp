@@ -354,6 +354,7 @@ class MozambiqueLabourComplianceService
     private function countUnjustifiedAbsenceDaysForYear(int $companyId, int $employeeUserId, int $year): int
     {
         $absences = Attendance::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('employee_id', $employeeUserId)
             ->where('status', 'absent')
@@ -368,6 +369,7 @@ class MozambiqueLabourComplianceService
         $yearEnd = Carbon::create($year, 12, 31)->toDateString();
 
         $approvedLeaveRanges = LeaveApplication::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('employee_id', $employeeUserId)
             ->where('status', 'approved')
@@ -425,6 +427,7 @@ class MozambiqueLabourComplianceService
 
         $workedDates = [];
         $attendances = Attendance::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('employee_id', $employeeUserId)
             ->whereDate('date', '>=', $rangeStart)
@@ -735,6 +738,7 @@ class MozambiqueLabourComplianceService
         ?int $excludeOvertimeId = null
     ): float {
         return (float) Overtime::query()
+            ->active()
             ->where('created_by', $companyId)
             ->where('employee_id', $employeeUserId)
             ->where(function ($query): void {

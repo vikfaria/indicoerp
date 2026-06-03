@@ -15,6 +15,7 @@ class MozambiqueHrAttendanceComplianceReportService
         $periodEndDate = $periodEnd->toDateString();
 
         $attendances = Attendance::query()
+            ->active()
             ->with([
                 'user:id,name',
                 'shift:id,shift_name,start_time,end_time,is_night_shift',
@@ -168,7 +169,7 @@ class MozambiqueHrAttendanceComplianceReportService
             ? $referencePeriod
             : now()->format('Y-m');
 
-        $periodStart = Carbon::createFromFormat('Y-m', $period)->startOfMonth();
+        $periodStart = Carbon::createFromFormat('Y-m-d', $period . '-01')->startOfMonth();
         $periodEnd = $periodStart->copy()->endOfMonth();
 
         return [$period, $periodStart, $periodEnd];
@@ -264,6 +265,7 @@ class MozambiqueHrAttendanceComplianceReportService
         $rangeEnd = $periodEnd->copy()->addDays(6)->toDateString();
 
         $attendances = Attendance::query()
+            ->active()
             ->where('created_by', $companyId)
             ->whereIn('employee_id', $employeeIds->all())
             ->whereDate('date', '>=', $rangeStart)
