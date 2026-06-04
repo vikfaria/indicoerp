@@ -66,4 +66,24 @@ class FinancialReportController extends Controller
             'endDate' => $endDate,
         ]);
     }
+
+    public function equityChanges(Request $request)
+    {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
+        $year = $request->get('year', date('Y'));
+        $startDate = $request->get('start_date', "{$year}-01-01");
+        $endDate = $request->get('end_date', "{$year}-12-31");
+
+        $service = app(FinancialStatementsService::class);
+        $data = $service->generateStatementOfChangesInEquity(creatorId(), $startDate, $endDate);
+
+        return Inertia::render('Reports/EquityChanges', [
+            'data' => $data,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+        ]);
+    }
 }

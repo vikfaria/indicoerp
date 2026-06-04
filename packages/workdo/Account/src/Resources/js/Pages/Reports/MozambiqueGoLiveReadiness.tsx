@@ -31,13 +31,17 @@ interface ReadinessPayload {
         critical_checks_passed: boolean;
         legal_review_completed: boolean;
         commercial_readiness_completed: boolean;
+        legal_tables_validation_completed: boolean;
+        legal_tables_review_approved: boolean;
         pilot_completed: boolean;
         pilot_registry_populated: boolean;
         pilot_real_companies_validated: boolean;
+        fiscal_calendar_validation_completed: boolean;
         payroll_sector_validation_completed: boolean;
         payroll_real_cases_validated: boolean;
         accounting_local_validation_completed: boolean;
         accounting_real_cases_validated: boolean;
+        saft_submission_validation_completed: boolean;
         e2e_scenarios_completed: boolean;
         backup_restore_verified: boolean;
         formal_approval_granted: boolean;
@@ -47,6 +51,20 @@ interface ReadinessPayload {
         legal_review_status: string;
         legal_reviewed_at: string;
         legal_notes: string;
+        legal_tables_validation_status: string;
+        legal_tables_validation_completed_at: string;
+        legal_tables_validation_notes: string;
+        legal_tables_review_status: string;
+        legal_tables_reviewed_at: string;
+        legal_tables_review_notes: string;
+        fiscal_calendar_validation_status: string;
+        fiscal_calendar_validation_completed_at: string;
+        fiscal_calendar_validation_notes: string;
+        fiscal_calendar_export_status: string;
+        fiscal_calendar_export_generated_at: string;
+        fiscal_calendar_export_year: number;
+        fiscal_calendar_export_file_name: string;
+        fiscal_calendar_export_notes: string;
         commercial_readiness_status: string;
         commercial_reviewed_at: string;
         commercial_notes: string;
@@ -147,6 +165,20 @@ export default function MozambiqueGoLiveReadiness() {
         legal_review_status: 'pending',
         legal_reviewed_at: '',
         legal_notes: '',
+        legal_tables_validation_status: 'not_started',
+        legal_tables_validation_completed_at: '',
+        legal_tables_validation_notes: '',
+        legal_tables_review_status: 'pending',
+        legal_tables_reviewed_at: '',
+        legal_tables_review_notes: '',
+        fiscal_calendar_validation_status: 'not_started',
+        fiscal_calendar_validation_completed_at: '',
+        fiscal_calendar_validation_notes: '',
+        fiscal_calendar_export_status: 'not_started',
+        fiscal_calendar_export_generated_at: '',
+        fiscal_calendar_export_year: new Date().getFullYear(),
+        fiscal_calendar_export_file_name: '',
+        fiscal_calendar_export_notes: '',
         commercial_readiness_status: 'pending',
         commercial_reviewed_at: '',
         commercial_notes: '',
@@ -426,6 +458,14 @@ export default function MozambiqueGoLiveReadiness() {
                                     <p className="font-medium">{data.formal_go_live_criteria.critical_checks_passed ? t('Passed') : t('Pending')}</p>
                                 </div>
                                 <div className="border rounded p-3">
+                                    <p className="text-gray-500">{t('Legal tables validation')}</p>
+                                    <p className="font-medium">{data.formal_go_live_criteria.legal_tables_validation_completed ? t('Completed') : t('Pending')}</p>
+                                </div>
+                                <div className="border rounded p-3">
+                                    <p className="text-gray-500">{t('Legal tables review')}</p>
+                                    <p className="font-medium">{data.formal_go_live_criteria.legal_tables_review_approved ? t('Approved') : t('Pending')}</p>
+                                </div>
+                                <div className="border rounded p-3">
                                     <p className="text-gray-500">{t('Pilot status')}</p>
                                     <p className="font-medium">{data.formal_go_live_criteria.pilot_completed ? t('Completed') : t('Pending')}</p>
                                 </div>
@@ -436,6 +476,10 @@ export default function MozambiqueGoLiveReadiness() {
                                 <div className="border rounded p-3">
                                     <p className="text-gray-500">{t('Pilot real evidence')}</p>
                                     <p className="font-medium">{data.formal_go_live_criteria.pilot_real_companies_validated ? t('Validated') : t('Pending')}</p>
+                                </div>
+                                <div className="border rounded p-3">
+                                    <p className="text-gray-500">{t('Fiscal calendar validation')}</p>
+                                    <p className="font-medium">{data.formal_go_live_criteria.fiscal_calendar_validation_completed ? t('Completed') : t('Pending')}</p>
                                 </div>
                                 <div className="border rounded p-3">
                                     <p className="text-gray-500">{t('E2E scenarios')}</p>
@@ -456,6 +500,10 @@ export default function MozambiqueGoLiveReadiness() {
                                 <div className="border rounded p-3">
                                     <p className="text-gray-500">{t('Accounting real cases')}</p>
                                     <p className="font-medium">{data.formal_go_live_criteria.accounting_real_cases_validated ? t('Validated') : t('Pending')}</p>
+                                </div>
+                                <div className="border rounded p-3">
+                                    <p className="text-gray-500">{t('SAF-T submission')}</p>
+                                    <p className="font-medium">{data.formal_go_live_criteria.saft_submission_validation_completed ? t('Confirmed') : t('Pending')}</p>
                                 </div>
                                 <div className="border rounded p-3">
                                     <p className="text-gray-500">{t('Formal approval')}</p>
@@ -752,6 +800,150 @@ export default function MozambiqueGoLiveReadiness() {
                                         value={form.legal_reviewed_at || ''}
                                         onChange={(e) => setForm((prev) => ({ ...prev, legal_reviewed_at: e.target.value }))}
                                     />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Validation Status')}</label>
+                                    <select
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.legal_tables_validation_status}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_validation_status: e.target.value }))}
+                                    >
+                                        <option value="not_started">{t('Not Started')}</option>
+                                        <option value="in_progress">{t('In Progress')}</option>
+                                        <option value="completed">{t('Completed')}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Validation Date')}</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.legal_tables_validation_completed_at || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_validation_completed_at: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Validation Notes')}</label>
+                                    <textarea
+                                        className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
+                                        value={form.legal_tables_validation_notes || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_validation_notes: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Review Status')}</label>
+                                    <select
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.legal_tables_review_status}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_review_status: e.target.value }))}
+                                    >
+                                        <option value="pending">{t('Pending')}</option>
+                                        <option value="in_progress">{t('In Progress')}</option>
+                                        <option value="approved">{t('Approved')}</option>
+                                        <option value="rejected">{t('Rejected')}</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Review Date')}</label>
+                                    <input
+                                        type="date"
+                                        className="w-full border rounded px-3 py-2 text-sm"
+                                        value={form.legal_tables_reviewed_at || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_reviewed_at: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs text-gray-500 mb-1">{t('Legal Tables Review Notes')}</label>
+                                    <textarea
+                                        className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
+                                        value={form.legal_tables_review_notes || ''}
+                                        onChange={(e) => setForm((prev) => ({ ...prev, legal_tables_review_notes: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="md:col-span-2 rounded border p-3 bg-gray-50 space-y-3">
+                                    <div className="font-medium text-sm">{t('Fiscal Calendar Validation & Export')}</div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Validation Status')}</label>
+                                            <select
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_validation_status}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_validation_status: e.target.value }))}
+                                            >
+                                                <option value="not_started">{t('Not Started')}</option>
+                                                <option value="in_progress">{t('In Progress')}</option>
+                                                <option value="completed">{t('Completed')}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Validation Date')}</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_validation_completed_at || ''}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_validation_completed_at: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Validation Notes')}</label>
+                                            <textarea
+                                                className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
+                                                value={form.fiscal_calendar_validation_notes || ''}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_validation_notes: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Export Status')}</label>
+                                            <select
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_export_status}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_export_status: e.target.value }))}
+                                            >
+                                                <option value="not_started">{t('Not Started')}</option>
+                                                <option value="in_progress">{t('In Progress')}</option>
+                                                <option value="generated">{t('Generated')}</option>
+                                                <option value="validated">{t('Validated')}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Export Date')}</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_export_generated_at || ''}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_export_generated_at: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Export Year')}</label>
+                                            <input
+                                                type="number"
+                                                min={2000}
+                                                max={2100}
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_export_year || new Date().getFullYear()}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_export_year: Number(e.target.value || 0) }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Export File')}</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border rounded px-3 py-2 text-sm"
+                                                value={form.fiscal_calendar_export_file_name || ''}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_export_file_name: e.target.value }))}
+                                                placeholder="mozambique-fiscal-calendar-2026.csv"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-xs text-gray-500 mb-1">{t('Fiscal Calendar Export Notes')}</label>
+                                            <textarea
+                                                className="w-full border rounded px-3 py-2 text-sm min-h-[84px]"
+                                                value={form.fiscal_calendar_export_notes || ''}
+                                                onChange={(e) => setForm((prev) => ({ ...prev, fiscal_calendar_export_notes: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs text-gray-500 mb-1">{t('Commercial Readiness Status')}</label>

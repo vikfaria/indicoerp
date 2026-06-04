@@ -27,6 +27,7 @@ export interface Candidate {
     professional_license_type?: string;
     professional_license_number?: string;
     professional_license_expiry_date?: string;
+    professional_license_document_path?: string;
     minor_work_authorization_path?: string;
     legal_exception_notes?: string;
     country?: string;
@@ -71,6 +72,7 @@ export interface CreateCandidateFormData {
     professional_license_type: string;
     professional_license_number: string;
     professional_license_expiry_date: string;
+    professional_license_document_path: string;
     minor_work_authorization_path: string;
     legal_exception_notes: string;
     country: string;
@@ -113,6 +115,7 @@ export interface EditCandidateFormData {
     professional_license_type: string;
     professional_license_number: string;
     professional_license_expiry_date: string;
+    professional_license_document_path: string;
     minor_work_authorization_path: string;
     legal_exception_notes: string;
     country: string;

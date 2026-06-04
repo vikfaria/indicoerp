@@ -24,6 +24,7 @@ class MozambiqueLabourComplianceService
             'overtime_monthly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_monthly_limit_hours', $companyId)),
             'overtime_quarterly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_quarterly_limit_hours', $companyId)),
             'overtime_yearly_limit_hours' => $this->toNullableFloat(company_setting('mz_overtime_yearly_limit_hours', $companyId)),
+            'night_work_premium_percent' => $this->toFloatWithDefault(company_setting('mz_night_work_premium_percent', $companyId), 20.0),
             'leave_min_notice_days' => max(0, (int) (company_setting('mz_leave_min_notice_days', $companyId) ?? 0)),
             'leave_max_consecutive_days' => $this->toNullableInt(company_setting('mz_leave_max_consecutive_days', $companyId)),
             'leave_count_non_working_days' => $this->toBool(company_setting('mz_leave_count_non_working_days', $companyId), true),

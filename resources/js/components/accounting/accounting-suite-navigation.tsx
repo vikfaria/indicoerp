@@ -61,6 +61,7 @@ export default function AccountingSuiteNavigation({ section, className }: Accoun
         reports: [
             { label: t('Balanço'), href: route('sce.reports.balance-sheet') },
             { label: t('Demonstração Resultados'), href: route('sce.reports.income-statement') },
+            { label: t('Alterações no Capital Próprio'), href: route('sce.reports.equity-changes') },
             { label: t('Fluxos de Caixa'), href: route('sce.reports.cash-flow') },
         ],
     };

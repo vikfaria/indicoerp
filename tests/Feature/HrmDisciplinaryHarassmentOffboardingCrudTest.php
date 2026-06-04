@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\User;
+use App\Services\MozambiqueHrComplianceDashboardService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -15,6 +16,7 @@ use Workdo\Hrm\Models\Acknowledgment;
 use Workdo\Hrm\Models\DocumentCategory;
 use Workdo\Hrm\Models\Employee;
 use Workdo\Hrm\Models\EmployeeForeignWorkerProfile;
+use Workdo\Hrm\Models\EmployeeProbationProfile;
 use Workdo\Hrm\Models\HrmDocument;
 use Workdo\Hrm\Models\Resignation;
 use Workdo\Hrm\Models\TerminationType;
@@ -544,6 +546,62 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
         $this->assertSame('2026-06-02', optional($profile->cessation_notified_at)->toDateString());
     }
 
+    public function test_approved_probation_termination_closes_probation_profile_and_clears_overdue_alert(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-terminations', 'manage-termination-status']);
+
+        $employee = $this->makeStaffUser($company, 'Probation Worker');
+        $employeeRecord = $this->attachEmployeeProfile($company, $employee, 'EMP-PROB-TERM-001');
+
+        EmployeeProbationProfile::query()->create([
+            'employee_id' => $employeeRecord->id,
+            'probation_category' => 'general',
+            'starts_at' => '2026-05-01',
+            'expected_end_at' => '2026-07-30',
+            'legal_max_days' => 90,
+            'evaluation_status' => 'ongoing',
+            'decision_status' => 'ongoing',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $terminationType = TerminationType::query()->create([
+            'termination_type' => 'Probation Termination',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->actingAs($company)->post(route('hrm.terminations.store'), [
+            'employee_id' => $employee->id,
+            'termination_type_id' => $terminationType->id,
+            'notice_date' => '2026-06-01',
+            'termination_date' => '2026-06-15',
+            'reason' => 'Cessação durante período probatório',
+            'offboarding_notes' => 'Documentação entregue ao trabalhador.',
+        ]);
+
+        $termination = Termination::query()->latest('id')->firstOrFail();
+
+        $response = $this->actingAs($company)->put(route('hrm.terminations.update-status', $termination->id), [
+            'status' => 'approved',
+        ]);
+
+        $response->assertRedirect();
+
+        $profile = EmployeeProbationProfile::query()->where('employee_id', $employeeRecord->id)->firstOrFail();
+        $this->assertSame('ceased', $profile->decision_status);
+        $this->assertSame('2026-06-15', optional($profile->decision_date)->toDateString());
+        $this->assertSame('Cessação durante período probatório', $profile->cessation_reason);
+        $this->assertSame('failed', $profile->evaluation_status);
+        $this->assertSame('cease', $profile->recommendation);
+
+        $snapshot = app(MozambiqueHrComplianceDashboardService::class)->snapshot($company->id);
+        $probationOverdue = collect($snapshot['items'])->firstWhere('key', 'probation_overdue');
+        $this->assertNotNull($probationOverdue);
+        $this->assertSame(0, (int) ($probationOverdue['count'] ?? 0));
+    }
+
     public function test_termination_store_rejects_cross_company_employee_and_type(): void
     {
         $companyA = $this->makeCompany();
@@ -1002,6 +1060,54 @@ class HrmDisciplinaryHarassmentOffboardingCrudTest extends TestCase
 
         $response->assertSessionHasErrors('document_id');
         $this->assertDatabaseCount('acknowledgments', 0);
+    }
+
+    public function test_acknowledgment_store_blocks_duplicate_employee_document_signoff(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-acknowledgments']);
+
+        $employee = $this->makeStaffUser($company, 'Ack Worker Duplicate');
+
+        Employee::query()->create([
+            'employee_id' => 'EMP-ACK-DUP',
+            'user_id' => $employee->id,
+            'employment_type' => 'GENERAL',
+            'tax_payer_id' => '400777123',
+            'basic_salary' => 12000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $document = HrmDocument::query()->create([
+            'title' => 'Código de Conduta',
+            'description' => 'Política interna obrigatória',
+            'status' => 'approve',
+            'uploaded_by' => $company->id,
+            'approved_by' => $company->id,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $firstResponse = $this->actingAs($company)->post(route('hrm.acknowledgments.store'), [
+            'employee_id' => $employee->id,
+            'document_id' => $document->id,
+            'acknowledgment_note' => 'Primeira ciência',
+        ]);
+
+        $firstResponse->assertRedirect(route('hrm.acknowledgments.index'));
+        $firstResponse->assertSessionHas('success');
+        $this->assertDatabaseCount('acknowledgments', 1);
+
+        $secondResponse = $this->actingAs($company)->post(route('hrm.acknowledgments.store'), [
+            'employee_id' => $employee->id,
+            'document_id' => $document->id,
+            'acknowledgment_note' => 'Tentativa duplicada',
+        ]);
+
+        $secondResponse->assertRedirect(route('hrm.acknowledgments.index'));
+        $secondResponse->assertSessionHas('error', 'This employee has already acknowledged this document.');
+        $this->assertDatabaseCount('acknowledgments', 1);
     }
 
     public function test_cross_company_acknowledgment_cannot_be_deleted(): void

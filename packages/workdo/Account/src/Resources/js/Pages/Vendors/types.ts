@@ -65,6 +65,7 @@ export interface CreateVendorFormData {
     adt_eligible: boolean;
     adt_country: string;
     compliance_documents: string[];
+    fiscal_identity_lock_reason?: string;
     payment_terms: string;
     billing_address: Address;
     shipping_address: Address;

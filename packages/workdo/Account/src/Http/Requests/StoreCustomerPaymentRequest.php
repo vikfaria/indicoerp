@@ -16,6 +16,7 @@ use Workdo\Account\Models\CreditNote;
 use Workdo\Account\Models\Customer as CustomerProfile;
 use Workdo\Account\Models\CustomerPayment;
 use Workdo\Account\Models\VendorPayment;
+use Workdo\Hrm\Models\Branch;
 
 class StoreCustomerPaymentRequest extends FormRequest
 {
@@ -323,6 +324,7 @@ class StoreCustomerPaymentRequest extends FormRequest
             }
 
             $this->validateBankAccountAccess($validator, (int) $this->input('bank_account_id'));
+            $this->validateBankAccountBranchScope($validator, (int) $this->input('bank_account_id'));
             $this->validateCashAccountUsage(
                 $validator,
                 (int) $this->input('bank_account_id'),
@@ -370,6 +372,58 @@ class StoreCustomerPaymentRequest extends FormRequest
                 __('You are not authorized to use bank accounts created by other users for customer payments.')
             );
         }
+    }
+
+    private function validateBankAccountBranchScope(Validator $validator, int $bankAccountId): void
+    {
+        if ($bankAccountId <= 0) {
+            return;
+        }
+
+        $bankAccount = BankAccount::query()
+            ->where('id', $bankAccountId)
+            ->where('created_by', creatorId())
+            ->first();
+
+        if (!$bankAccount) {
+            return;
+        }
+
+        if ($this->resolveBranchIdForBankAccount($bankAccount)) {
+            return;
+        }
+
+        if ($this->userCanAnyPermission([
+            'use-all-bank-accounts-for-customer-payments',
+            'manage-any-bank-accounts',
+            'manage-any-customer-payments',
+        ])) {
+            return;
+        }
+
+        $validator->errors()->add(
+            'bank_account_id',
+            __('Select a bank account assigned to a branch before creating customer payments.')
+        );
+    }
+
+    private function resolveBranchIdForBankAccount(BankAccount $bankAccount): ?int
+    {
+        if ((int) ($bankAccount->branch_id ?? 0) > 0) {
+            return (int) $bankAccount->branch_id;
+        }
+
+        $branchName = trim((string) $bankAccount->branch_name);
+        if ($branchName === '') {
+            return null;
+        }
+
+        $branch = Branch::query()
+            ->where('created_by', creatorId())
+            ->whereRaw('LOWER(TRIM(branch_name)) = ?', [strtolower($branchName)])
+            ->first();
+
+        return $branch ? (int) $branch->id : null;
     }
 
     private function validateCashAccountUsage(Validator $validator, int $bankAccountId, string $paymentMethod): void
@@ -454,12 +508,18 @@ class StoreCustomerPaymentRequest extends FormRequest
     private function resolveGifimThresholdCategory(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = array_values(array_filter(array_map(
+            static fn ($value): string => trim((string) $value),
+            (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'])
+        )));
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 

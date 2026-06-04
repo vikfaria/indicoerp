@@ -13,6 +13,7 @@ import FinancialComplianceDashboard from './FinancialComplianceDashboard';
 import ExchangeControlReport from './ExchangeControlReport';
 import GifimComplianceReport from './GifimComplianceReport';
 import ElectronicMoneyComplianceReport from './ElectronicMoneyComplianceReport';
+import CostCenterAnalysis from './CostCenterAnalysis';
 import CashClosing from './CashClosing';
 import CustomerBalance from './CustomerBalance';
 import VendorBalance from './VendorBalance';
@@ -48,6 +49,7 @@ export default function Index() {
         { id: 'exchange-control-report', label: t('Exchange Control'), permissions: ['view-tax-summary', 'manage-account-reports'] },
         { id: 'gifim-compliance-report', label: t('GIFiM Compliance'), permissions: ['view-tax-summary', 'manage-account-reports'] },
         { id: 'electronic-money-compliance-report', label: t('Electronic Money'), permissions: ['view-tax-summary', 'manage-account-reports'] },
+        { id: 'cost-center-analysis', label: t('Cost Center Analysis'), permission: 'manage-account-reports' },
         { id: 'cash-closing', label: t('Cash Closing'), permission: 'manage-account-reports' },
         { id: 'customer-balance', label: t('Customer Balance'), permissions: ['manage-account-reports', 'view-customer-balance'] },
         { id: 'vendor-balance', label: t('Vendor Balance'), permissions: ['manage-account-reports', 'view-vendor-balance'] },
@@ -77,6 +79,7 @@ export default function Index() {
         { label: t('Modelo 20'), description: t('Mapa de apoio e mapeamento fiscal por conta.'), href: route('sce.tax.modelo20.page') },
         { label: t('Declaração Anual'), description: t('Consolidação anual fiscal e contabilística.'), href: route('sce.tax.annual-declaration.page') },
         { label: t('Perfil Fiscal e SAF-T'), description: t('Parâmetros fiscais, períodos e exportação SAF-T.'), href: route('sce.fiscal.index') },
+        { label: t('PGC Moçambique'), description: t('Importação, reconciliação e validação do catálogo oficial.'), href: route('sce.fiscal.pgc') },
     ];
 
     return (
@@ -165,6 +168,10 @@ export default function Index() {
 
                         <TabsContent value="electronic-money-compliance-report" className="mt-4">
                             <ElectronicMoneyComplianceReport />
+                        </TabsContent>
+
+                        <TabsContent value="cost-center-analysis" className="mt-4">
+                            <CostCenterAnalysis />
                         </TabsContent>
 
                         <TabsContent value="cash-closing" className="mt-4">

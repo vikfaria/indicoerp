@@ -1195,6 +1195,22 @@ class ReportsController extends Controller
             ], 422);
         }
 
+        $finalExportReference = trim((string) (
+            $validated['export_reference']
+            ?? $payment->export_reference
+            ?? ''
+        ));
+        $finalIntermediaryBank = trim((string) (
+            $validated['intermediary_bank']
+            ?? $payment->intermediary_bank
+            ?? ''
+        ));
+        $finalReceiptOriginCountry = trim((string) (
+            $validated['receipt_origin_country']
+            ?? $payment->receipt_origin_country
+            ?? ''
+        ));
+
         $status = (string) $validated['repatriation_status'];
         $repatriatedAmount = round((float) ($validated['repatriated_amount_mzn'] ?? 0), 2);
         $totalAmountMzn = round((float) ($payment->amount_mzn ?? $payment->payment_amount ?? 0), 2);
@@ -1221,23 +1237,50 @@ class ReportsController extends Controller
             ], 422);
         }
 
+        if (in_array($status, ['partial', 'completed'], true)) {
+            $missingFields = [];
+
+            if ($finalExportReference === '') {
+                $missingFields['export_reference'] = [
+                    __('Export reference is required to mark repatriation as partial or completed.'),
+                ];
+            }
+
+            if ($finalIntermediaryBank === '') {
+                $missingFields['intermediary_bank'] = [
+                    __('Intermediary bank is required to mark repatriation as partial or completed.'),
+                ];
+            }
+
+            if ($finalReceiptOriginCountry === '') {
+                $missingFields['receipt_origin_country'] = [
+                    __('Receipt origin country is required to mark repatriation as partial or completed.'),
+                ];
+            }
+
+            if ($missingFields !== []) {
+                return response()->json([
+                    'message' => __('Export repatriation requires a complete documentary trail before it can be marked as partial or completed.'),
+                    'errors' => $missingFields,
+                ], 422);
+            }
+        }
+
         $payment->repatriation_status = $status;
         $payment->repatriated_amount_mzn = $status === 'pending' && $repatriatedAmount <= 0
             ? null
             : $repatriatedAmount;
         $payment->fx_compliance_reference = trim((string) $validated['fx_compliance_reference']);
+        $payment->export_reference = $finalExportReference !== ''
+            ? $finalExportReference
+            : $payment->export_reference;
 
-        if (!empty($validated['export_reference'])) {
-            $payment->export_reference = trim((string) $validated['export_reference']);
-        }
-
-        if (!empty($validated['intermediary_bank'])) {
-            $payment->intermediary_bank = trim((string) $validated['intermediary_bank']);
-        }
-
-        if (!empty($validated['receipt_origin_country'])) {
-            $payment->receipt_origin_country = trim((string) $validated['receipt_origin_country']);
-        }
+        $payment->intermediary_bank = $finalIntermediaryBank !== ''
+            ? $finalIntermediaryBank
+            : $payment->intermediary_bank;
+        $payment->receipt_origin_country = $finalReceiptOriginCountry !== ''
+            ? $finalReceiptOriginCountry
+            : $payment->receipt_origin_country;
 
         $payment->save();
         $this->exchangeControlDossierService->syncInboundCustomerPayment($payment);
@@ -1498,14 +1541,33 @@ class ReportsController extends Controller
 
         $amountMzn = round((float) ($payment->amount_mzn ?? $payment->payment_amount ?? 0), 2);
         $thresholdCategory = $this->resolveGifimThresholdCategoryForPayment((string) ($payment->payment_method ?? ''), $amountMzn);
-        $alertRequired = $thresholdCategory !== null;
+        $storedCategory = in_array((string) ($payment->gifim_alert_category ?? ''), ['cash_threshold', 'electronic_threshold'], true)
+            ? (string) $payment->gifim_alert_category
+            : null;
+        $alertRequired = $thresholdCategory !== null
+            || (bool) $payment->gifim_alert_required
+            || $storedCategory !== null;
+
+        if (
+            !$alertRequired
+            || in_array((string) ($payment->status ?? ''), ['cancelled'], true)
+        ) {
+            return response()->json([
+                'message' => __('Only GIFiM-relevant active operations can be marked as communicated.'),
+                'errors' => [
+                    'payment_id' => [
+                        __('Only GIFiM-relevant active operations can be marked as communicated.'),
+                    ],
+                ],
+            ], 422);
+        }
 
         $approvalReference = trim((string) ($validated['high_value_approval_reference'] ?? ''));
         if ($approvalReference === '') {
             $approvalReference = trim((string) ($payment->high_value_approval_reference ?? ''));
         }
 
-        if ($alertRequired && $approvalReference === '') {
+        if ($approvalReference === '') {
             return response()->json([
                 'message' => __('High-value operations require an approval reference before confirming GIFiM communication.'),
                 'errors' => [
@@ -1517,7 +1579,7 @@ class ReportsController extends Controller
         }
 
         $payment->gifim_alert_required = $alertRequired;
-        $payment->gifim_alert_category = $thresholdCategory;
+        $payment->gifim_alert_category = $thresholdCategory ?? $storedCategory;
         $payment->gifim_alert_status = 'communicated';
         $payment->gifim_reference = trim((string) $validated['gifim_reference']);
         $payment->gifim_reported_at = $validated['gifim_reported_at'] ?? now();
@@ -1616,6 +1678,7 @@ class ReportsController extends Controller
             ['period', 'to_date', (string) ($data['to_date'] ?? '')],
             ['summary', 'electronic_money_accounts', (string) data_get($data, 'summary.electronic_money_accounts', 0)],
             ['summary', 'missing_classification', (string) data_get($data, 'summary.missing_classification', 0)],
+            ['summary', 'enterprise_exemption_misconfigured', (string) data_get($data, 'summary.enterprise_exemption_misconfigured', 0)],
             ['summary', 'monthly_limit_exceeded', (string) data_get($data, 'summary.monthly_limit_exceeded', 0)],
             ['summary', 'monthly_limit_near_threshold', (string) data_get($data, 'summary.monthly_limit_near_threshold', 0)],
             ['', '', ''],
@@ -1632,6 +1695,23 @@ class ReportsController extends Controller
                     (string) data_get($entry, 'bank_name', ''),
                     (string) data_get($entry, 'electronic_money_entity', ''),
                     (string) data_get($entry, 'electronic_money_level', ''),
+                ]),
+            ];
+        }
+
+        $rows[] = ['', '', ''];
+        $rows[] = ['enterprise_exemption_misconfigured', 'account', 'account_number|account_name|bank_name|company_classification|electronic_money_account_purpose|requires_attention_reason'];
+        foreach ((array) data_get($data, 'enterprise_exemption_misconfigured', []) as $entry) {
+            $rows[] = [
+                'enterprise_exemption_misconfigured',
+                (string) data_get($entry, 'account_number', ''),
+                implode('|', [
+                    (string) data_get($entry, 'account_number', ''),
+                    (string) data_get($entry, 'account_name', ''),
+                    (string) data_get($entry, 'bank_name', ''),
+                    (string) data_get($entry, 'company_classification', ''),
+                    (string) data_get($entry, 'electronic_money_account_purpose', ''),
+                    (string) data_get($entry, 'requires_attention_reason', ''),
                 ]),
             ];
         }
@@ -1686,6 +1766,137 @@ class ReportsController extends Controller
             $filename,
             $csv,
             ['rows' => count($rows)]
+        );
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    public function mozambiqueCostCenterAnalysis(Request $request)
+    {
+        if (!Auth::user()->can('view-tax-summary') && !Auth::user()->can('manage-account-reports')) {
+            return response()->json(['message' => __('Permission denied')], 403);
+        }
+
+        $currentYear = date('Y');
+        $filters = [
+            'from_date' => $request->from_date ?: "$currentYear-01-01",
+            'to_date' => $request->to_date ?: "$currentYear-12-31",
+            'reference_period' => $request->reference_period ?: now()->format('Y-m'),
+        ];
+
+        $data = $this->rememberReportPayload(
+            'mz-cost-center-analysis',
+            $filters,
+            fn () => $this->reportService->getMozambiqueCostCenterAnalysis($filters),
+            $request
+        );
+
+        return response()->json($data);
+    }
+
+    public function exportMozambiqueCostCenterAnalysis(Request $request)
+    {
+        if (!Auth::user()->can('view-tax-summary') && !Auth::user()->can('manage-account-reports')) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $currentYear = date('Y');
+        $filters = [
+            'from_date' => $request->from_date ?: "$currentYear-01-01",
+            'to_date' => $request->to_date ?: "$currentYear-12-31",
+            'reference_period' => $request->reference_period ?: now()->format('Y-m'),
+        ];
+
+        $data = $this->rememberReportPayload(
+            'mz-cost-center-analysis',
+            $filters,
+            fn () => $this->reportService->getMozambiqueCostCenterAnalysis($filters),
+            $request
+        );
+
+        $rows = [
+            ['section', 'metric', 'value'],
+            ['period', 'from_date', (string) ($data['from_date'] ?? '')],
+            ['period', 'to_date', (string) ($data['to_date'] ?? '')],
+            ['period', 'reference_period', (string) ($data['reference_period'] ?? '')],
+            ['summary', 'journal_lines', (string) data_get($data, 'summary.journal_lines', 0)],
+            ['summary', 'journals', (string) data_get($data, 'summary.journals', 0)],
+            ['summary', 'cost_centers', (string) data_get($data, 'summary.cost_centers', 0)],
+            ['summary', 'assigned_lines', (string) data_get($data, 'summary.assigned_lines', 0)],
+            ['summary', 'unassigned_lines', (string) data_get($data, 'summary.unassigned_lines', 0)],
+            ['summary', 'required_missing_lines', (string) data_get($data, 'summary.required_missing_lines', 0)],
+            ['summary', 'assigned_debit_total', number_format((float) data_get($data, 'summary.assigned_debit_total', 0), 2, '.', '')],
+            ['summary', 'assigned_credit_total', number_format((float) data_get($data, 'summary.assigned_credit_total', 0), 2, '.', '')],
+            ['summary', 'assigned_net_total', number_format((float) data_get($data, 'summary.assigned_net_total', 0), 2, '.', '')],
+            ['summary', 'payroll_rows', (string) data_get($data, 'summary.payroll_rows', 0)],
+            ['summary', 'payroll_cost_centers', (string) data_get($data, 'summary.payroll_cost_centers', 0)],
+            ['summary', 'payroll_departments', (string) data_get($data, 'summary.payroll_departments', 0)],
+            ['summary', 'payroll_branches', (string) data_get($data, 'summary.payroll_branches', 0)],
+            ['summary', 'payroll_projects', (string) data_get($data, 'summary.payroll_projects', 0)],
+        ];
+
+        foreach ((array) data_get($data, 'cost_centers', []) as $row) {
+            $rows[] = [
+                'cost_center',
+                (string) data_get($row, 'cost_center_code', ''),
+                implode('|', [
+                    (string) data_get($row, 'cost_center_name', ''),
+                    (string) data_get($row, 'parent_cost_center_name', ''),
+                    (string) data_get($row, 'journal_count', 0),
+                    (string) data_get($row, 'line_count', 0),
+                    number_format((float) data_get($row, 'debit_total', 0), 2, '.', ''),
+                    number_format((float) data_get($row, 'credit_total', 0), 2, '.', ''),
+                    number_format((float) data_get($row, 'net_total', 0), 2, '.', ''),
+                ]),
+            ];
+        }
+
+        foreach ((array) data_get($data, 'required_missing_lines', []) as $row) {
+            $rows[] = [
+                'required_missing',
+                (string) data_get($row, 'journal_number', ''),
+                implode('|', [
+                    (string) data_get($row, 'journal_date', ''),
+                    (string) data_get($row, 'account_code', ''),
+                    (string) data_get($row, 'account_name', ''),
+                    (string) data_get($row, 'reference_type', ''),
+                    number_format((float) data_get($row, 'debit_amount', 0), 2, '.', ''),
+                    number_format((float) data_get($row, 'credit_amount', 0), 2, '.', ''),
+                ]),
+            ];
+        }
+
+        foreach ((array) data_get($data, 'reference_types', []) as $row) {
+            $rows[] = [
+                'reference_type',
+                (string) data_get($row, 'reference_type', ''),
+                implode('|', [
+                    (string) data_get($row, 'journal_count', 0),
+                    (string) data_get($row, 'line_count', 0),
+                    (string) data_get($row, 'assigned_lines', 0),
+                    (string) data_get($row, 'required_missing_lines', 0),
+                    (string) data_get($row, 'unassigned_lines', 0),
+                    number_format((float) data_get($row, 'debit_total', 0), 2, '.', ''),
+                    number_format((float) data_get($row, 'credit_total', 0), 2, '.', ''),
+                    number_format((float) data_get($row, 'net_total', 0), 2, '.', ''),
+                ]),
+            ];
+        }
+
+        $csv = '';
+        foreach ($rows as $row) {
+            $csv .= '"' . str_replace('"', '""', $row[0] ?? '') . '","' .
+                str_replace('"', '""', $row[1] ?? '') . '","' .
+                str_replace('"', '""', $row[2] ?? '') . '"' . "\n";
+        }
+
+        $filename = sprintf(
+            'mozambique-cost-center-analysis-%s-to-%s.csv',
+            $filters['from_date'],
+            $filters['to_date']
         );
 
         return response($csv, 200, [
@@ -1914,6 +2125,20 @@ class ReportsController extends Controller
             'legal_review_status' => ['nullable', 'in:pending,in_progress,approved,rejected'],
             'legal_reviewed_at' => ['nullable', 'date'],
             'legal_notes' => ['nullable', 'string', 'max:1000'],
+            'legal_tables_validation_status' => ['nullable', 'in:not_started,in_progress,completed'],
+            'legal_tables_validation_completed_at' => ['nullable', 'date'],
+            'legal_tables_validation_notes' => ['nullable', 'string', 'max:1000'],
+            'legal_tables_review_status' => ['nullable', 'in:pending,in_progress,approved,rejected'],
+            'legal_tables_reviewed_at' => ['nullable', 'date'],
+            'legal_tables_review_notes' => ['nullable', 'string', 'max:1000'],
+            'fiscal_calendar_validation_status' => ['nullable', 'in:not_started,in_progress,completed'],
+            'fiscal_calendar_validation_completed_at' => ['nullable', 'date'],
+            'fiscal_calendar_validation_notes' => ['nullable', 'string', 'max:1000'],
+            'fiscal_calendar_export_status' => ['nullable', 'in:not_started,in_progress,generated,validated'],
+            'fiscal_calendar_export_generated_at' => ['nullable', 'date'],
+            'fiscal_calendar_export_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+            'fiscal_calendar_export_file_name' => ['nullable', 'string', 'max:255'],
+            'fiscal_calendar_export_notes' => ['nullable', 'string', 'max:1000'],
             'commercial_readiness_status' => ['nullable', 'in:pending,in_progress,approved,rejected'],
             'commercial_reviewed_at' => ['nullable', 'date'],
             'commercial_notes' => ['nullable', 'string', 'max:1000'],
@@ -1946,6 +2171,20 @@ class ReportsController extends Controller
             'legal_review_status' => 'mz_go_live_legal_review_status',
             'legal_reviewed_at' => 'mz_go_live_legal_reviewed_at',
             'legal_notes' => 'mz_go_live_legal_notes',
+            'legal_tables_validation_status' => 'mz_legal_tables_validation_status',
+            'legal_tables_validation_completed_at' => 'mz_legal_tables_validation_completed_at',
+            'legal_tables_validation_notes' => 'mz_legal_tables_validation_notes',
+            'legal_tables_review_status' => 'mz_legal_tables_review_status',
+            'legal_tables_reviewed_at' => 'mz_legal_tables_reviewed_at',
+            'legal_tables_review_notes' => 'mz_legal_tables_review_notes',
+            'fiscal_calendar_validation_status' => 'mz_fiscal_calendar_validation_status',
+            'fiscal_calendar_validation_completed_at' => 'mz_fiscal_calendar_validation_completed_at',
+            'fiscal_calendar_validation_notes' => 'mz_fiscal_calendar_validation_notes',
+            'fiscal_calendar_export_status' => 'mz_fiscal_calendar_export_status',
+            'fiscal_calendar_export_generated_at' => 'mz_fiscal_calendar_export_generated_at',
+            'fiscal_calendar_export_year' => 'mz_fiscal_calendar_export_year',
+            'fiscal_calendar_export_file_name' => 'mz_fiscal_calendar_export_file_name',
+            'fiscal_calendar_export_notes' => 'mz_fiscal_calendar_export_notes',
             'commercial_readiness_status' => 'mz_go_live_commercial_status',
             'commercial_reviewed_at' => 'mz_go_live_commercial_reviewed_at',
             'commercial_notes' => 'mz_go_live_commercial_notes',
@@ -2534,7 +2773,7 @@ class ReportsController extends Controller
 
         $validated = $request->validate([
             'bank_account_id' => ['required', 'integer'],
-            'closing_date' => ['required', 'date'],
+            'closing_date' => ['required', 'date', 'before_or_equal:today'],
             'counted_balance_mzn' => ['required', 'numeric', 'min:0'],
             'close_reason' => ['nullable', 'string'],
         ]);
@@ -2971,12 +3210,15 @@ class ReportsController extends Controller
     private function resolveGifimThresholdCategoryForPayment(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 

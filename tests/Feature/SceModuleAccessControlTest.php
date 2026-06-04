@@ -29,8 +29,10 @@ class SceModuleAccessControlTest extends TestCase
         $this->actingAs($company)->get(route('sce.fiscal.index'))->assertForbidden();
         $this->actingAs($company)->get(route('sce.fiscal.pgc'))->assertForbidden();
         $this->actingAs($company)->get(route('sce.fiscal.series'))->assertForbidden();
+        $this->actingAs($company)->get(route('sce.fiscal.calendar.export', ['year' => 2026]))->assertForbidden();
         $this->actingAs($company)->get(route('sce.fixed-assets.index'))->assertForbidden();
         $this->actingAs($company)->get(route('sce.reports.balance-sheet'))->assertForbidden();
+        $this->actingAs($company)->get(route('sce.reports.equity-changes'))->assertForbidden();
     }
 
     public function test_view_tax_summary_can_view_sce_suite_but_cannot_mutate_accounting_data(): void
@@ -40,8 +42,10 @@ class SceModuleAccessControlTest extends TestCase
 
         $this->actingAs($company)->get(route('sce.journals.index'))->assertOk();
         $this->actingAs($company)->get(route('sce.fiscal.index'))->assertOk();
+        $this->actingAs($company)->get(route('sce.fiscal.calendar.export', ['year' => 2026]))->assertOk();
         $this->actingAs($company)->get(route('sce.fixed-assets.index'))->assertOk();
         $this->actingAs($company)->get(route('sce.reports.balance-sheet'))->assertOk();
+        $this->actingAs($company)->get(route('sce.reports.equity-changes'))->assertOk();
 
         $this->actingAs($company)
             ->from(route('sce.journals.index'))

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseInvoiceItem;
 use App\Models\PurchaseInvoiceItemTax;
+use App\Models\MzVatCode;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Http\Requests\StorePurchaseInvoiceRequest;
@@ -130,6 +131,7 @@ class PurchaseInvoiceController extends Controller
     {
         if(Auth::user()->can('create-purchase-invoices')){
             $vendors = User::where('type', 'vendor')->select('id', 'name', 'email')->where('created_by', creatorId())->get();
+            $vatCodes = $this->loadVatCodes();
             $products = ProductServiceItem::select('id', 'name', 'sku', 'purchase_price', 'tax_ids', 'unit', 'type')
             ->where('is_active', true)->where('created_by', creatorId())
             ->get()
@@ -155,6 +157,7 @@ class PurchaseInvoiceController extends Controller
 
             return Inertia::render('Purchase/Create', [
                 'vendors' => $vendors,
+                'vatCodes' => $vatCodes,
                 'products' => $products,
                 'warehouses' => $warehouses,
                 'modules' => [
@@ -238,8 +241,10 @@ class PurchaseInvoiceController extends Controller
                 return redirect()->route('purchase-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($purchaseInvoice->status != 'draft') {
-                return redirect()->route('purchase-invoices.index')->with('error', __('Cannot update posted invoice.'));
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($purchaseInvoice);
+            } catch (ValidationException $e) {
+                return redirect()->route('purchase-invoices.index')->with('error', $e->validator->errors()->first());
             }
 
             $purchaseInvoice->load(['items.taxes']);
@@ -247,6 +252,7 @@ class PurchaseInvoiceController extends Controller
             EditPurchaseInvoice::dispatch($purchaseInvoice);
 
             $vendors = User::where('type', 'vendor')->select('id', 'name', 'email')->where('created_by', creatorId())->get();
+            $vatCodes = $this->loadVatCodes();
             $products = ProductServiceItem::select('id', 'name', 'sku', 'purchase_price', 'tax_ids', 'unit', 'type')
                 ->where('is_active', true)->where('created_by', creatorId())
                 ->get()
@@ -273,6 +279,7 @@ class PurchaseInvoiceController extends Controller
             return Inertia::render('Purchase/Edit', [
                 'invoice' => $purchaseInvoice,
                 'vendors' => $vendors,
+                'vatCodes' => $vatCodes,
                 'products' => $products,
                 'warehouses' => $warehouses,
                 'modules' => [
@@ -292,15 +299,10 @@ class PurchaseInvoiceController extends Controller
                 return redirect()->route('purchase-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($purchaseInvoice->status != 'draft') {
-                return redirect()->route('purchase-invoices.index')->with('error', __('Cannot update posted invoice.'));
-            }
-
-            // SCE: Enforce fiscal immutability
             try {
                 $this->fiscalValidationService->validateDocumentMutable($purchaseInvoice);
             } catch (ValidationException $e) {
-                return back()->withErrors($e->errors());
+                return redirect()->route('purchase-invoices.index')->with('error', $e->validator->errors()->first());
             }
 
             $totals = $this->calculateTotals($request->items);
@@ -397,19 +399,54 @@ class PurchaseInvoiceController extends Controller
             $item->unit_price = $itemData['unit_price'];
             $item->discount_percentage = $itemData['discount_percentage'] ?? 0;
             $item->tax_percentage = $itemData['tax_percentage'] ?? 0;
+            $item->vat_code = $itemData['vat_code'] ?? null;
+            $item->tax_exemption_reason = $itemData['tax_exemption_reason'] ?? null;
             $item->save();
 
-            // Store individual taxes
-            if (isset($itemData['taxes']) && is_array($itemData['taxes'])) {
-                foreach ($itemData['taxes'] as $tax) {
-                    $purchaseInvoiceItemTax = new PurchaseInvoiceItemTax();
-                    $purchaseInvoiceItemTax->item_id = $item->id;
-                    $purchaseInvoiceItemTax->tax_name = $tax['tax_name'];
-                    $purchaseInvoiceItemTax->tax_rate = $tax['tax_rate'] ?? $tax['rate'] ?? 0;
-                    $purchaseInvoiceItemTax->save();
-                }
+            $taxRows = [];
+            if (isset($itemData['taxes']) && is_array($itemData['taxes']) && !empty($itemData['taxes'])) {
+                $taxRows = $itemData['taxes'];
+            } elseif (trim((string) $item->vat_code) !== '' || (float) $item->tax_percentage > 0 || trim((string) $item->tax_exemption_reason) !== '') {
+                $vatDefinition = MzVatCode::query()
+                    ->where('code', $item->vat_code)
+                    ->first();
+
+                $taxRows = [[
+                    'tax_name' => $vatDefinition?->description ?? ($item->vat_code ?: 'IVA'),
+                    'tax_rate' => $item->tax_percentage ?? 0,
+                    'vat_code' => $item->vat_code,
+                    'tax_exemption_reason' => $item->tax_exemption_reason,
+                ]];
+            }
+
+            foreach ($taxRows as $tax) {
+                $purchaseInvoiceItemTax = new PurchaseInvoiceItemTax();
+                $purchaseInvoiceItemTax->item_id = $item->id;
+                $purchaseInvoiceItemTax->tax_name = $tax['tax_name'] ?? ($item->vat_code ?: 'IVA');
+                $purchaseInvoiceItemTax->tax_rate = $tax['tax_rate'] ?? $tax['rate'] ?? $item->tax_percentage ?? 0;
+                $purchaseInvoiceItemTax->vat_code = $tax['vat_code'] ?? $item->vat_code;
+                $purchaseInvoiceItemTax->tax_exemption_reason = $tax['tax_exemption_reason'] ?? $item->tax_exemption_reason;
+                $purchaseInvoiceItemTax->save();
             }
         }
+    }
+
+    private function loadVatCodes(): array
+    {
+        return MzVatCode::query()
+            ->active()
+            ->orderBy('code')
+            ->get(['code', 'description', 'rate', 'type', 'saft_tax_code'])
+            ->map(static function (MzVatCode $vatCode): array {
+                return [
+                    'code' => $vatCode->code,
+                    'description' => $vatCode->description,
+                    'rate' => (float) $vatCode->rate,
+                    'type' => $vatCode->type,
+                    'saft_tax_code' => $vatCode->saft_tax_code,
+                ];
+            })
+            ->all();
     }
 
     public function post(PurchaseInvoice $purchaseInvoice)

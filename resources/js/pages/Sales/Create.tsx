@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { useFormFields } from '@/hooks/useFormFields';
-import { SalesInvoiceItem } from './types';
+import { SalesInvoiceItem, VatCodeOption } from './types';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
 import InvoiceItemsTable from './components/InvoiceItemsTable';
 import { useTaxCalculator } from './components/TaxCalculator';
@@ -23,12 +23,13 @@ interface CreateProps {
     customers: Array<{id: number; name: string; email: string}>;
     warehouses: Array<{id: number; name: string; address: string}>;
     modules?: {recurringinvoicebill?: boolean};
+    vatCodes?: VatCodeOption[];
     [key: string]: any;
 }
 
 export default function Create() {
     const { t } = useTranslation();
-    const { customers, warehouses, modules } = usePage<CreateProps>().props;
+    const { customers, warehouses, modules, vatCodes = [] } = usePage<CreateProps>().props;
     const [availableProducts, setAvailableProducts] = useState([]);
 
     const { data, setData, post, processing, errors } = useForm({
@@ -47,8 +48,11 @@ export default function Create() {
             discount_percentage: 0,
             discount_amount: 0,
             tax_percentage: 0,
+            vat_code: '',
+            tax_exemption_reason: '',
             tax_amount: 0,
-            total_amount: 0
+            total_amount: 0,
+            taxes: [],
         }] as SalesInvoiceItem[]
     });
 
@@ -78,8 +82,11 @@ export default function Create() {
             discount_percentage: 0,
             discount_amount: 0,
             tax_percentage: 0,
+            vat_code: '',
+            tax_exemption_reason: '',
             tax_amount: 0,
-            total_amount: 0
+            total_amount: 0,
+            taxes: [],
         }]);
     };
 
@@ -107,8 +114,11 @@ export default function Create() {
             discount_percentage: 0,
             discount_amount: 0,
             tax_percentage: 0,
+            vat_code: '',
+            tax_exemption_reason: '',
             tax_amount: 0,
-            total_amount: 0
+            total_amount: 0,
+            taxes: [],
         }]);
     };
 
@@ -312,8 +322,11 @@ export default function Create() {
                                             discount_percentage: 0,
                                             discount_amount: 0,
                                             tax_percentage: 0,
+                                            vat_code: '',
+                                            tax_exemption_reason: '',
                                             tax_amount: 0,
-                                            total_amount: 0
+                                            total_amount: 0,
+                                            taxes: [],
                                         };
                                         setData('items', [...data.items, newItem]);
                                     }}
@@ -330,6 +343,7 @@ export default function Create() {
                                 onChange={(items) => setData('items', items)}
                                 errors={errors}
                                 products={availableProducts}
+                                vatCodes={vatCodes}
                                 showAddButton={false}
                                 invoiceType={data.type}
                             />

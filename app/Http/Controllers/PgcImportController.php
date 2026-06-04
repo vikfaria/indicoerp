@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ScePermissionChecks;
+use App\Models\CompanyFiscalProfile;
 use App\Models\PgcAccountCatalog;
+use App\Models\PgcAccountMapping;
 use App\Services\PgcImportService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -19,14 +21,19 @@ class PgcImportController extends Controller
     /**
      * Show PGC catalog and import status.
      */
-    public function index()
+    public function index(Request $request)
     {
         if (!$this->canViewSceSuite()) {
             abort(403, __('Permission denied'));
         }
 
         $companyId = creatorId();
-        $framework = 'pgc_nirf';
+        $profile = CompanyFiscalProfile::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->first();
+
+        $framework = $request->input('framework', 'pgc_nirf');
 
         // Get catalog accounts grouped by class
         $catalog = PgcAccountCatalog::where('framework', $framework)
@@ -49,20 +56,27 @@ class PgcImportController extends Controller
             ])
             ->values();
 
-        // Check how many have been imported for this company
-        $importedCount = \Workdo\Account\Models\ChartOfAccount::where('created_by', $companyId)
-            ->whereNotNull('pgc_class')
-            ->count();
+        $validationReport = $this->pgcImportService->buildValidationReport($companyId, $framework);
 
-        // Validate structure
-        $issues = $this->pgcImportService->validateStructure($companyId);
+        $mappingSummary = PgcAccountMapping::query()
+            ->where('company_id', $companyId)
+            ->selectRaw('status, COUNT(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+            ->toArray();
 
         return Inertia::render('Fiscal/PgcImport/Index', [
             'catalog' => $catalog,
-            'totalCatalog' => PgcAccountCatalog::where('framework', $framework)->count(),
-            'importedCount' => $importedCount,
-            'issues' => $issues,
+            'totalCatalog' => $validationReport['catalog_count'],
+            'importedCount' => $validationReport['company_pgc_count'],
+            'validationReport' => $validationReport,
+            'mappingSummary' => array_merge([
+                'pending' => 0,
+                'mapped' => 0,
+                'verified' => 0,
+            ], $mappingSummary),
             'framework' => $framework,
+            'profileFramework' => $profile?->accounting_framework,
         ]);
     }
 
@@ -104,14 +118,30 @@ class PgcImportController extends Controller
         }
 
         $companyId = creatorId();
-        $issues = $this->pgcImportService->validateStructure($companyId);
+        $framework = $request->input('framework', 'pgc_nirf');
+        $report = $this->pgcImportService->buildValidationReport($companyId, $framework);
 
         return back()->with(
-            empty($issues) ? 'success' : 'warning',
-            empty($issues)
-                ? __('Estrutura PGC válida — todas as classes obrigatórias e contas essenciais presentes.')
-                : __(':count problemas encontrados na estrutura PGC.', ['count' => count($issues)])
+            $report['valid'] ? 'success' : 'warning',
+            $report['valid']
+                ? __('Estrutura PGC válida — catálogo oficial carregado e validado.')
+                : __(':count problemas encontrados na estrutura PGC.', ['count' => count($report['errors'])])
         );
+    }
+
+    public function reconcile(Request $request)
+    {
+        if (!$this->canManageSceFiscal()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $companyId = creatorId();
+        $result = $this->pgcImportService->createMigrationMappings($companyId);
+
+        return back()->with('success', __('Mapeamentos gerados: :mapped mapeados, :unmapped pendentes.', [
+            'mapped' => $result['mapped'],
+            'unmapped' => $result['unmapped'],
+        ]));
     }
 
     private function getClassName(int $class): string
@@ -126,6 +156,7 @@ class PgcImportController extends Controller
             6 => 'Gastos e Perdas',
             7 => 'Rendimentos e Ganhos',
             8 => 'Resultados',
+            9 => 'Contabilidade Analítica e de Gestão',
             default => 'Outros',
         };
     }

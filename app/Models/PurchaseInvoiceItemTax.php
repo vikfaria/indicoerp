@@ -10,7 +10,9 @@ class PurchaseInvoiceItemTax extends Model
     protected $fillable = [
         'item_id',
         'tax_name',
-        'tax_rate'
+        'tax_rate',
+        'vat_code',
+        'tax_exemption_reason',
     ];
 
     protected $casts = [

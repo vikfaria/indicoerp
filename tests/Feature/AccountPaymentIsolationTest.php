@@ -14,6 +14,7 @@ use Tests\TestCase;
 use Workdo\Account\Models\BankAccount;
 use Workdo\Account\Models\CreditNote;
 use Workdo\Account\Models\DebitNote;
+use Workdo\Hrm\Models\Branch;
 
 class AccountPaymentIsolationTest extends TestCase
 {
@@ -473,10 +474,22 @@ class AccountPaymentIsolationTest extends TestCase
 
     private function makeBankAccount(User $company): BankAccount
     {
+        $branch = Branch::query()->firstOrCreate(
+            [
+                'branch_name' => 'Maputo',
+                'created_by' => $company->id,
+            ],
+            [
+                'creator_id' => $company->id,
+            ]
+        );
+
         return BankAccount::create([
             'account_number' => '0001',
             'account_name' => 'Conta Principal',
             'bank_name' => 'Banco Teste',
+            'branch_name' => 'Maputo',
+            'branch_id' => $branch->id,
             'account_type' => 'checking',
             'opening_balance' => 0,
             'current_balance' => 0,

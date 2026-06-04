@@ -296,6 +296,11 @@ class MozambiqueCounterpartyNuitValidationTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors(['tax_number']);
+        $this->assertDatabaseHas('customers', [
+            'id' => $customer->id,
+            'company_name' => 'Cliente Fiscal',
+            'operation_type' => 'domestic',
+        ]);
     }
 
     public function test_vendor_update_blocks_critical_fiscal_change_after_posted_purchase_invoice(): void
@@ -358,6 +363,154 @@ class MozambiqueCounterpartyNuitValidationTest extends TestCase
         ]);
 
         $response->assertSessionHasErrors(['tax_number']);
+        $this->assertDatabaseHas('vendors', [
+            'id' => $vendor->id,
+            'company_name' => 'Fornecedor Fiscal',
+            'fiscal_country' => 'Mozambique',
+        ]);
+    }
+
+    public function test_customer_update_blocks_critical_operation_change_after_posted_invoice(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-customers']);
+        $this->setCompanyMozambiqueNuitSettings($company);
+
+        $clientUser = User::factory()->create([
+            'type' => 'client',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+
+        $customer = Customer::create([
+            'user_id' => $clientUser->id,
+            'company_name' => 'Cliente Operação',
+            'contact_person_name' => 'Ana',
+            'contact_person_email' => 'ana@example.com',
+            'tax_number' => '400123456',
+            'fiscal_residency_status' => 'resident',
+            'customer_type' => 'private_company',
+            'fiscal_country' => 'Mozambique',
+            'operation_type' => 'domestic',
+            'billing_currency_code' => 'MZN',
+            'billing_address' => $this->baseAddress(),
+            'shipping_address' => $this->baseAddress(),
+            'same_as_billing' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        SalesInvoice::create([
+            'invoice_number' => 'FT-LOCK-004',
+            'invoice_date' => '2026-05-10',
+            'due_date' => '2026-05-15',
+            'customer_id' => $clientUser->id,
+            'subtotal' => 100,
+            'tax_amount' => 16,
+            'discount_amount' => 0,
+            'total_amount' => 116,
+            'paid_amount' => 0,
+            'balance_amount' => 116,
+            'status' => 'posted',
+            'type' => 'service',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+            'fiscal_submission_status' => 'submitted',
+        ]);
+
+        $response = $this->actingAs($company)->put(route('account.customers.update', $customer->id), [
+            'company_name' => 'Cliente Operação',
+            'contact_person_name' => 'Ana',
+            'contact_person_email' => 'ana@example.com',
+            'contact_person_mobile' => null,
+            'tax_number' => '400123456',
+            'fiscal_residency_status' => 'resident',
+            'customer_type' => 'private_company',
+            'fiscal_country' => 'Mozambique',
+            'operation_type' => 'export',
+            'billing_currency_code' => 'MZN',
+            'payment_terms' => null,
+            'billing_address' => $this->baseAddress(),
+            'same_as_billing' => true,
+            'notes' => null,
+        ]);
+
+        $response->assertSessionHasErrors(['operation_type']);
+        $this->assertDatabaseHas('customers', [
+            'id' => $customer->id,
+            'operation_type' => 'domestic',
+        ]);
+    }
+
+    public function test_vendor_update_blocks_critical_country_change_after_posted_purchase_invoice(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['edit-vendors']);
+        $this->setCompanyMozambiqueNuitSettings($company);
+
+        $vendorUser = User::factory()->create([
+            'type' => 'vendor',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+
+        $vendor = Vendor::create([
+            'user_id' => $vendorUser->id,
+            'company_name' => 'Fornecedor País',
+            'contact_person_name' => 'Bruno',
+            'contact_person_email' => 'bruno@example.com',
+            'tax_number' => '400123456',
+            'fiscal_residency_status' => 'resident',
+            'vendor_type' => 'private_company',
+            'fiscal_country' => 'Mozambique',
+            'supply_type' => 'services',
+            'payment_currency_code' => 'MZN',
+            'billing_address' => $this->baseAddress(),
+            'shipping_address' => $this->baseAddress(),
+            'same_as_billing' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        PurchaseInvoice::create([
+            'invoice_number' => 'FR-LOCK-004',
+            'invoice_date' => '2026-05-10',
+            'due_date' => '2026-05-15',
+            'vendor_id' => $vendorUser->id,
+            'subtotal' => 100,
+            'tax_amount' => 16,
+            'discount_amount' => 0,
+            'total_amount' => 116,
+            'paid_amount' => 0,
+            'balance_amount' => 116,
+            'status' => 'posted',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+            'fiscal_submission_status' => 'submitted',
+        ]);
+
+        $response = $this->actingAs($company)->put(route('account.vendors.update', $vendor->id), [
+            'company_name' => 'Fornecedor País',
+            'contact_person_name' => 'Bruno',
+            'contact_person_email' => 'bruno@example.com',
+            'contact_person_mobile' => null,
+            'tax_number' => '400123456',
+            'fiscal_residency_status' => 'resident',
+            'vendor_type' => 'private_company',
+            'fiscal_country' => 'Portugal',
+            'supply_type' => 'services',
+            'payment_currency_code' => 'MZN',
+            'payment_terms' => null,
+            'billing_address' => $this->baseAddress(),
+            'same_as_billing' => true,
+            'notes' => null,
+        ]);
+
+        $response->assertSessionHasErrors(['fiscal_country']);
+        $this->assertDatabaseHas('vendors', [
+            'id' => $vendor->id,
+            'fiscal_country' => 'Mozambique',
+        ]);
     }
 
     public function test_customer_profile_is_locked_after_non_critical_update_when_fiscal_history_exists(): void

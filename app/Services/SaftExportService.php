@@ -17,6 +17,7 @@ class SaftExportService
     private string $startDate;
     private string $endDate;
     private string $fiscalYear;
+    private ?array $vatCodeLookup = null;
 
     /**
      * Generate SAF-T XML for a company and period.
@@ -338,6 +339,7 @@ class SaftExportService
             // Line items
             $items = DB::table('sales_invoice_items')
                 ->where('invoice_id', $invoice->id)
+                ->orderBy('id')
                 ->get();
 
             foreach ($items as $item) {
@@ -349,17 +351,24 @@ class SaftExportService
 
                 $lineTotal = ($item->quantity * $item->unit_price);
                 $discount = $lineTotal * (($item->discount_percentage ?? 0) / 100);
+                $taxCode = $this->resolveLineTaxCode(
+                    (string) ($item->vat_code ?? ''),
+                    (float) ($item->tax_percentage ?? 0),
+                    (string) ($item->tax_exemption_reason ?? '')
+                );
 
                 $xml->writeElement('CreditAmount', number_format($lineTotal - $discount, 2, '.', ''));
 
-                if ($item->tax_percentage > 0) {
-                    $xml->startElement('Tax');
-                    $xml->writeElement('TaxType', 'IVA');
-                    $xml->writeElement('TaxCountryRegion', 'MZ');
-                    $xml->writeElement('TaxCode', 'NOR');
-                    $xml->writeElement('TaxPercentage', number_format($item->tax_percentage, 2, '.', ''));
-                    $xml->endElement();
+                $xml->startElement('Tax');
+                $xml->writeElement('TaxType', 'IVA');
+                $xml->writeElement('TaxCountryRegion', 'MZ');
+                $xml->writeElement('TaxCode', $taxCode);
+                $xml->writeElement('TaxPercentage', number_format((float) ($item->tax_percentage ?? 0), 2, '.', ''));
+                $taxExemptionReason = trim((string) ($item->tax_exemption_reason ?? ''));
+                if ($taxExemptionReason !== '') {
+                    $xml->writeElement('TaxExemptionReason', $taxExemptionReason);
                 }
+                $xml->endElement();
 
                 $xml->endElement(); // Line
             }
@@ -414,6 +423,116 @@ class SaftExportService
         }
 
         $xml->endElement(); // PurchaseInvoices
+    }
+
+    private function resolveLineTaxCode(string $vatCode, float $taxPercentage, string $taxExemptionReason = ''): string
+    {
+        $normalizedVatCode = strtoupper(trim($vatCode));
+        $normalizedReason = strtolower(trim($taxExemptionReason));
+        $vatCodes = $this->vatCodeLookup();
+
+        if ($normalizedVatCode !== '' && isset($vatCodes[$normalizedVatCode])) {
+            $saftTaxCode = strtoupper(trim((string) ($vatCodes[$normalizedVatCode]['saft_tax_code'] ?? '')));
+            if ($saftTaxCode !== '') {
+                return $saftTaxCode;
+            }
+        }
+
+        $fallbackMap = [
+            'NOR' => 'NOR',
+            'RED' => 'RED',
+            'ISE' => 'ISE',
+            'ISENTO' => 'ISE',
+            'ISENTO_IVA' => 'ISE',
+            'ISENTO-IVA' => 'ISE',
+            'EXEMPT' => 'ISE',
+            'ZER' => 'ZER',
+            'ZERO' => 'ZER',
+            'ZERO_RATE' => 'ZER',
+            'NSU' => 'NS',
+            'NS' => 'NS',
+            'NAO_SUJEITO' => 'NS',
+            'NÃO_SUJEITO' => 'NS',
+            'AUT' => 'AUT',
+            'REVERSE_CHARGE' => 'AUT',
+            'IMP' => 'IMP',
+            'DIGITAL_SERVICES' => 'DIG',
+            'DIGITAL' => 'DIG',
+        ];
+
+        if ($normalizedVatCode !== '' && isset($fallbackMap[$normalizedVatCode])) {
+            return $fallbackMap[$normalizedVatCode];
+        }
+
+        if ($taxPercentage <= 0.0001) {
+            if (
+                str_contains($normalizedReason, 'nao sujeito')
+                || str_contains($normalizedReason, 'não sujeito')
+                || str_contains($normalizedReason, 'not subject')
+            ) {
+                return 'NS';
+            }
+
+            if (str_contains($normalizedReason, 'isent') || str_contains($normalizedReason, 'exempt')) {
+                return 'ISE';
+            }
+
+            return 'ZER';
+        }
+
+        if (abs($taxPercentage - 5.0) <= 0.01) {
+            return 'RED';
+        }
+
+        if (
+            str_contains($normalizedVatCode, 'DIG')
+            || str_contains($normalizedReason, 'digital')
+            || str_contains($normalizedReason, 'cloud')
+            || str_contains($normalizedReason, 'software')
+        ) {
+            return 'DIG';
+        }
+
+        if (str_contains($normalizedReason, 'import')) {
+            return 'IMP';
+        }
+
+        if (str_contains($normalizedReason, 'reverse') || str_contains($normalizedReason, 'autoliqu')) {
+            return 'AUT';
+        }
+
+        return 'NOR';
+    }
+
+    /**
+     * @return array<string, array{saft_tax_code: string, rate: float, type: string}>
+     */
+    private function vatCodeLookup(): array
+    {
+        if ($this->vatCodeLookup !== null) {
+            return $this->vatCodeLookup;
+        }
+
+        $this->vatCodeLookup = [];
+
+        if (!DB::getSchemaBuilder()->hasTable('mz_vat_codes')) {
+            return $this->vatCodeLookup;
+        }
+
+        foreach (MzVatCode::query()->select('code', 'rate', 'type', 'saft_tax_code')->get() as $vatCode) {
+            $code = strtoupper(trim((string) $vatCode->code));
+            if ($code === '') {
+                continue;
+            }
+
+            $this->vatCodeLookup[$code] = [
+                'saft_tax_code' => strtoupper(trim((string) ($vatCode->saft_tax_code ?? $vatCode->code))),
+                'rate' => (float) $vatCode->rate,
+                'type' => strtolower(trim((string) $vatCode->type)),
+            ];
+        }
+
+        return $this->vatCodeLookup;
     }
 
     /**

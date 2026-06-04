@@ -18,6 +18,7 @@ use Workdo\Account\Models\DebitNote;
 use Workdo\Account\Models\Vendor as VendorProfile;
 use Workdo\Account\Models\CustomerPayment;
 use Workdo\Account\Models\VendorPayment;
+use Workdo\Hrm\Models\Branch;
 
 class StoreVendorPaymentRequest extends FormRequest
 {
@@ -39,6 +40,9 @@ class StoreVendorPaymentRequest extends FormRequest
         $this->merge([
             'currency_code' => $currencyCode,
             'is_international_payment' => $this->boolean('is_international_payment'),
+            'payment_purpose' => in_array($this->input('payment_purpose', 'settlement'), ['settlement', 'advance'], true)
+                ? $this->input('payment_purpose', 'settlement')
+                : 'settlement',
         ]);
     }
 
@@ -56,6 +60,7 @@ class StoreVendorPaymentRequest extends FormRequest
         return [
             'payment_date' => 'required|date|before_or_equal:today',
             'vendor_id' => ['required', $this->companyVendorExistsRule()],
+            'payment_purpose' => ['required', Rule::in(['settlement', 'advance'])],
             'bank_account_id' => ['required', $this->tenantOwnedExistsRule('bank_accounts', 'id', ['is_active' => true])],
             'payment_method' => ['required', Rule::in($paymentMethods)],
             'mobile_money_provider' => ['nullable', 'required_if:payment_method,mobile_money', Rule::in($mobileMoneyProviders)],
@@ -130,62 +135,76 @@ class StoreVendorPaymentRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
+            $paymentPurpose = (string) $this->input('payment_purpose', 'settlement');
             $allocations = collect($this->input('allocations', []));
             $debitNotes = collect($this->input('debit_notes', []));
-
-            if ($allocations->isEmpty()) {
-                $validator->errors()->add('allocations', __('At least one invoice allocation is required to create a payment.'));
-                return;
-            }
-
-            $invoiceBalances = PurchaseInvoice::query()
-                ->where('created_by', creatorId())
-                ->where('vendor_id', $this->input('vendor_id'))
-                ->whereIn('status', ['posted', 'partial'])
-                ->where('balance_amount', '>', 0)
-                ->whereIn('id', $allocations->pluck('invoice_id')->filter()->all())
-                ->get(['id', 'balance_amount'])
-                ->keyBy('id');
-
-            foreach ($allocations as $index => $allocation) {
-                $invoice = $invoiceBalances->get((int) data_get($allocation, 'invoice_id'));
-                $amount = (float) data_get($allocation, 'amount', 0);
-
-                if ($invoice && $amount > (float) $invoice->balance_amount + 0.0001) {
-                    $validator->errors()->add("allocations.$index.amount", __('Allocation amount cannot exceed the invoice balance.'));
-                }
-            }
-
-            $debitNoteBalances = DebitNote::query()
-                ->where('created_by', creatorId())
-                ->where('vendor_id', $this->input('vendor_id'))
-                ->whereIn('status', ['approved', 'partial'])
-                ->where('balance_amount', '>', 0)
-                ->whereIn('id', $debitNotes->pluck('debit_note_id')->filter()->all())
-                ->get(['id', 'balance_amount'])
-                ->keyBy('id');
-
-            foreach ($debitNotes as $index => $debitNote) {
-                $note = $debitNoteBalances->get((int) data_get($debitNote, 'debit_note_id'));
-                $amount = (float) data_get($debitNote, 'amount', 0);
-
-                if ($note && $amount > (float) $note->balance_amount + 0.0001) {
-                    $validator->errors()->add("debit_notes.$index.amount", __('Debit note amount cannot exceed the available balance.'));
-                }
-            }
-
-            $totalInvoiceAmount = round($allocations->sum(fn ($allocation) => (float) data_get($allocation, 'amount', 0)), 2);
-            $totalDebitNoteAmount = round($debitNotes->sum(fn ($debitNote) => (float) data_get($debitNote, 'amount', 0)), 2);
-
-            if ($totalDebitNoteAmount > $totalInvoiceAmount + 0.0001) {
-                $validator->errors()->add('debit_notes', __('Debit note amount cannot exceed the total invoice allocation amount.'));
-            }
-
-            $expectedPaymentAmount = round(max(0, $totalInvoiceAmount - $totalDebitNoteAmount), 2);
             $paymentAmount = round((float) $this->input('payment_amount', 0), 2);
 
-            if (abs($paymentAmount - $expectedPaymentAmount) > 0.01) {
-                $validator->errors()->add('payment_amount', __('Payment amount must match allocations minus applied debit notes.'));
+            if ($paymentPurpose === 'advance') {
+                if ($allocations->isNotEmpty()) {
+                    $validator->errors()->add('allocations', __('Supplier advance payments must not include invoice allocations at creation time.'));
+                }
+
+                if ($debitNotes->isNotEmpty()) {
+                    $validator->errors()->add('debit_notes', __('Supplier advance payments must not include debit note applications at creation time.'));
+                }
+
+                if ((float) $this->input('payment_amount', 0) <= 0) {
+                    $validator->errors()->add('payment_amount', __('Supplier advance payments must have a value greater than zero.'));
+                }
+            } else {
+                if ($allocations->isEmpty()) {
+                    $validator->errors()->add('allocations', __('At least one invoice allocation is required to create a payment.'));
+                    return;
+                }
+
+                $invoiceBalances = PurchaseInvoice::query()
+                    ->where('created_by', creatorId())
+                    ->where('vendor_id', $this->input('vendor_id'))
+                    ->whereIn('status', ['posted', 'partial'])
+                    ->where('balance_amount', '>', 0)
+                    ->whereIn('id', $allocations->pluck('invoice_id')->filter()->all())
+                    ->get(['id', 'balance_amount'])
+                    ->keyBy('id');
+
+                foreach ($allocations as $index => $allocation) {
+                    $invoice = $invoiceBalances->get((int) data_get($allocation, 'invoice_id'));
+                    $amount = (float) data_get($allocation, 'amount', 0);
+
+                    if ($invoice && $amount > (float) $invoice->balance_amount + 0.0001) {
+                        $validator->errors()->add("allocations.$index.amount", __('Allocation amount cannot exceed the invoice balance.'));
+                    }
+                }
+
+                $debitNoteBalances = DebitNote::query()
+                    ->where('created_by', creatorId())
+                    ->where('vendor_id', $this->input('vendor_id'))
+                    ->whereIn('status', ['approved', 'partial'])
+                    ->where('balance_amount', '>', 0)
+                    ->whereIn('id', $debitNotes->pluck('debit_note_id')->filter()->all())
+                    ->get(['id', 'balance_amount'])
+                    ->keyBy('id');
+
+                foreach ($debitNotes as $index => $debitNote) {
+                    $note = $debitNoteBalances->get((int) data_get($debitNote, 'debit_note_id'));
+                    $amount = (float) data_get($debitNote, 'amount', 0);
+
+                    if ($note && $amount > (float) $note->balance_amount + 0.0001) {
+                        $validator->errors()->add("debit_notes.$index.amount", __('Debit note amount cannot exceed the available balance.'));
+                    }
+                }
+
+                $totalInvoiceAmount = round($allocations->sum(fn ($allocation) => (float) data_get($allocation, 'amount', 0)), 2);
+                $totalDebitNoteAmount = round($debitNotes->sum(fn ($debitNote) => (float) data_get($debitNote, 'amount', 0)), 2);
+
+                if ($totalDebitNoteAmount > $totalInvoiceAmount + 0.0001) {
+                    $validator->errors()->add('debit_notes', __('Debit note amount cannot exceed the total invoice allocation amount.'));
+                }
+
+                $expectedPaymentAmount = round(max(0, $totalInvoiceAmount - $totalDebitNoteAmount), 2);
+                if (abs($paymentAmount - $expectedPaymentAmount) > 0.01) {
+                    $validator->errors()->add('payment_amount', __('Payment amount must match allocations minus applied debit notes.'));
+                }
             }
 
             $currencyCode = strtoupper((string) $this->input('currency_code', 'MZN'));
@@ -251,11 +270,32 @@ class StoreVendorPaymentRequest extends FormRequest
 
             if ($isInternationalPayment) {
                 $paymentMethod = strtolower(trim((string) $this->input('payment_method', '')));
+                $withholdingTaxTreatment = (string) $this->input('withholding_tax_treatment', '');
+
                 if (!in_array($paymentMethod, ['bank_transfer', 'mobile_money'], true)) {
                     $validator->errors()->add(
                         'payment_method',
                         __('International remittances must be processed through authorized financial channels (bank transfer or mobile money).')
                     );
+                }
+
+                foreach ([
+                    'contract_reference' => __('Contract reference is required for international remittances.'),
+                    'invoice_reference' => __('Invoice reference is required for international remittances.'),
+                    'bank_settlement_reference' => __('Bank settlement reference is required for international remittances.'),
+                ] as $field => $message) {
+                    if (trim((string) $this->input($field, '')) === '') {
+                        $validator->errors()->add($field, $message);
+                    }
+                }
+
+                if (in_array($withholdingTaxTreatment, ['withheld', 'adt_reduced'], true)) {
+                    if (trim((string) $this->input('withholding_receipt_reference', '')) === '') {
+                        $validator->errors()->add(
+                            'withholding_receipt_reference',
+                            __('Withholding receipt reference is required when withholding tax is applied to an international remittance.')
+                        );
+                    }
                 }
 
                 if ($beneficiaryCountry === '') {
@@ -266,7 +306,6 @@ class StoreVendorPaymentRequest extends FormRequest
                     $validator->errors()->add('service_type', __('Service type is required for international payments.'));
                 }
 
-                $withholdingTaxTreatment = (string) $this->input('withholding_tax_treatment', '');
                 if (!in_array($withholdingTaxTreatment, ['withheld', 'exempt', 'adt_reduced'], true)) {
                     $validator->errors()->add('withholding_tax_treatment', __('Select a withholding tax treatment for international payments.'));
                 }
@@ -446,6 +485,7 @@ class StoreVendorPaymentRequest extends FormRequest
             }
 
             $this->validateBankAccountAccess($validator, (int) $this->input('bank_account_id'));
+            $this->validateBankAccountBranchScope($validator, (int) $this->input('bank_account_id'));
             $this->validateCashAccountUsage(
                 $validator,
                 (int) $this->input('bank_account_id'),
@@ -493,6 +533,58 @@ class StoreVendorPaymentRequest extends FormRequest
                 __('You are not authorized to use bank accounts created by other users for vendor payments.')
             );
         }
+    }
+
+    private function validateBankAccountBranchScope(Validator $validator, int $bankAccountId): void
+    {
+        if ($bankAccountId <= 0) {
+            return;
+        }
+
+        $bankAccount = BankAccount::query()
+            ->where('id', $bankAccountId)
+            ->where('created_by', creatorId())
+            ->first();
+
+        if (!$bankAccount) {
+            return;
+        }
+
+        if ($this->resolveBranchIdForBankAccount($bankAccount)) {
+            return;
+        }
+
+        if ($this->userCanAnyPermission([
+            'use-all-bank-accounts-for-vendor-payments',
+            'manage-any-bank-accounts',
+            'manage-any-vendor-payments',
+        ])) {
+            return;
+        }
+
+        $validator->errors()->add(
+            'bank_account_id',
+            __('Select a bank account assigned to a branch before creating vendor payments.')
+        );
+    }
+
+    private function resolveBranchIdForBankAccount(BankAccount $bankAccount): ?int
+    {
+        if ((int) ($bankAccount->branch_id ?? 0) > 0) {
+            return (int) $bankAccount->branch_id;
+        }
+
+        $branchName = trim((string) $bankAccount->branch_name);
+        if ($branchName === '') {
+            return null;
+        }
+
+        $branch = Branch::query()
+            ->where('created_by', creatorId())
+            ->whereRaw('LOWER(TRIM(branch_name)) = ?', [strtolower($branchName)])
+            ->first();
+
+        return $branch ? (int) $branch->id : null;
     }
 
     private function validateCashAccountUsage(Validator $validator, int $bankAccountId, string $paymentMethod): void
@@ -588,12 +680,18 @@ class StoreVendorPaymentRequest extends FormRequest
     private function resolveGifimThresholdCategory(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = array_values(array_filter(array_map(
+            static fn ($value): string => trim((string) $value),
+            (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'])
+        )));
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 

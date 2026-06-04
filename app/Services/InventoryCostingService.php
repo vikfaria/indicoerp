@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\StockCostLayer;
 use App\Models\StockMovement;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Workdo\Account\Models\ChartOfAccount;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\JournalEntryItem;
@@ -27,13 +28,26 @@ class InventoryCostingService
         string $date,
         ?string $referenceType = null,
         ?int $referenceId = null,
-        ?string $warehouseCode = null
+        ?string $warehouseCode = null,
+        bool $createJournal = true
     ): StockMovement {
-        return DB::transaction(function () use ($companyId, $productId, $quantity, $unitCost, $date, $referenceType, $referenceId, $warehouseCode) {
+        return DB::transaction(function () use ($companyId, $productId, $quantity, $unitCost, $date, $referenceType, $referenceId, $warehouseCode, $createJournal) {
+            if ($quantity <= 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'Quantity must be greater than zero.',
+                ]);
+            }
+
+            if ($unitCost < 0) {
+                throw ValidationException::withMessages([
+                    'unit_cost' => 'Unit cost must be zero or greater.',
+                ]);
+            }
+
             $totalCost = round($quantity * $unitCost, 2);
 
             // Get current running totals
-            $current = $this->getCurrentPosition($companyId, $productId);
+            $current = $this->getCurrentPosition($companyId, $productId, $warehouseCode);
 
             $movement = StockMovement::create([
                 'company_id' => $companyId,
@@ -64,8 +78,12 @@ class InventoryCostingService
                 'created_by' => $companyId,
             ]);
 
-            // Journal entry: D 31 Inventário, C 221 Fornecedor
-            $this->createPurchaseJournalEntry($companyId, $totalCost, $date);
+            if ($createJournal) {
+                $journalEntry = $this->createPurchaseJournalEntry($companyId, $totalCost, $date);
+                if ($journalEntry) {
+                    $movement->update(['journal_entry_id' => $journalEntry->id]);
+                }
+            }
 
             return $movement;
         });
@@ -80,13 +98,21 @@ class InventoryCostingService
         float $quantity,
         string $date,
         ?string $referenceType = null,
-        ?int $referenceId = null
+        ?int $referenceId = null,
+        ?string $warehouseCode = null,
+        bool $createJournal = true
     ): StockMovement {
-        return DB::transaction(function () use ($companyId, $productId, $quantity, $date, $referenceType, $referenceId) {
-            // FIFO cost consumption
-            $costResult = $this->consumeFifoLayers($companyId, $productId, $quantity);
+        return DB::transaction(function () use ($companyId, $productId, $quantity, $date, $referenceType, $referenceId, $warehouseCode, $createJournal) {
+            if ($quantity <= 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'Quantity must be greater than zero.',
+                ]);
+            }
 
-            $current = $this->getCurrentPosition($companyId, $productId);
+            // FIFO cost consumption
+            $costResult = $this->consumeFifoLayers($companyId, $productId, $quantity, $warehouseCode);
+
+            $current = $this->getCurrentPosition($companyId, $productId, $warehouseCode);
 
             $movement = StockMovement::create([
                 'company_id' => $companyId,
@@ -100,11 +126,16 @@ class InventoryCostingService
                 'running_value' => $current['value'] - $costResult['total_cost'],
                 'reference_type' => $referenceType,
                 'reference_id' => $referenceId,
+                'warehouse_code' => $warehouseCode,
                 'created_by' => $companyId,
             ]);
 
-            // Journal entry: D 61 CMVMC, C 31 Inventário
-            $this->createCostOfSalesJournalEntry($companyId, $costResult['total_cost'], $date);
+            if ($createJournal) {
+                $journalEntry = $this->createCostOfSalesJournalEntry($companyId, $costResult['total_cost'], $date);
+                if ($journalEntry) {
+                    $movement->update(['journal_entry_id' => $journalEntry->id]);
+                }
+            }
 
             return $movement;
         });
@@ -113,12 +144,17 @@ class InventoryCostingService
     /**
      * Get current stock position for a product.
      */
-    public function getCurrentPosition(int $companyId, int $productId): array
+    public function getCurrentPosition(int $companyId, int $productId, ?string $warehouseCode = null): array
     {
-        $last = StockMovement::where('company_id', $companyId)
+        $query = StockMovement::where('company_id', $companyId)
             ->where('product_id', $productId)
-            ->orderByDesc('id')
-            ->first();
+            ->orderByDesc('id');
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $query->where('warehouse_code', $warehouseCode);
+        }
+
+        $last = $query->first();
 
         return [
             'quantity' => (float) ($last->running_quantity ?? 0),
@@ -132,11 +168,17 @@ class InventoryCostingService
     /**
      * Get stock valuation for all products (for balance sheet / inventory count).
      */
-    public function getStockValuation(int $companyId, ?string $asOfDate = null): array
+    public function getStockValuation(int $companyId, ?string $asOfDate = null, ?string $warehouseCode = null): array
     {
         $query = StockCostLayer::where('company_id', $companyId)
             ->where('is_exhausted', false)
             ->where('remaining_quantity', '>', 0);
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $query->whereHas('movement', function ($movementQuery) use ($warehouseCode) {
+                $movementQuery->where('warehouse_code', $warehouseCode);
+            });
+        }
 
         if ($asOfDate) {
             $query->where('entry_date', '<=', $asOfDate);
@@ -158,14 +200,21 @@ class InventoryCostingService
     /**
      * Consume FIFO layers for an outbound movement.
      */
-    private function consumeFifoLayers(int $companyId, int $productId, float $quantity): array
+    private function consumeFifoLayers(int $companyId, int $productId, float $quantity, ?string $warehouseCode = null): array
     {
         $layers = StockCostLayer::where('company_id', $companyId)
             ->where('product_id', $productId)
+            ->with('movement')
             ->available()
             ->orderBy('entry_date')
             ->orderBy('id')
             ->get();
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $layers = $layers->filter(function (StockCostLayer $layer) use ($warehouseCode): bool {
+                return (string) optional($layer->movement)->warehouse_code === (string) $warehouseCode;
+            })->values();
+        }
 
         $remaining = $quantity;
         $totalCost = 0;
@@ -185,8 +234,9 @@ class InventoryCostingService
         }
 
         if ($remaining > 0) {
-            // Stock insuficiente — registar com custo zero (will need adjustment)
-            \Illuminate\Support\Facades\Log::warning("Stock insuficiente: product {$productId}, faltam {$remaining} unidades");
+            throw ValidationException::withMessages([
+                'quantity' => "Insufficient stock for product {$productId}. Missing {$remaining} units.",
+            ]);
         }
 
         $weightedCost = $quantity > 0 ? round($totalCost / $quantity, 4) : 0;
@@ -198,11 +248,11 @@ class InventoryCostingService
         ];
     }
 
-    private function createPurchaseJournalEntry(int $companyId, float $amount, string $date): void
+    private function createPurchaseJournalEntry(int $companyId, float $amount, string $date): ?JournalEntry
     {
         $inventoryAccount = ChartOfAccount::where('account_code', '31')->where('created_by', $companyId)->first();
         $supplierAccount = ChartOfAccount::where('account_code', '221')->where('created_by', $companyId)->first();
-        if (!$inventoryAccount || !$supplierAccount) return;
+        if (!$inventoryAccount || !$supplierAccount) return null;
 
         $entry = JournalEntry::create([
             'journal_date' => $date, 'entry_type' => 'automatic', 'reference_type' => 'stock_purchase',
@@ -212,13 +262,15 @@ class InventoryCostingService
 
         JournalEntryItem::create(['journal_entry_id' => $entry->id, 'account_id' => $inventoryAccount->id, 'description' => 'Compra de mercadoria', 'debit_amount' => $amount, 'credit_amount' => 0, 'created_by' => $companyId]);
         JournalEntryItem::create(['journal_entry_id' => $entry->id, 'account_id' => $supplierAccount->id, 'description' => 'Fornecedor a pagar', 'debit_amount' => 0, 'credit_amount' => $amount, 'created_by' => $companyId]);
+
+        return $entry;
     }
 
-    private function createCostOfSalesJournalEntry(int $companyId, float $amount, string $date): void
+    private function createCostOfSalesJournalEntry(int $companyId, float $amount, string $date): ?JournalEntry
     {
         $cmvmcAccount = ChartOfAccount::where('account_code', '61')->where('created_by', $companyId)->first();
         $inventoryAccount = ChartOfAccount::where('account_code', '31')->where('created_by', $companyId)->first();
-        if (!$cmvmcAccount || !$inventoryAccount) return;
+        if (!$cmvmcAccount || !$inventoryAccount) return null;
 
         $entry = JournalEntry::create([
             'journal_date' => $date, 'entry_type' => 'automatic', 'reference_type' => 'cost_of_sales',
@@ -228,5 +280,7 @@ class InventoryCostingService
 
         JournalEntryItem::create(['journal_entry_id' => $entry->id, 'account_id' => $cmvmcAccount->id, 'description' => 'CMVMC', 'debit_amount' => $amount, 'credit_amount' => 0, 'created_by' => $companyId]);
         JournalEntryItem::create(['journal_entry_id' => $entry->id, 'account_id' => $inventoryAccount->id, 'description' => 'Saída de inventário', 'debit_amount' => 0, 'credit_amount' => $amount, 'created_by' => $companyId]);
+
+        return $entry;
     }
 }

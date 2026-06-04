@@ -12,10 +12,10 @@ use Illuminate\Support\Facades\DB;
 
 class MozambiquePayrollLegalDefaultsService
 {
-    private const IRPS_TABLE_NAME = 'Tabela IRPS Moçambique Oficial';
-    private const IRPS_EFFECTIVE_FROM = '2025-07-01';
-    private const INSS_EFFECTIVE_FROM = '2025-07-01';
-    private const MINIMUM_WAGE_EFFECTIVE_FROM = '2025-07-01';
+    public const IRPS_TABLE_NAME = 'Tabela IRPS Moçambique Oficial';
+    public const IRPS_EFFECTIVE_FROM = '2025-07-01';
+    public const INSS_EFFECTIVE_FROM = '2025-07-01';
+    public const MINIMUM_WAGE_EFFECTIVE_FROM = '2025-07-01';
 
     private const SETTING_IRPS_MINIMUM_NON_TAXABLE_AMOUNT = 'mz_irps_minimum_non_taxable_amount';
     private const SETTING_IRPS_DEPENDENT_DEDUCTION_AMOUNT = 'mz_irps_dependent_deduction_amount';
@@ -25,7 +25,7 @@ class MozambiquePayrollLegalDefaultsService
     private const DEFAULT_DEPENDENT_DEDUCTION_AMOUNT = 150.00;
     private const DEFAULT_NON_RESIDENT_FLAT_RATE_PERCENT = 20.00;
 
-    private const IRPS_BRACKETS = [
+    public const IRPS_BRACKETS = [
         ['range_from' => 0.00, 'range_to' => 3500.00, 'fixed_amount' => 0.00, 'rate_percent' => 10.00, 'sequence' => 1],
         ['range_from' => 3500.00, 'range_to' => 14000.00, 'fixed_amount' => 350.00, 'rate_percent' => 15.00, 'sequence' => 2],
         ['range_from' => 14000.00, 'range_to' => 42000.00, 'fixed_amount' => 1925.00, 'rate_percent' => 20.00, 'sequence' => 3],
@@ -33,7 +33,7 @@ class MozambiquePayrollLegalDefaultsService
         ['range_from' => 126000.00, 'range_to' => null, 'fixed_amount' => 28525.00, 'rate_percent' => 32.00, 'sequence' => 5],
     ];
 
-    private const MINIMUM_WAGES = [
+    public const MINIMUM_WAGES = [
         ['sector_code' => 'S1_AGRICULTURE', 'sector_name' => 'Sector 1. Agricultura, Pecuária, Caça, Florestas e Silvicultura', 'monthly_amount' => 6688.00],
         ['sector_code' => 'S2_PESCA_INDUSTRIAL', 'sector_name' => 'Sector 2. Pesca Industrial e Semi-Industrial', 'monthly_amount' => 6726.88],
         ['sector_code' => 'S2_1_KAPENTA', 'sector_name' => '2.1. Pesca de Kapenta', 'monthly_amount' => 4991.09],

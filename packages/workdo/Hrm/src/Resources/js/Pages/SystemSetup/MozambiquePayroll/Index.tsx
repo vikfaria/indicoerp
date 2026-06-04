@@ -55,6 +55,7 @@ interface LabourPolicy {
     overtime_monthly_limit_hours: number | null;
     overtime_quarterly_limit_hours: number | null;
     overtime_yearly_limit_hours: number | null;
+    night_work_premium_percent: number;
     leave_min_notice_days: number;
     leave_max_consecutive_days: number | null;
     leave_count_non_working_days: boolean;
@@ -397,6 +398,7 @@ export default function MozambiquePayrollComplianceIndex() {
         overtime_monthly_limit_hours: labourPolicy.overtime_monthly_limit_hours?.toString() ?? '',
         overtime_quarterly_limit_hours: labourPolicy.overtime_quarterly_limit_hours?.toString() ?? '',
         overtime_yearly_limit_hours: labourPolicy.overtime_yearly_limit_hours?.toString() ?? '',
+        night_work_premium_percent: labourPolicy.night_work_premium_percent?.toString() ?? '20',
         leave_min_notice_days: labourPolicy.leave_min_notice_days?.toString() ?? '0',
         leave_max_consecutive_days: labourPolicy.leave_max_consecutive_days?.toString() ?? '',
         leave_count_non_working_days: labourPolicy.leave_count_non_working_days,
@@ -1927,6 +1929,19 @@ export default function MozambiquePayrollComplianceIndex() {
                                     <InputError message={labourPolicyForm.errors.overtime_yearly_limit_hours} />
                                 </div>
                                 <div>
+                                    <Label>{t('Night Work Premium (%)')}</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        max="500"
+                                        value={labourPolicyForm.data.night_work_premium_percent}
+                                        onChange={(e) => labourPolicyForm.setData('night_work_premium_percent', e.target.value)}
+                                        placeholder={t('20')}
+                                    />
+                                    <InputError message={labourPolicyForm.errors.night_work_premium_percent} />
+                                </div>
+                                <div>
                                     <Label>{t('Leave Minimum Notice (days)')}</Label>
                                     <Input
                                         type="number"
@@ -2025,7 +2040,7 @@ export default function MozambiquePayrollComplianceIndex() {
                                 </div>
                             </form>
                             <p className="text-xs text-muted-foreground">
-                                {t('Empty overtime limits are treated as disabled. Leave day counting follows the selected checkboxes.')}
+                                {t('Empty overtime limits are treated as disabled. Empty night work premium uses the legal default of 20%. Leave day counting follows the selected checkboxes.')}
                             </p>
                         </CardContent>
                     </Card>

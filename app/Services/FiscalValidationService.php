@@ -173,11 +173,11 @@ class FiscalValidationService
 
         // Check operational status
         $status = strtolower((string) $document->getAttribute('status'));
-        $immutableStatuses = ['posted', 'approved', 'paid', 'completed', 'finalized', 'cancelled'];
+        $immutableStatuses = ['posted', 'partial', 'approved', 'paid', 'completed', 'finalized', 'cancelled'];
 
         if (in_array($status, $immutableStatuses, true)) {
             throw ValidationException::withMessages([
-                'document' => __('Documento com estado ":status" não pode ser alterado.', ['status' => $status]),
+                'document' => __('Documento com estado ":status" não pode ser alterado. Use nota de crédito/débito para correcções.', ['status' => $status]),
             ]);
         }
 

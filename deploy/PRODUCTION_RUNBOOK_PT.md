@@ -29,6 +29,8 @@ Só avançar para produção se todos os pontos abaixo estiverem `OK`:
 - `.env` de produção validado (DB, APP_URL, mail, filas, cache).
 - Equipa com janela de manutenção e plano de rollback aprovado.
 
+Antes de aplicar isto em produção, validar a release em staging usando [STAGING_VALIDATION_RUNBOOK_PT.md](./STAGING_VALIDATION_RUNBOOK_PT.md).
+
 ## 2) Pré-requisitos no servidor (1x por ambiente)
 
 ```bash
@@ -138,7 +140,7 @@ Se houve migração destrutiva, restaurar backup da base.
 
 ## 7.1) Backup, verificação e restore
 
-Antes de qualquer deploy com migration, criar backup operacional versionado:
+Antes de qualquer deploy com migration, criar backup operacional versionado. O fluxo de deploy automatizado (`deploy/scripts/05_pull_deploy_indicoerp.sh`) executa este mesmo passo via `deploy/scripts/17_pre_deploy_backup_indicoerp.sh` e regista o manifesto no `BACKUP_DIR`:
 
 ```bash
 cd /var/www/indicoerp/repo
@@ -189,12 +191,57 @@ CONFIRM_RESTORE=YES \
 bash deploy/scripts/16_backup_restore_indicoerp.sh restore
 ```
 
+Se houver um backup pré-deploy registado, a verificação de restore deve ser executada com o wrapper operacional:
+
+```bash
+cd /var/www/indicoerp/repo
+MYSQL_CONTAINER_NAME=indicoerp_mysql \
+MYSQL_ADMIN_USER=root \
+MYSQL_ADMIN_PASS='COLOCAR_A_PASSWORD_ROOT' \
+bash deploy/scripts/18_verify_restore_indicoerp.sh
+```
+
+Isto cria uma base temporária de verificação, importa o dump, valida o número de tabelas e regista o manifesto em `restore_verify_latest.env`.
+
+Após o deploy, o healthcheck operacional deve ser executado com o wrapper:
+
+```bash
+cd /var/www/indicoerp/repo
+bash deploy/scripts/19_post_deploy_healthcheck_indicoerp.sh
+```
+
+A evidência final esperada é `post_deploy_healthcheck_latest.env`, o link estável `post_deploy_healthcheck_latest.log` e o log histórico `post_deploy_healthcheck_*.log`.
+
+Depois disso, o smoke funcional deve ser executado com login real e módulos críticos:
+
+```bash
+cd /var/www/indicoerp/repo
+SMOKE_LOGIN_EMAIL='seu-utilizador@dominio.com' \
+SMOKE_LOGIN_PASSWORD='sua-password' \
+bash deploy/scripts/20_post_deploy_smoke_indicoerp.sh
+```
+
+A evidência final esperada é `post_deploy_smoke_latest.env`, o link estável `post_deploy_smoke_latest.log` e o log histórico `post_deploy_smoke_*.log`.
+
+Por fim, o smoke de carga controlado deve correr com `k6` em 25/50 VUs:
+
+```bash
+cd /var/www/indicoerp/repo
+SMOKE_LOGIN_EMAIL='seu-utilizador@dominio.com' \
+SMOKE_LOGIN_PASSWORD='sua-password' \
+bash deploy/scripts/21_post_deploy_k6_matrix_indicoerp.sh
+```
+
+A evidência final esperada é `post_deploy_k6_matrix_latest.env`, o link estável `post_deploy_k6_matrix_latest.log` e o resumo `k6_matrix_summary_*.md` em `ops/k6/`.
+
 Após `verify`, registar no painel **Go-Live Readiness**:
 
 - estado `Completed`;
 - data do teste;
 - referência do manifesto `backup_*.manifest`;
 - RPO/RTO validado e responsável.
+
+No deploy normal, a referência operacional esperada é o ficheiro `pre_deploy_backup_latest.env` no `BACKUP_DIR`, que aponta para o `backup_*.manifest` e para o dump utilizado antes da activação da release.
 
 ## 8) Critério final de aceitação de produção
 

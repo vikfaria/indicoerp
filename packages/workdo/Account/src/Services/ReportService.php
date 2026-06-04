@@ -2,9 +2,14 @@
 
 namespace Workdo\Account\Services;
 
+use App\Services\MozambiqueLegalTablesValidationService;
+use App\Services\MozambiqueFiscalCalendarValidationService;
 use App\Services\VatCalculationService;
 use Carbon\Carbon;
+use App\Models\MzVatCode;
+use App\Services\MozambiquePayrollAccountingExportService;
 use App\Support\MozambiqueTaxNumber;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -22,6 +27,7 @@ class ReportService
     private ?int $cachedCompanyId = null;
     private ?array $cachedCompanySettings = null;
     private array $cachedCompanySettingValues = [];
+    private ?array $cachedVatCodeLookup = null;
 
     public function __construct(VatCalculationService $vatCalculationService)
     {
@@ -2647,6 +2653,220 @@ class ReportService
         ], $snapshot);
     }
 
+    public function getMozambiqueCostCenterAnalysis(array $filters = []): array
+    {
+        $fromDate = $filters['from_date'] ?? date('Y-01-01');
+        $toDate = $filters['to_date'] ?? date('Y-12-31');
+        $referencePeriod = $filters['reference_period'] ?? Carbon::parse($fromDate)->format('Y-m');
+        $companyId = $this->companyId();
+
+        $journalRows = collect();
+        if (
+            Schema::hasTable('journal_entry_items')
+            && Schema::hasTable('journal_entries')
+            && Schema::hasTable('chart_of_accounts')
+        ) {
+            $query = DB::table('journal_entry_items as jei')
+                ->join('journal_entries as je', 'jei.journal_entry_id', '=', 'je.id')
+                ->join('chart_of_accounts as coa', 'jei.account_id', '=', 'coa.id')
+                ->leftJoin('cost_centers as cc', 'jei.cost_center_id', '=', 'cc.id')
+                ->leftJoin('cost_centers as parent_cc', 'cc.parent_id', '=', 'parent_cc.id')
+                ->where('je.created_by', $companyId)
+                ->whereBetween('je.journal_date', [$fromDate, $toDate])
+                ->select([
+                    'je.id as journal_id',
+                    'je.journal_number',
+                    'je.journal_date',
+                    'je.reference_type',
+                    'je.reference_id',
+                    'je.status as journal_status',
+                    'jei.id as journal_item_id',
+                    'jei.cost_center_id',
+                    'cc.code as cost_center_code',
+                    'cc.name as cost_center_name',
+                    'parent_cc.name as parent_cost_center_name',
+                    'coa.account_code',
+                    'coa.account_name',
+                    'jei.debit_amount',
+                    'jei.credit_amount',
+                ])
+                ->selectRaw(
+                    Schema::hasColumn('chart_of_accounts', 'cost_center_required')
+                        ? 'COALESCE(coa.cost_center_required, 0) as cost_center_required'
+                        : '0 as cost_center_required'
+                )
+                ->orderBy('je.journal_date')
+                ->orderBy('je.id')
+                ->orderBy('jei.id');
+
+            $journalRows = $query->get()->map(static function ($row): array {
+                $debitAmount = (float) ($row->debit_amount ?? 0);
+                $creditAmount = (float) ($row->credit_amount ?? 0);
+                $costCenterRequired = (bool) ($row->cost_center_required ?? false);
+                $hasCostCenter = !empty($row->cost_center_id);
+
+                return [
+                    'journal_id' => (int) ($row->journal_id ?? 0),
+                    'journal_number' => (string) ($row->journal_number ?? ''),
+                    'journal_date' => $row->journal_date ? Carbon::parse($row->journal_date)->toDateString() : '',
+                    'reference_type' => (string) ($row->reference_type ?? ''),
+                    'reference_id' => (int) ($row->reference_id ?? 0),
+                    'journal_status' => (string) ($row->journal_status ?? ''),
+                    'journal_item_id' => (int) ($row->journal_item_id ?? 0),
+                    'cost_center_id' => $row->cost_center_id ? (int) $row->cost_center_id : null,
+                    'cost_center_code' => (string) ($row->cost_center_code ?? ''),
+                    'cost_center_name' => (string) ($row->cost_center_name ?? ''),
+                    'parent_cost_center_name' => (string) ($row->parent_cost_center_name ?? ''),
+                    'account_code' => (string) ($row->account_code ?? ''),
+                    'account_name' => (string) ($row->account_name ?? ''),
+                    'cost_center_required' => $costCenterRequired,
+                    'allocation_status' => $hasCostCenter
+                        ? 'assigned'
+                        : ($costCenterRequired ? 'required_missing' : 'unassigned'),
+                    'debit_amount' => $debitAmount,
+                    'credit_amount' => $creditAmount,
+                    'net_amount' => round($debitAmount - $creditAmount, 2),
+                ];
+            });
+        }
+
+        $assignedRows = $journalRows->filter(static fn (array $row): bool => !empty($row['cost_center_id']))->values();
+        $requiredMissingRows = $journalRows->filter(static fn (array $row): bool => (string) ($row['allocation_status'] ?? '') === 'required_missing')->values();
+        $unassignedRows = $journalRows->filter(static fn (array $row): bool => (string) ($row['allocation_status'] ?? '') === 'unassigned')->values();
+
+        $costCenterRows = $assignedRows
+            ->groupBy('cost_center_id')
+            ->map(static function (Collection $group, $costCenterId): array {
+                $first = $group->first() ?: [];
+                $referenceBreakdown = $group
+                    ->groupBy(static fn (array $row): string => (string) ($row['reference_type'] ?? 'unclassified'))
+                    ->map(static function (Collection $referenceGroup, string $referenceType): array {
+                        return [
+                            'reference_type' => $referenceType !== '' ? $referenceType : 'unclassified',
+                            'line_count' => $referenceGroup->count(),
+                            'debit_total' => round((float) $referenceGroup->sum('debit_amount'), 2),
+                            'credit_total' => round((float) $referenceGroup->sum('credit_amount'), 2),
+                            'net_total' => round((float) $referenceGroup->sum('net_amount'), 2),
+                        ];
+                    })
+                    ->values()
+                    ->all();
+
+                return [
+                    'cost_center_id' => (int) $costCenterId,
+                    'cost_center_code' => (string) ($first['cost_center_code'] ?? ''),
+                    'cost_center_name' => (string) ($first['cost_center_name'] ?? ''),
+                    'parent_cost_center_name' => (string) ($first['parent_cost_center_name'] ?? ''),
+                    'journal_count' => (int) $group->pluck('journal_id')->unique()->count(),
+                    'line_count' => $group->count(),
+                    'debit_total' => round((float) $group->sum('debit_amount'), 2),
+                    'credit_total' => round((float) $group->sum('credit_amount'), 2),
+                    'net_total' => round((float) $group->sum('net_amount'), 2),
+                    'reference_breakdown' => $referenceBreakdown,
+                ];
+            })
+            ->sortByDesc('net_total')
+            ->values();
+
+        $referenceRows = $journalRows
+            ->groupBy(static fn (array $row): string => (string) ($row['reference_type'] ?? 'unclassified'))
+            ->map(static function (Collection $group, string $referenceType): array {
+                return [
+                    'reference_type' => $referenceType !== '' ? $referenceType : 'unclassified',
+                    'journal_count' => (int) $group->pluck('journal_id')->unique()->count(),
+                    'line_count' => $group->count(),
+                    'assigned_lines' => (int) $group->where('allocation_status', 'assigned')->count(),
+                    'required_missing_lines' => (int) $group->where('allocation_status', 'required_missing')->count(),
+                    'unassigned_lines' => (int) $group->where('allocation_status', 'unassigned')->count(),
+                    'debit_total' => round((float) $group->sum('debit_amount'), 2),
+                    'credit_total' => round((float) $group->sum('credit_amount'), 2),
+                    'net_total' => round((float) $group->sum('net_amount'), 2),
+                ];
+            })
+            ->sortByDesc('line_count')
+            ->values()
+            ->all();
+
+        $payrollAllocations = collect();
+        $payrollSummary = [
+            'rows' => 0,
+            'gross_pay_total' => 0.0,
+            'net_pay_total' => 0.0,
+            'cost_centers' => 0,
+            'departments' => 0,
+            'branches' => 0,
+            'projects' => 0,
+            'allocation_sources' => 0,
+        ];
+
+        try {
+            $payrollDataset = app(MozambiquePayrollAccountingExportService::class)->buildCostAllocationDataset($companyId, $referencePeriod);
+            $payrollAllocations = collect(data_get($payrollDataset, 'rows', []))->map(static function (array $row): array {
+                return [
+                    'reference_period' => (string) ($row['reference_period'] ?? ''),
+                    'payroll_title' => (string) ($row['payroll_title'] ?? ''),
+                    'pay_date' => (string) ($row['pay_date'] ?? ''),
+                    'employee_name' => (string) ($row['employee_name'] ?? ''),
+                    'employee_nuit' => (string) ($row['employee_nuit'] ?? ''),
+                    'branch' => (string) ($row['branch'] ?? ''),
+                    'department' => (string) ($row['department'] ?? ''),
+                    'designation' => (string) ($row['designation'] ?? ''),
+                    'business_unit' => (string) ($row['business_unit'] ?? ''),
+                    'worksite' => (string) ($row['worksite'] ?? ''),
+                    'cost_center_code' => (string) ($row['cost_center_code'] ?? ''),
+                    'cost_center_name' => (string) ($row['cost_center_name'] ?? ''),
+                    'project_name' => (string) ($row['project_name'] ?? ''),
+                    'client_name' => (string) ($row['client_name'] ?? ''),
+                    'allocation_source' => (string) ($row['allocation_source'] ?? ''),
+                    'allocation_minutes' => (int) ($row['allocation_minutes'] ?? 0),
+                    'gross_pay' => round((float) ($row['gross_pay'] ?? 0), 2),
+                    'net_pay' => round((float) ($row['net_pay'] ?? 0), 2),
+                ];
+            });
+
+            $payrollSummary = [
+                'rows' => (int) data_get($payrollDataset, 'summary.rows', $payrollAllocations->count()),
+                'gross_pay_total' => round((float) data_get($payrollDataset, 'summary.gross_pay_total', 0), 2),
+                'net_pay_total' => round((float) data_get($payrollDataset, 'summary.net_pay_total', 0), 2),
+                'cost_centers' => (int) $payrollAllocations->pluck('cost_center_code')->filter()->unique()->count(),
+                'departments' => (int) $payrollAllocations->pluck('department')->filter()->unique()->count(),
+                'branches' => (int) $payrollAllocations->pluck('branch')->filter()->unique()->count(),
+                'projects' => (int) $payrollAllocations->pluck('project_name')->filter()->unique()->count(),
+                'allocation_sources' => (int) $payrollAllocations->pluck('allocation_source')->filter()->unique()->count(),
+            ];
+        } catch (\Throwable) {
+            // Leave payroll dataset empty if optional modules or tables are unavailable.
+        }
+
+        return [
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'reference_period' => $referencePeriod,
+            'summary' => [
+                'journal_lines' => $journalRows->count(),
+                'journals' => (int) $journalRows->pluck('journal_id')->filter()->unique()->count(),
+                'cost_centers' => $costCenterRows->count(),
+                'assigned_lines' => $assignedRows->count(),
+                'unassigned_lines' => $unassignedRows->count(),
+                'required_missing_lines' => $requiredMissingRows->count(),
+                'assigned_debit_total' => round((float) $assignedRows->sum('debit_amount'), 2),
+                'assigned_credit_total' => round((float) $assignedRows->sum('credit_amount'), 2),
+                'assigned_net_total' => round((float) $assignedRows->sum('net_amount'), 2),
+                'payroll_rows' => $payrollSummary['rows'],
+                'payroll_cost_centers' => $payrollSummary['cost_centers'],
+                'payroll_departments' => $payrollSummary['departments'],
+                'payroll_branches' => $payrollSummary['branches'],
+                'payroll_projects' => $payrollSummary['projects'],
+            ],
+            'cost_centers' => $costCenterRows->take(100)->values()->all(),
+            'required_missing_lines' => $requiredMissingRows->take(100)->values()->all(),
+            'unassigned_lines' => $unassignedRows->take(100)->values()->all(),
+            'reference_types' => $referenceRows,
+            'payroll_allocations' => $payrollAllocations->take(250)->values()->all(),
+            'payroll_summary' => $payrollSummary,
+        ];
+    }
+
     public function getMozambiqueFiscalComplianceAlerts($filters = []): array
     {
         $fromDate = $filters['from_date'] ?? date('Y-01-01');
@@ -3156,10 +3376,12 @@ class ReportService
                 'summary' => [
                     'electronic_money_accounts' => 0,
                     'missing_classification' => 0,
+                    'enterprise_exemption_misconfigured' => 0,
                     'monthly_limit_exceeded' => 0,
                     'monthly_limit_near_threshold' => 0,
                 ],
                 'missing_classification' => [],
+                'enterprise_exemption_misconfigured' => [],
                 'monthly_limit_exceeded' => [],
                 'monthly_limit_near_threshold' => [],
             ];
@@ -3186,14 +3408,33 @@ class ReportService
                 'summary' => [
                     'electronic_money_accounts' => 0,
                     'missing_classification' => 0,
+                    'enterprise_exemption_misconfigured' => 0,
                     'monthly_limit_exceeded' => 0,
                     'monthly_limit_near_threshold' => 0,
                 ],
                 'missing_classification' => [],
+                'enterprise_exemption_misconfigured' => [],
                 'monthly_limit_exceeded' => [],
                 'monthly_limit_near_threshold' => [],
             ];
         }
+
+        $companyClassification = null;
+        if (
+            Schema::hasTable('company_fiscal_profiles')
+            && Schema::hasColumn('company_fiscal_profiles', 'entity_classification')
+        ) {
+            $profileQuery = DB::table('company_fiscal_profiles')
+                ->where('company_id', $companyId);
+
+            if (Schema::hasColumn('company_fiscal_profiles', 'is_active')) {
+                $profileQuery->where('is_active', true);
+            }
+
+            $companyClassification = $profileQuery
+                ->value('entity_classification');
+        }
+        $companyAllowsExemption = in_array(strtolower((string) $companyClassification), ['medium', 'large'], true);
 
         $usageByAccount = [];
         $accumulateUsage = function (string $tableName, string $dateColumn) use (&$usageByAccount, $companyId, $fromDate, $toDate): void {
@@ -3238,6 +3479,7 @@ class ReportService
         $accumulateUsage('customer_payments', 'payment_date');
 
         $missingClassification = [];
+        $enterpriseExemptionMisconfigured = [];
         $monthlyLimitExceeded = [];
         $monthlyLimitNearThreshold = [];
 
@@ -3245,6 +3487,7 @@ class ReportService
             $entity = trim((string) ($account->electronic_money_entity ?? ''));
             $level = strtoupper(trim((string) ($account->electronic_money_level ?? '')));
             $isExempt = (bool) ($account->electronic_money_limit_exempt_for_enterprise ?? false);
+            $purpose = trim((string) ($account->electronic_money_account_purpose ?? ''));
             $monthlyLimit = (float) ($account->electronic_money_monthly_limit_mzn ?? 0);
             $usageMzn = round((float) ($usageByAccount[(int) $account->id] ?? 0), 2);
 
@@ -3255,10 +3498,22 @@ class ReportService
                 'bank_name' => (string) ($account->bank_name ?? ''),
                 'electronic_money_entity' => $entity !== '' ? $entity : null,
                 'electronic_money_level' => $level !== '' ? $level : null,
+                'electronic_money_account_purpose' => $purpose !== '' ? $purpose : null,
             ];
 
             if ($entity === '' || $level === '') {
                 $missingClassification[] = $sampleBase;
+            }
+
+            if ($isExempt && (!$companyAllowsExemption || $purpose === '')) {
+                $enterpriseExemptionMisconfigured[] = array_merge($sampleBase, [
+                    'company_classification' => $companyClassification !== null && $companyClassification !== ''
+                        ? (string) $companyClassification
+                        : null,
+                    'requires_attention_reason' => !$companyAllowsExemption
+                        ? 'company_not_medium_or_large'
+                        : 'missing_account_purpose',
+                ]);
             }
 
             if ($isExempt || $monthlyLimit <= 0) {
@@ -3286,10 +3541,12 @@ class ReportService
             'summary' => [
                 'electronic_money_accounts' => $accounts->count(),
                 'missing_classification' => count($missingClassification),
+                'enterprise_exemption_misconfigured' => count($enterpriseExemptionMisconfigured),
                 'monthly_limit_exceeded' => count($monthlyLimitExceeded),
                 'monthly_limit_near_threshold' => count($monthlyLimitNearThreshold),
             ],
             'missing_classification' => $missingClassification,
+            'enterprise_exemption_misconfigured' => $enterpriseExemptionMisconfigured,
             'monthly_limit_exceeded' => $monthlyLimitExceeded,
             'monthly_limit_near_threshold' => $monthlyLimitNearThreshold,
         ];
@@ -3447,12 +3704,15 @@ class ReportService
     private function resolveGifimThresholdCategoryForPayment(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 
@@ -4126,6 +4386,8 @@ class ReportService
         ], $this->existingColumns('sales_invoice_items', [
             'description',
             'tax_percentage',
+            'vat_code',
+            'tax_exemption_reason',
         ]));
 
         $purchaseInvoiceItemColumns = array_merge([
@@ -4139,6 +4401,8 @@ class ReportService
         ], $this->existingColumns('purchase_invoice_items', [
             'description',
             'tax_percentage',
+            'vat_code',
+            'tax_exemption_reason',
         ]));
 
         $salesInvoiceItems = collect();
@@ -4379,6 +4643,11 @@ class ReportService
                     $line->description ?? null,
                     $line->product_id ? ('Item ' . (string) $line->product_id) : null,
                 ], 'Item');
+                $taxCode = $this->resolveSaftTaxCode(
+                    (string) ($line->vat_code ?? ''),
+                    $taxPercent,
+                    (string) ($line->tax_exemption_reason ?? '')
+                );
 
                 $writer->startElement('Line');
                 $writer->writeElement('LineNumber', $lineNumber);
@@ -4392,8 +4661,12 @@ class ReportService
                 $writer->startElement('Tax');
                 $writer->writeElement('TaxType', 'IVA');
                 $writer->writeElement('TaxCountryRegion', 'MZ');
-                $writer->writeElement('TaxCode', 'NOR');
+                $writer->writeElement('TaxCode', $taxCode);
                 $writer->writeElement('TaxPercentage', number_format($taxPercent, 2, '.', ''));
+                $taxExemptionReason = trim((string) ($line->tax_exemption_reason ?? ''));
+                if ($taxExemptionReason !== '') {
+                    $writer->writeElement('TaxExemptionReason', $taxExemptionReason);
+                }
                 $writer->endElement();
 
                 $writer->endElement();
@@ -4452,6 +4725,11 @@ class ReportService
                     $line->description ?? null,
                     $line->product_id ? ('Item ' . (string) $line->product_id) : null,
                 ], 'Item');
+                $taxCode = $this->resolveSaftTaxCode(
+                    (string) ($line->vat_code ?? ''),
+                    $taxPercent,
+                    (string) ($line->tax_exemption_reason ?? '')
+                );
 
                 $writer->startElement('Line');
                 $writer->writeElement('LineNumber', $lineNumber);
@@ -4465,8 +4743,12 @@ class ReportService
                 $writer->startElement('Tax');
                 $writer->writeElement('TaxType', 'IVA');
                 $writer->writeElement('TaxCountryRegion', 'MZ');
-                $writer->writeElement('TaxCode', 'NOR');
+                $writer->writeElement('TaxCode', $taxCode);
                 $writer->writeElement('TaxPercentage', number_format($taxPercent, 2, '.', ''));
+                $taxExemptionReason = trim((string) ($line->tax_exemption_reason ?? ''));
+                if ($taxExemptionReason !== '') {
+                    $writer->writeElement('TaxExemptionReason', $taxExemptionReason);
+                }
                 $writer->endElement();
 
                 $writer->endElement();
@@ -4519,6 +4801,116 @@ class ReportService
             $columns,
             static fn(string $column): bool => Schema::hasColumn($table, $column)
         ));
+    }
+
+    private function resolveSaftTaxCode(string $vatCode, float $taxPercentage, string $taxExemptionReason = ''): string
+    {
+        $normalizedVatCode = strtoupper(trim($vatCode));
+        $normalizedReason = strtolower(trim($taxExemptionReason));
+        $vatCodes = $this->vatCodeLookup();
+
+        if ($normalizedVatCode !== '' && isset($vatCodes[$normalizedVatCode])) {
+            $saftTaxCode = strtoupper(trim((string) ($vatCodes[$normalizedVatCode]['saft_tax_code'] ?? '')));
+            if ($saftTaxCode !== '') {
+                return $saftTaxCode;
+            }
+        }
+
+        $fallbackMap = [
+            'NOR' => 'NOR',
+            'RED' => 'RED',
+            'ISE' => 'ISE',
+            'ISENTO' => 'ISE',
+            'ISENTO_IVA' => 'ISE',
+            'ISENTO-IVA' => 'ISE',
+            'EXEMPT' => 'ISE',
+            'ZER' => 'ZER',
+            'ZERO' => 'ZER',
+            'ZERO_RATE' => 'ZER',
+            'NSU' => 'NS',
+            'NS' => 'NS',
+            'NAO_SUJEITO' => 'NS',
+            'NÃO_SUJEITO' => 'NS',
+            'AUT' => 'AUT',
+            'REVERSE_CHARGE' => 'AUT',
+            'IMP' => 'IMP',
+            'DIGITAL_SERVICES' => 'DIG',
+            'DIGITAL' => 'DIG',
+        ];
+
+        if ($normalizedVatCode !== '' && isset($fallbackMap[$normalizedVatCode])) {
+            return $fallbackMap[$normalizedVatCode];
+        }
+
+        if ($taxPercentage <= 0.0001) {
+            if (
+                str_contains($normalizedReason, 'nao sujeito')
+                || str_contains($normalizedReason, 'não sujeito')
+                || str_contains($normalizedReason, 'not subject')
+            ) {
+                return 'NS';
+            }
+
+            if (str_contains($normalizedReason, 'isent') || str_contains($normalizedReason, 'exempt')) {
+                return 'ISE';
+            }
+
+            return 'ZER';
+        }
+
+        if (abs($taxPercentage - 5.0) <= 0.01) {
+            return 'RED';
+        }
+
+        if (
+            str_contains($normalizedVatCode, 'DIG')
+            || str_contains($normalizedReason, 'digital')
+            || str_contains($normalizedReason, 'cloud')
+            || str_contains($normalizedReason, 'software')
+        ) {
+            return 'DIG';
+        }
+
+        if (str_contains($normalizedReason, 'import')) {
+            return 'IMP';
+        }
+
+        if (str_contains($normalizedReason, 'reverse') || str_contains($normalizedReason, 'autoliqu')) {
+            return 'AUT';
+        }
+
+        return 'NOR';
+    }
+
+    /**
+     * @return array<string, array{saft_tax_code: string, rate: float, type: string}>
+     */
+    private function vatCodeLookup(): array
+    {
+        if ($this->cachedVatCodeLookup !== null) {
+            return $this->cachedVatCodeLookup;
+        }
+
+        $this->cachedVatCodeLookup = [];
+
+        if (!Schema::hasTable('mz_vat_codes')) {
+            return $this->cachedVatCodeLookup;
+        }
+
+        foreach (MzVatCode::query()->select('code', 'rate', 'type', 'saft_tax_code')->get() as $vatCode) {
+            $code = strtoupper(trim((string) $vatCode->code));
+            if ($code === '') {
+                continue;
+            }
+
+            $this->cachedVatCodeLookup[$code] = [
+                'saft_tax_code' => strtoupper(trim((string) ($vatCode->saft_tax_code ?? $vatCode->code))),
+                'rate' => (float) $vatCode->rate,
+                'type' => strtolower(trim((string) $vatCode->type)),
+            ];
+        }
+
+        return $this->cachedVatCodeLookup;
     }
 
     private function normaliseSnapshot(mixed $snapshot): ?array
@@ -4773,6 +5165,18 @@ class ReportService
             );
         }
 
+        $legalTablesValidation = app(MozambiqueLegalTablesValidationService::class)->validate($companyId);
+        foreach ($legalTablesValidation['checks'] as $check) {
+            $addCheck(
+                (string) $check['code'],
+                (string) $check['label'],
+                (string) $check['status'],
+                (string) $check['details'],
+                (bool) ($check['critical'] ?? false),
+                (array) ($check['meta'] ?? [])
+            );
+        }
+
         if (
             Schema::hasTable('mz_irps_tables')
             && Schema::hasTable('mz_irps_brackets')
@@ -4909,6 +5313,18 @@ class ReportService
                 'Fiscal closing history',
                 'warn',
                 'Fiscal closing table is not available.'
+            );
+        }
+
+        $fiscalCalendarValidation = app(MozambiqueFiscalCalendarValidationService::class)->validate($companyId);
+        foreach ($fiscalCalendarValidation['checks'] as $check) {
+            $addCheck(
+                (string) $check['code'],
+                (string) $check['label'],
+                (string) $check['status'],
+                (string) $check['details'],
+                (bool) ($check['critical'] ?? false),
+                (array) ($check['meta'] ?? [])
             );
         }
 
@@ -5409,6 +5825,40 @@ class ReportService
             ]
         );
 
+        $fiscalCalendarValidationStatus = strtolower((string) ($attestations['fiscal_calendar_validation_status'] ?? 'not_started'));
+        $fiscalCalendarValidationCompleted = $fiscalCalendarValidationStatus === 'completed'
+            && !empty($attestations['fiscal_calendar_validation_completed_at']);
+        $fiscalCalendarValidationCheckStatus = 'fail';
+        if ($fiscalCalendarValidationCompleted) {
+            $fiscalCalendarValidationCheckStatus = 'pass';
+        } elseif ($fiscalCalendarValidationStatus === 'in_progress') {
+            $fiscalCalendarValidationCheckStatus = 'warn';
+        }
+        $addCheck(
+            'fiscal.calendar.validation.execution',
+            'Fiscal calendar validation',
+            $fiscalCalendarValidationCheckStatus,
+            $fiscalCalendarValidationCompleted
+                ? 'Fiscal calendar validation is completed and dated.'
+                : ($fiscalCalendarValidationStatus === 'in_progress'
+                    ? 'Fiscal calendar validation is in progress.'
+                    : 'Fiscal calendar validation has not been recorded yet.'),
+            true,
+            [
+                'status' => $attestations['fiscal_calendar_validation_status'] ?? null,
+                'completed_at' => $attestations['fiscal_calendar_validation_completed_at'] ?? null,
+                'notes' => $attestations['fiscal_calendar_validation_notes'] ?? null,
+            ]
+        );
+
+        $legalTablesValidationStatus = strtolower((string) ($attestations['legal_tables_validation_status'] ?? 'not_started'));
+        $legalTablesValidationCompleted = $legalTablesValidationStatus === 'completed'
+            && !empty($attestations['legal_tables_validation_completed_at']);
+
+        $legalTablesReviewStatus = strtolower((string) ($attestations['legal_tables_review_status'] ?? 'pending'));
+        $legalTablesReviewApproved = $legalTablesReviewStatus === 'approved'
+            && !empty($attestations['legal_tables_reviewed_at']);
+
         $formalApproval = (string) ($attestations['go_live_approved'] ?? 'off') === 'on'
             && !empty($attestations['go_live_approved_at']);
         $addCheck(
@@ -5485,6 +5935,126 @@ class ReportService
             ]
         );
 
+        $currentYear = (int) date('Y');
+        $saftSubmissionValidationRequired = false;
+
+        if (Schema::hasTable('sales_invoices') && Schema::hasColumn('sales_invoices', 'invoice_date')) {
+            $salesQuery = DB::table('sales_invoices')
+                ->where('created_by', $companyId)
+                ->whereYear('invoice_date', $currentYear);
+
+            if (Schema::hasColumn('sales_invoices', 'status')) {
+                $salesQuery->whereIn('status', ['posted', 'partial', 'paid', 'cancelled']);
+            }
+
+            $saftSubmissionValidationRequired = $salesQuery->exists();
+        }
+
+        if (!$saftSubmissionValidationRequired && Schema::hasTable('purchase_invoices') && Schema::hasColumn('purchase_invoices', 'invoice_date')) {
+            $purchaseQuery = DB::table('purchase_invoices')
+                ->where('created_by', $companyId)
+                ->whereYear('invoice_date', $currentYear);
+
+            if (Schema::hasColumn('purchase_invoices', 'status')) {
+                $purchaseQuery->whereIn('status', ['posted', 'partial', 'paid', 'cancelled']);
+            }
+
+            $saftSubmissionValidationRequired = $purchaseQuery->exists();
+        }
+
+        if (!$saftSubmissionValidationRequired && Schema::hasTable('pos') && Schema::hasColumn('pos', 'pos_date')) {
+            $posSubmissionQuery = DB::table('pos')
+                ->where('created_by', $companyId)
+                ->whereYear('pos_date', $currentYear);
+
+            if (Schema::hasColumn('pos', 'status')) {
+                $posSubmissionQuery->where('status', 'completed');
+            }
+
+            if (Schema::hasColumn('pos', 'is_cancelled')) {
+                $posSubmissionQuery->where('is_cancelled', false);
+            }
+
+            $saftSubmissionValidationRequired = $posSubmissionQuery->exists();
+        }
+
+        $saftSubmissionLatestHistory = null;
+        $saftSubmissionValidated = false;
+        if (Schema::hasTable('fiscal_export_histories')) {
+            $saftSubmissionHistoryQuery = DB::table('fiscal_export_histories')
+                ->where('company_id', $companyId)
+                ->where('export_type', 'saft_xml');
+
+            if (
+                Schema::hasColumn('fiscal_export_histories', 'period_start')
+                && Schema::hasColumn('fiscal_export_histories', 'period_end')
+            ) {
+                $saftSubmissionHistoryQuery->whereDate('period_start', '<=', sprintf('%d-12-31', $currentYear))
+                    ->whereDate('period_end', '>=', sprintf('%d-01-01', $currentYear));
+            } elseif (Schema::hasColumn('fiscal_export_histories', 'generated_at')) {
+                $saftSubmissionHistoryQuery->whereYear('generated_at', $currentYear);
+            } elseif (Schema::hasColumn('fiscal_export_histories', 'created_at')) {
+                $saftSubmissionHistoryQuery->whereYear('created_at', $currentYear);
+            }
+
+            $saftSubmissionLatestHistory = $saftSubmissionHistoryQuery
+                ->orderByDesc('id')
+                ->first([
+                    'id',
+                    'file_name',
+                    'status',
+                    'submission_channel',
+                    'submission_reference',
+                    'submitted_at',
+                    'period_start',
+                    'period_end',
+                    'created_at',
+                ]);
+
+            if ($saftSubmissionLatestHistory) {
+                $saftSubmissionValidated = in_array((string) ($saftSubmissionLatestHistory->status ?? ''), ['submitted', 'validated'], true)
+                    && !empty($saftSubmissionLatestHistory->submitted_at)
+                    && trim((string) ($saftSubmissionLatestHistory->submission_reference ?? '')) !== '';
+            }
+        }
+
+        if (!$saftSubmissionValidationRequired) {
+            $saftSubmissionValidated = true;
+        }
+
+        $saftSubmissionCheckStatus = $saftSubmissionValidated ? 'pass' : 'warn';
+        $saftSubmissionCheckDetails = $saftSubmissionValidated
+            ? ($saftSubmissionValidationRequired
+                ? 'Latest SAF-T export has a confirmed manual submission reference and timestamp.'
+                : 'No current-year fiscal activity requires a SAF-T submission yet.')
+            : ($saftSubmissionLatestHistory
+                ? 'SAF-T export history exists, but the latest record is missing a valid submission confirmation.'
+                : 'No SAF-T export submission record found yet.');
+
+        $addCheck(
+            'exports.saft_manual_submission',
+            'SAF-T manual submission confirmation',
+            $saftSubmissionCheckStatus,
+            $saftSubmissionCheckDetails,
+            false,
+            [
+                'required' => $saftSubmissionValidationRequired,
+                'validated' => $saftSubmissionValidated,
+                'history_route_ready' => Route::has('account.reports.mozambique-fiscal-exports-history')
+                    && Route::has('account.reports.mozambique-fiscal-exports-history.submit'),
+                'latest_export' => $saftSubmissionLatestHistory ? [
+                    'id' => $saftSubmissionLatestHistory->id,
+                    'file_name' => $saftSubmissionLatestHistory->file_name,
+                    'status' => $saftSubmissionLatestHistory->status,
+                    'submission_channel' => $saftSubmissionLatestHistory->submission_channel,
+                    'submission_reference' => $saftSubmissionLatestHistory->submission_reference,
+                    'submitted_at' => $saftSubmissionLatestHistory->submitted_at,
+                    'period_start' => $saftSubmissionLatestHistory->period_start,
+                    'period_end' => $saftSubmissionLatestHistory->period_end,
+                ] : null,
+            ]
+        );
+
         $posFiscalRoutesReady = Route::has('pos.fiscal-status') && Route::has('pos.cancel-fiscal');
 
         $addCheck(
@@ -5515,10 +6085,14 @@ class ReportService
             'pilot_completed' => $pilotCompleted,
             'pilot_registry_populated' => $pilotRegistryReady,
             'pilot_real_companies_validated' => $realPilotValidated,
+            'fiscal_calendar_validation_completed' => $fiscalCalendarValidationCompleted,
             'payroll_sector_validation_completed' => $payrollSectorValidationCompleted,
             'payroll_real_cases_validated' => $payrollRealCasesValidated,
             'accounting_local_validation_completed' => $accountingLocalValidationCompleted,
             'accounting_real_cases_validated' => $accountingRealCasesValidated,
+            'saft_submission_validation_completed' => $saftSubmissionValidated,
+            'legal_tables_validation_completed' => $legalTablesValidationCompleted,
+            'legal_tables_review_approved' => $legalTablesReviewApproved,
             'e2e_scenarios_completed' => $e2eCompleted,
             'backup_restore_verified' => $backupRestoreCompleted,
             'formal_approval_granted' => $formalApproval,
@@ -5528,10 +6102,14 @@ class ReportService
                 && $pilotCompleted
                 && $pilotRegistryReady
                 && $realPilotValidated
+                && $fiscalCalendarValidationCompleted
                 && $payrollSectorValidationCompleted
                 && $payrollRealCasesValidated
                 && $accountingLocalValidationCompleted
                 && $accountingRealCasesValidated
+                && $saftSubmissionValidated
+                && $legalTablesValidationCompleted
+                && $legalTablesReviewApproved
                 && $e2eCompleted
                 && $backupRestoreCompleted
                 && $formalApproval,
@@ -5557,6 +6135,20 @@ class ReportService
             'legal_review_status' => $stringSetting('mz_go_live_legal_review_status', 'pending'),
             'legal_reviewed_at' => $stringSetting('mz_go_live_legal_reviewed_at'),
             'legal_notes' => $stringSetting('mz_go_live_legal_notes'),
+            'legal_tables_validation_status' => $stringSetting('mz_legal_tables_validation_status', 'not_started'),
+            'legal_tables_validation_completed_at' => $stringSetting('mz_legal_tables_validation_completed_at'),
+            'legal_tables_validation_notes' => $stringSetting('mz_legal_tables_validation_notes'),
+            'legal_tables_review_status' => $stringSetting('mz_legal_tables_review_status', 'pending'),
+            'legal_tables_reviewed_at' => $stringSetting('mz_legal_tables_reviewed_at'),
+            'legal_tables_review_notes' => $stringSetting('mz_legal_tables_review_notes'),
+            'fiscal_calendar_validation_status' => $stringSetting('mz_fiscal_calendar_validation_status', 'not_started'),
+            'fiscal_calendar_validation_completed_at' => $stringSetting('mz_fiscal_calendar_validation_completed_at'),
+            'fiscal_calendar_validation_notes' => $stringSetting('mz_fiscal_calendar_validation_notes'),
+            'fiscal_calendar_export_status' => $stringSetting('mz_fiscal_calendar_export_status', 'not_started'),
+            'fiscal_calendar_export_generated_at' => $stringSetting('mz_fiscal_calendar_export_generated_at'),
+            'fiscal_calendar_export_year' => $intSetting('mz_fiscal_calendar_export_year', 0),
+            'fiscal_calendar_export_file_name' => $stringSetting('mz_fiscal_calendar_export_file_name'),
+            'fiscal_calendar_export_notes' => $stringSetting('mz_fiscal_calendar_export_notes'),
             'commercial_readiness_status' => $stringSetting('mz_go_live_commercial_status', 'pending'),
             'commercial_reviewed_at' => $stringSetting('mz_go_live_commercial_reviewed_at'),
             'commercial_notes' => $stringSetting('mz_go_live_commercial_notes'),

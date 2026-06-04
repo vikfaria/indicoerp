@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,15 @@ import { formatCurrency } from '@/utils/helpers';
 
 export default function Create({ customers, bankAccounts, onSuccess }: CreateCustomerPaymentProps) {
     const { t } = useTranslation();
+    const { mozambiqueCompliance } = usePage<any>().props as {
+        mozambiqueCompliance?: {
+            gifim?: {
+                cash_threshold_mzn?: number;
+                electronic_threshold_mzn?: number;
+                electronic_payment_methods?: string[];
+            };
+        };
+    };
     const [outstandingInvoices, setOutstandingInvoices] = useState<SalesInvoice[]>([]);
     const [availableCreditNotes, setAvailableCreditNotes] = useState<CreditNote[]>([]);
     const [selectedAllocations, setSelectedAllocations] = useState<{invoice_id: number; amount: number}[]>([]);
@@ -44,6 +53,12 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
         { value: 'EUR', label: 'EUR' },
         { value: 'ZAR', label: 'ZAR' },
     ] as const;
+
+    const gifimConfig = mozambiqueCompliance?.gifim ?? {
+        cash_threshold_mzn: 250000,
+        electronic_threshold_mzn: 750000,
+        electronic_payment_methods: ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'],
+    };
 
     const { data, setData, post, processing, errors } = useForm<CreateCustomerPaymentFormData>({
         payment_date: new Date().toISOString().split('T')[0],
@@ -74,6 +89,14 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
         allocations: [],
         credit_notes: []
     });
+
+    const bankAccountLabel = (account: any) => {
+        const branchName = account.branch?.branch_name || account.branch_name;
+
+        return branchName
+            ? `${account.account_name} (${account.account_number}) - ${branchName}`
+            : `${account.account_name} (${account.account_number})`;
+    };
 
     // Update form data when selections change
     useEffect(() => {
@@ -195,10 +218,10 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
     const fxDifferenceAmount = paymentAmountValue - convertedAmountMzn;
     const repatriatedAmountValue = Number(data.repatriated_amount_mzn || 0);
     const normalizedPaymentMethod = (data.payment_method || '').toLowerCase();
-    const gifimThresholdCategory = normalizedPaymentMethod === 'cash' && paymentAmountValue >= 250000
+    const gifimThresholdCategory = normalizedPaymentMethod === 'cash' && paymentAmountValue >= Number(gifimConfig.cash_threshold_mzn ?? 250000)
         ? 'cash_threshold'
-        : (['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'].includes(normalizedPaymentMethod)
-            && paymentAmountValue >= 750000
+        : ((gifimConfig.electronic_payment_methods ?? ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']).includes(normalizedPaymentMethod)
+            && paymentAmountValue >= Number(gifimConfig.electronic_threshold_mzn ?? 750000)
             ? 'electronic_threshold'
             : null);
     const gifimAlertRequired = Boolean(gifimThresholdCategory);
@@ -285,7 +308,7 @@ export default function Create({ customers, bankAccounts, onSuccess }: CreateCus
                             <SelectContent>
                                 {bankAccounts?.map((account) => (
                                     <SelectItem key={account.id} value={account.id.toString()}>
-                                        {account.account_name} ({account.account_number})
+                                        {bankAccountLabel(account)}
                                     </SelectItem>
                                 ))}
                             </SelectContent>

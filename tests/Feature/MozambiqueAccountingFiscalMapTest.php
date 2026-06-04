@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\AuditTrail;
 use App\Models\FiscalExportHistory;
+use App\Models\MzVatCode;
 use App\Models\PurchaseInvoice;
 use App\Models\SalesInvoice;
 use App\Models\SalesInvoiceItem;
@@ -1008,26 +1009,67 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
     {
         $company = $this->makeCompany();
         $this->grantPermissions($company, ['view-tax-summary']);
+        MzVatCode::seedDefaults();
 
         $customer = $this->makeClient($company);
         $vendor = $this->makeVendor($company);
+        $productIse = ProductServiceItem::create([
+            'name' => 'Produto SAF-T ISE',
+            'sale_price' => 100,
+            'purchase_price' => 80,
+            'type' => 'service',
+            'is_active' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+        $productAut = ProductServiceItem::create([
+            'name' => 'Produto SAF-T AUT',
+            'sale_price' => 200,
+            'purchase_price' => 160,
+            'type' => 'service',
+            'is_active' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
 
-        SalesInvoice::create([
+        $invoiceIn = SalesInvoice::create([
             'invoice_number' => 'FT-SAFT-IN',
             'invoice_date' => '2026-01-12',
             'due_date' => '2026-01-20',
             'customer_id' => $customer->id,
-            'subtotal' => 1000,
-            'tax_amount' => 160,
+            'subtotal' => 300,
+            'tax_amount' => 32,
             'discount_amount' => 0,
-            'total_amount' => 1160,
+            'total_amount' => 332,
             'paid_amount' => 0,
-            'balance_amount' => 1160,
+            'balance_amount' => 332,
             'status' => 'posted',
             'type' => 'product',
             'creator_id' => $company->id,
             'created_by' => $company->id,
             'fiscal_submission_status' => 'submitted',
+        ]);
+
+        SalesInvoiceItem::create([
+            'invoice_id' => $invoiceIn->id,
+            'product_id' => $productIse->id,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'discount_percentage' => 0,
+            'tax_percentage' => 0,
+            'vat_code' => 'ISE',
+            'tax_exemption_reason' => 'Isenção legal',
+        ]);
+
+        SalesInvoiceItem::create([
+            'invoice_id' => $invoiceIn->id,
+            'product_id' => $productAut->id,
+            'quantity' => 1,
+            'unit_price' => 200,
+            'discount_percentage' => 0,
+            'tax_percentage' => 16,
+            'vat_code' => 'AUT',
+            'tax_exemption_reason' => null,
         ]);
 
         SalesInvoice::create([
@@ -1081,6 +1123,27 @@ class MozambiqueAccountingFiscalMapTest extends TestCase
         $this->assertStringContainsString('FT-SAFT-IN', $xml);
         $this->assertStringContainsString('FR-SAFT-IN', $xml);
         $this->assertStringNotContainsString('FT-SAFT-OUT', $xml);
+
+        $xmlDocument = simplexml_load_string($xml);
+        $this->assertNotFalse($xmlDocument);
+        $xmlDocument->registerXPathNamespace('saft', 'urn:OECD:StandardAuditFile-Tax:MZ_1.0');
+
+        $invoiceNodes = $xmlDocument->xpath('//saft:SalesInvoices/saft:Invoice[saft:InvoiceNo="FT-SAFT-IN"]');
+        $this->assertIsArray($invoiceNodes);
+        $this->assertNotEmpty($invoiceNodes);
+
+        $lineTaxCodeNodes = $xmlDocument->xpath('//saft:SalesInvoices/saft:Invoice[saft:InvoiceNo="FT-SAFT-IN"]/saft:Line/saft:Tax/saft:TaxCode');
+        $this->assertIsArray($lineTaxCodeNodes);
+        $this->assertCount(2, $lineTaxCodeNodes);
+
+        $lineTaxCodes = array_map(static fn ($node): string => (string) $node, $lineTaxCodeNodes);
+
+        $this->assertContains('ISE', $lineTaxCodes);
+        $this->assertContains('AUT', $lineTaxCodes);
+        $this->assertSame(['ISE', 'AUT'], $lineTaxCodes);
+
+        $firstLineReason = $xmlDocument->xpath('//saft:SalesInvoices/saft:Invoice[saft:InvoiceNo="FT-SAFT-IN"]/saft:Line[1]/saft:Tax/saft:TaxExemptionReason');
+        $this->assertSame('Isenção legal', (string) ($firstLineReason[0] ?? ''));
 
         $this->assertDatabaseHas('fiscal_export_histories', [
             'company_id' => $company->id,

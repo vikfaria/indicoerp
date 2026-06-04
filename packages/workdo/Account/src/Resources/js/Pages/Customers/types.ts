@@ -64,6 +64,7 @@ export interface CustomerFormData {
   operation_type: string;
   billing_currency_code: string;
   accounting_account_code: string;
+  fiscal_identity_lock_reason?: string;
   payment_terms?: string;
   billing_address: Address;
   shipping_address: Address;

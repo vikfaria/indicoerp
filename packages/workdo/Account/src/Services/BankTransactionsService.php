@@ -8,9 +8,27 @@ use Illuminate\Support\Facades\DB;
 use Workdo\Account\Models\BankAccount;
 use Workdo\Account\Models\CustomerPayment;
 use Workdo\Account\Models\VendorPayment;
+use Workdo\Hrm\Models\Loan;
 
 class BankTransactionsService
 {
+    private function resolveOwnedBankAccount(int $bankAccountId, int $companyId): BankAccount
+    {
+        $bankAccount = BankAccount::query()
+            ->where('id', $bankAccountId)
+            ->where(function ($query) use ($companyId): void {
+                $query->where('created_by', $companyId)
+                    ->orWhere('creator_id', $companyId);
+            })
+            ->first();
+
+        if (!$bankAccount) {
+            throw new \InvalidArgumentException('Invalid bank account selected.');
+        }
+
+        return $bankAccount;
+    }
+
     private function buildPaymentMethodLabel(?string $paymentMethod): string
     {
         return match ($paymentMethod) {
@@ -72,6 +90,14 @@ class BankTransactionsService
         );
     }
 
+    private function buildVendorPaymentPurposeLabel(?string $purpose): string
+    {
+        return match (strtolower((string) $purpose)) {
+            'advance' => 'Vendor Advance',
+            default => 'Vendor Payment',
+        };
+    }
+
     public function createVendorPayment($vendorPayment)
     {
         // Get current running balance for the bank account
@@ -85,7 +111,7 @@ class BankTransactionsService
         $bankTransaction->transaction_date = $vendorPayment->payment_date;
         $bankTransaction->transaction_type = 'debit';
         $bankTransaction->reference_number = $vendorPayment->payment_number;
-        $bankTransaction->description = 'Vendor Payment #' . $vendorPayment->payment_number
+        $bankTransaction->description = $this->buildVendorPaymentPurposeLabel($vendorPayment->payment_purpose ?? null) . ' #' . $vendorPayment->payment_number
             . ' - ' . $vendorPayment->vendor->name
             . ' (' . $this->buildPaymentDetails($vendorPayment->payment_method, $vendorPayment->mobile_money_provider) . ')'
             . $this->buildFxSummaryForPayment($vendorPayment);
@@ -96,8 +122,38 @@ class BankTransactionsService
         $bankTransaction->created_by = creatorId();
         $bankTransaction->save();
 
-         // Update bank account balance
+        // Update bank account balance
         $this->updateBankBalance($vendorPayment->bank_account_id, -$vendorPayment->payment_amount);
+    }
+
+    public function createEmployeeLoanDisbursement(Loan $loan, BankAccount $bankAccount, float $disbursementAmount): void
+    {
+        if ($disbursementAmount <= 0) {
+            return;
+        }
+
+        $lastTransaction = BankTransaction::query()
+            ->where('bank_account_id', $bankAccount->id)
+            ->orderBy('id', 'desc')
+            ->first();
+        $runningBalance = $lastTransaction
+            ? $lastTransaction->running_balance - $disbursementAmount
+            : -$disbursementAmount;
+
+        $bankTransaction = new BankTransaction();
+        $bankTransaction->bank_account_id = $bankAccount->id;
+        $bankTransaction->transaction_date = $loan->start_date ?? now();
+        $bankTransaction->transaction_type = 'debit';
+        $bankTransaction->reference_number = 'LN-' . $loan->id;
+        $bankTransaction->description = 'Employee Loan #' . $loan->id . ' - ' . ($loan->employee?->name ?? 'Employee');
+        $bankTransaction->amount = $disbursementAmount;
+        $bankTransaction->running_balance = $runningBalance;
+        $bankTransaction->transaction_status = 'cleared';
+        $bankTransaction->reconciliation_status = 'unreconciled';
+        $bankTransaction->created_by = creatorId();
+        $bankTransaction->save();
+
+        $this->updateBankBalance($bankAccount->id, -$disbursementAmount);
     }
 
     public function createCustomerPayment($customerPayment)
@@ -302,6 +358,18 @@ class BankTransactionsService
     public function createPayrollPayment($payrollEntry)
     {
         $bankAccountId = $payrollEntry->payroll->bank_account_id;
+        $referenceNumber = 'PAYROLL-' . $payrollEntry->id;
+
+        $existingTransaction = BankTransaction::query()
+            ->where('bank_account_id', $bankAccountId)
+            ->where('reference_number', $referenceNumber)
+            ->where('transaction_type', 'debit')
+            ->first();
+
+        if ($existingTransaction) {
+            return $existingTransaction;
+        }
+
         $lastTransaction = BankTransaction::where('bank_account_id', $bankAccountId)
             ->orderBy('id', 'desc')
             ->first();
@@ -311,7 +379,7 @@ class BankTransactionsService
         $bankTransaction->bank_account_id = $bankAccountId;
         $bankTransaction->transaction_date = now();
         $bankTransaction->transaction_type = 'debit';
-        $bankTransaction->reference_number = 'PAYROLL-' . $payrollEntry->id;
+        $bankTransaction->reference_number = $referenceNumber;
         $bankTransaction->description = 'Salary Payment - ' . $payrollEntry->employee->user->name;
         $bankTransaction->amount = $payrollEntry->net_pay;
         $bankTransaction->running_balance = $runningBalance;
@@ -547,14 +615,7 @@ class BankTransactionsService
 
     public function importBankStatementCsv(string $filePath, int $bankAccountId, int $companyId): array
     {
-        $bankAccount = BankAccount::query()
-            ->where('id', $bankAccountId)
-            ->where('created_by', $companyId)
-            ->first();
-
-        if (!$bankAccount) {
-            throw new \InvalidArgumentException('Invalid bank account selected.');
-        }
+        $bankAccount = $this->resolveOwnedBankAccount($bankAccountId, $companyId);
 
         $handle = fopen($filePath, 'r');
         if (!$handle) {
@@ -685,6 +746,10 @@ class BankTransactionsService
         float $tolerance = 0.01,
         int $dayWindow = 3
     ): array {
+        if ($bankAccountId) {
+            $this->resolveOwnedBankAccount($bankAccountId, $companyId);
+        }
+
         $query = BankTransaction::query()
             ->where('created_by', $companyId)
             ->where('reconciliation_status', 'unreconciled');

@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\AccountingPeriod;
 use App\Models\FiscalExportHistory;
+use App\Models\MonthlyClosingChecklist;
 use App\Models\PurchaseInvoice;
 use App\Models\PurchaseReturn;
 use App\Models\SalesInvoice;
@@ -13,6 +15,7 @@ use App\Models\WithholdingTaxTreatyRate;
 use App\Observers\ModelAuditTrailObserver;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
+use Workdo\Account\Models\OpeningBalance;
 
 class AuditTrailServiceProvider extends ServiceProvider
 {
@@ -54,6 +57,9 @@ class AuditTrailServiceProvider extends ServiceProvider
             'Workdo\\Account\\Models\\MozFiscalClosing',
             'Workdo\\Account\\Models\\MozCashClosing',
             'Workdo\\Account\\Models\\MozTaxAccountMapping',
+            AccountingPeriod::class,
+            MonthlyClosingChecklist::class,
+            OpeningBalance::class,
             'Workdo\\Pos\\Models\\Pos',
             'Workdo\\Hrm\\Models\\Payroll',
             'Workdo\\Hrm\\Models\\PayrollEntry',

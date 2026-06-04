@@ -6,6 +6,7 @@ use App\Http\Middleware\PlanModuleCheck;
 use App\Models\AccountingPeriod;
 use App\Models\MzVatCode;
 use App\Models\SalesInvoice;
+use App\Models\SalesInvoiceItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -175,6 +176,59 @@ class SalesInvoiceFiscalComplianceRulesTest extends TestCase
 
         $response = $this->actingAs($company)->post(route('sales-invoices.store'), $payload);
         $response->assertSessionHasErrors(['items.0.vat_code']);
+    }
+
+    public function test_sales_invoice_persists_vat_code_and_exemption_reason_on_items_and_taxes(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-sales-invoices']);
+        MzVatCode::seedDefaults();
+        $this->createOpenPeriod($company, '2026-05-01', '2026-05-31', 5);
+
+        $client = $this->makeClient($company);
+        $service = $this->makeService($company);
+
+        $payload = [
+            'invoice_date' => '2026-05-07',
+            'due_date' => '2026-05-12',
+            'customer_id' => $client->id,
+            'type' => 'service',
+            'payment_terms' => null,
+            'notes' => null,
+            'items' => [
+                [
+                    'product_id' => $service->id,
+                    'quantity' => 1,
+                    'unit_price' => 100,
+                    'discount_percentage' => 0,
+                    'tax_percentage' => 0,
+                    'vat_code' => 'ISE',
+                    'tax_exemption_reason' => 'Isenção legal aplicada.',
+                ],
+            ],
+        ];
+
+        $this->actingAs($company)
+            ->post(route('sales-invoices.store'), $payload)
+            ->assertSessionHasNoErrors();
+
+        $invoice = SalesInvoice::query()->latest('id')->first();
+        $this->assertNotNull($invoice);
+
+        $item = SalesInvoiceItem::query()
+            ->where('invoice_id', $invoice->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($item);
+        $this->assertSame('ISE', (string) $item->vat_code);
+        $this->assertSame('Isenção legal aplicada.', (string) $item->tax_exemption_reason);
+
+        $this->assertDatabaseHas('sales_invoice_item_taxes', [
+            'item_id' => $item->id,
+            'vat_code' => 'ISE',
+            'tax_exemption_reason' => 'Isenção legal aplicada.',
+        ]);
     }
 
     private function makeCompany(): User

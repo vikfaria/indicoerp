@@ -42,7 +42,9 @@ export default function View({ bankaccount }: ViewProps) {
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">{t('Branch Name')}</label>
-                        <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">{bankaccount.branch_name || '-'}</p>
+                        <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded">
+                            {bankaccount.branch?.branch_name || bankaccount.branch_name || '-'}
+                        </p>
                     </div>
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">{t('Account Type')}</label>

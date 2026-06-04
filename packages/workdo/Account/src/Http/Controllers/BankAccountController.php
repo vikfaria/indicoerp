@@ -12,6 +12,7 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Workdo\Account\Models\ChartOfAccount;
+use Workdo\Hrm\Models\Branch;
 
 class BankAccountController extends Controller
 {
@@ -19,7 +20,7 @@ class BankAccountController extends Controller
     {
         if(Auth::user()->can('manage-bank-accounts')){
             $bankaccounts = BankAccount::query()
-                ->with(['gl_account'])
+                ->with(['gl_account', 'branch'])
                 ->where(function($q) {
                     if(Auth::user()->can('manage-any-bank-accounts')) {
                         $q->where('created_by', creatorId());
@@ -45,6 +46,10 @@ class BankAccountController extends Controller
 
             return Inertia::render('Account/BankAccounts/Index', [
                 'bankaccounts' => $bankaccounts,
+                'branches' => Branch::where('created_by', creatorId())
+                    ->select('id', 'branch_name')
+                    ->orderBy('branch_name')
+                    ->get(),
                 'chartofaccounts' => ChartOfAccount::where('created_by', creatorId())
                     ->whereBetween('account_code', ['1000', '1099'])
                     ->select('id', 'account_code', 'account_name')
@@ -66,12 +71,17 @@ class BankAccountController extends Controller
             $validated['electronic_money_limit_exempt_for_enterprise'] = $request->boolean('electronic_money_limit_exempt_for_enterprise', false);
             $validated = $this->normalizeElectronicMoneyPayload($validated);
             $validated['account_type'] = $this->normalizeAccountType($validated['account_type']);
+            $branch = Branch::query()
+                ->where('id', (int) $validated['branch_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             $bankaccount = new BankAccount();
             $bankaccount->account_number = $validated['account_number'];
             $bankaccount->account_name = $validated['account_name'];
             $bankaccount->bank_name = $validated['bank_name'];
-            $bankaccount->branch_name = $validated['branch_name'];
+            $bankaccount->branch_id = $branch?->id;
+            $bankaccount->branch_name = $branch?->branch_name ?? $validated['branch_name'] ?? null;
             $bankaccount->account_type = $validated['account_type'];
 //            $bankaccount->payment_gateway = $validated['payment_gateway'];
             $bankaccount->opening_balance = $validated['opening_balance'];
@@ -110,11 +120,16 @@ class BankAccountController extends Controller
             $validated['electronic_money_limit_exempt_for_enterprise'] = $request->boolean('electronic_money_limit_exempt_for_enterprise', false);
             $validated = $this->normalizeElectronicMoneyPayload($validated);
             $validated['account_type'] = $this->normalizeAccountType($validated['account_type']);
+            $branch = Branch::query()
+                ->where('id', (int) $validated['branch_id'])
+                ->where('created_by', creatorId())
+                ->first();
 
             $bankaccount->account_number = $validated['account_number'];
             $bankaccount->account_name = $validated['account_name'];
             $bankaccount->bank_name = $validated['bank_name'];
-            $bankaccount->branch_name = $validated['branch_name'];
+            $bankaccount->branch_id = $branch?->id;
+            $bankaccount->branch_name = $branch?->branch_name ?? $validated['branch_name'] ?? null;
             $bankaccount->account_type = $validated['account_type'];
 //            $bankaccount->payment_gateway = $validated['payment_gateway'];
             $bankaccount->opening_balance = $validated['opening_balance'];
@@ -163,7 +178,8 @@ class BankAccountController extends Controller
 
         $bankAccounts = BankAccount::where('created_by', creatorId())
             ->where('is_active', true)
-            ->select('id', 'account_name', 'account_number')
+            ->with(['branch'])
+            ->select('id', 'account_name', 'account_number', 'branch_id', 'branch_name')
             ->get();
 
         return response()->json($bankAccounts);

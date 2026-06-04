@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForm } from "@inertiajs/react";
 import { useTranslation } from 'react-i18next';
@@ -13,13 +14,14 @@ import { usePage } from '@inertiajs/react';
 import { ACCOUNT_TYPE_OPTIONS, normalizeAccountType } from './account-type';
 
 export default function EditBankAccount({ bankaccount, onSuccess }: EditBankAccountProps) {
-    const { chartofaccounts } = usePage<any>().props;
+    const { chartofaccounts, branches } = usePage<any>().props;
 
     const { t } = useTranslation();
     const { data, setData, put, processing, errors } = useForm<EditBankAccountFormData>({
         account_number: bankaccount.account_number ?? '',
         account_name: bankaccount.account_name ?? '',
         bank_name: bankaccount.bank_name ?? '',
+        branch_id: bankaccount.branch_id?.toString() || '',
         branch_name: bankaccount.branch_name ?? '',
         account_type: normalizeAccountType(bankaccount.account_type),
         //        payment_gateway: bankaccount.payment_gateway ?? '',
@@ -42,6 +44,20 @@ export default function EditBankAccount({ bankaccount, onSuccess }: EditBankAcco
     // const paymentGatewayFields = useFormFields('paymentGateway');
 
     const isElectronicMoney = !!data.is_electronic_money_account;
+
+    useEffect(() => {
+        if (data.branch_id) {
+            const selectedBranch = branches?.find((branch: any) => branch.id.toString() === data.branch_id);
+            setData('branch_name', selectedBranch?.branch_name || data.branch_name || '');
+            return;
+        }
+
+        const matchedBranch = branches?.find((branch: any) => branch.branch_name === bankaccount.branch_name);
+        if (matchedBranch) {
+            setData('branch_id', matchedBranch.id.toString());
+            setData('branch_name', matchedBranch.branch_name);
+        }
+    }, [data.branch_id, branches, bankaccount.branch_name]);
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -98,16 +114,20 @@ export default function EditBankAccount({ bankaccount, onSuccess }: EditBankAcco
                 </div>
 
                 <div>
-                    <Label htmlFor="branch_name">{t('Branch Name')}</Label>
-                    <Input
-                        id="branch_name"
-                        type="text"
-                        value={data.branch_name}
-                        onChange={(e) => setData('branch_name', e.target.value)}
-                        placeholder={t('Enter Branch Name')}
-
-                    />
-                    <InputError message={errors.branch_name} />
+                    <Label htmlFor="branch_id" required>{t('Branch')}</Label>
+                    <Select value={data.branch_id || ''} onValueChange={(value) => setData('branch_id', value)}>
+                        <SelectTrigger>
+                            <SelectValue placeholder={t('Select Branch')} />
+                        </SelectTrigger>
+                        <SelectContent searchable={true}>
+                            {branches?.map((branch: any) => (
+                                <SelectItem key={branch.id} value={branch.id.toString()}>
+                                    {branch.branch_name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <InputError message={errors.branch_id} />
                 </div>
 
                 <div>

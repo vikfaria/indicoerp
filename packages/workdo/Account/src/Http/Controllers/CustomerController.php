@@ -173,19 +173,53 @@ class CustomerController extends Controller
 
     private function hasCriticalFiscalChange(Customer $customer, array $validated): bool
     {
-        $incomingTaxNumber = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null) ?: '';
-        $currentTaxNumber = MozambiqueTaxNumber::normalize($customer->tax_number) ?: '';
+        return $this->changedCriticalFiscalFields($customer, $validated) !== [];
+    }
 
-        $incomingCompanyName = trim((string) ($validated['company_name'] ?? $customer->company_name));
-        $incomingResidency = strtolower((string) ($validated['fiscal_residency_status'] ?? $customer->fiscal_residency_status ?: 'resident'));
-        $incomingType = strtolower((string) ($validated['customer_type'] ?? $customer->customer_type ?: ''));
-        $incomingCountry = strtolower((string) ($validated['fiscal_country'] ?? $customer->fiscal_country ?: ''));
+    /**
+     * @return array<int, string>
+     */
+    private function changedCriticalFiscalFields(Customer $customer, array $validated): array
+    {
+        $criticalFields = $this->criticalFiscalFields();
+        $changedFields = [];
 
-        return $incomingTaxNumber !== $currentTaxNumber
-            || $incomingCompanyName !== trim((string) $customer->company_name)
-            || $incomingResidency !== strtolower((string) ($customer->fiscal_residency_status ?: 'resident'))
-            || $incomingType !== strtolower((string) ($customer->customer_type ?: ''))
-            || $incomingCountry !== strtolower((string) ($customer->fiscal_country ?: ''));
+        foreach ($criticalFields as $field) {
+            $currentValue = $customer->getAttribute($field);
+            $incomingValue = array_key_exists($field, $validated) ? $validated[$field] : $currentValue;
+
+            if ($this->normalizeCriticalFiscalValue($field, $incomingValue) !== $this->normalizeCriticalFiscalValue($field, $currentValue)) {
+                $changedFields[] = $field;
+            }
+        }
+
+        return $changedFields;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function criticalFiscalFields(): array
+    {
+        return [
+            'tax_number',
+            'company_name',
+            'fiscal_residency_status',
+            'customer_type',
+            'fiscal_country',
+            'vat_regime',
+            'operation_type',
+            'billing_currency_code',
+        ];
+    }
+
+    private function normalizeCriticalFiscalValue(string $field, mixed $value): string
+    {
+        return match ($field) {
+            'tax_number' => MozambiqueTaxNumber::normalize(is_string($value) ? $value : null) ?: '',
+            'billing_currency_code' => strtoupper(trim((string) $value)),
+            default => strtolower(trim((string) $value)),
+        };
     }
 
     private function customerHasFiscalHistory(Customer $customer): bool

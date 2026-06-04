@@ -109,8 +109,11 @@ class UpdateCustomerRequest extends FormRequest
             }
 
             $customer = $this->route('customer');
+            $changedCriticalFields = $customer instanceof Customer
+                ? $this->changedCriticalFiscalFields($customer)
+                : [];
 
-            if ($customer instanceof Customer && $this->hasCriticalFiscalChange($customer) && $this->customerHasFiscalHistory($customer)) {
+            if ($customer instanceof Customer && $changedCriticalFields !== [] && $this->customerHasFiscalHistory($customer)) {
                 $reason = trim((string) $this->input('fiscal_identity_lock_reason', ''));
                 $canOverride = (bool) optional($this->user())->can('manage-account-reports');
 
@@ -119,6 +122,13 @@ class UpdateCustomerRequest extends FormRequest
                         'tax_number',
                         __('Critical fiscal customer data cannot be edited directly after fiscal documents are issued. Create a new customer profile or use fiscal rectification workflow.')
                     );
+
+                    foreach ($changedCriticalFields as $field) {
+                        $validator->errors()->add(
+                            $field,
+                            __('Critical fiscal customer data cannot be edited directly after fiscal documents are issued. Create a new customer profile or use fiscal rectification workflow.')
+                        );
+                    }
                 } elseif ($reason === '') {
                     $validator->errors()->add(
                         'fiscal_identity_lock_reason',
@@ -158,19 +168,53 @@ class UpdateCustomerRequest extends FormRequest
 
     private function hasCriticalFiscalChange(Customer $customer): bool
     {
-        $incomingTaxNumber = MozambiqueTaxNumber::normalize($this->input('tax_number')) ?: '';
-        $currentTaxNumber = MozambiqueTaxNumber::normalize($customer->tax_number) ?: '';
+        return $this->changedCriticalFiscalFields($customer) !== [];
+    }
 
-        $incomingCompanyName = trim((string) $this->input('company_name', $customer->company_name));
-        $incomingResidency = strtolower((string) $this->input('fiscal_residency_status', $customer->fiscal_residency_status ?: 'resident'));
-        $incomingType = strtolower((string) $this->input('customer_type', $customer->customer_type ?: ''));
-        $incomingCountry = strtolower((string) $this->input('fiscal_country', $customer->fiscal_country ?: ''));
+    /**
+     * @return array<int, string>
+     */
+    private function changedCriticalFiscalFields(Customer $customer): array
+    {
+        $criticalFields = $this->criticalFiscalFields();
+        $changedFields = [];
 
-        return $incomingTaxNumber !== $currentTaxNumber
-            || $incomingCompanyName !== trim((string) $customer->company_name)
-            || $incomingResidency !== strtolower((string) ($customer->fiscal_residency_status ?: 'resident'))
-            || $incomingType !== strtolower((string) ($customer->customer_type ?: ''))
-            || $incomingCountry !== strtolower((string) ($customer->fiscal_country ?: ''));
+        foreach ($criticalFields as $field) {
+            $currentValue = $customer->getAttribute($field);
+            $incomingValue = $this->input($field, $currentValue);
+
+            if ($this->normalizeCriticalFiscalValue($field, $incomingValue) !== $this->normalizeCriticalFiscalValue($field, $currentValue)) {
+                $changedFields[] = $field;
+            }
+        }
+
+        return $changedFields;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function criticalFiscalFields(): array
+    {
+        return [
+            'tax_number',
+            'company_name',
+            'fiscal_residency_status',
+            'customer_type',
+            'fiscal_country',
+            'vat_regime',
+            'operation_type',
+            'billing_currency_code',
+        ];
+    }
+
+    private function normalizeCriticalFiscalValue(string $field, mixed $value): string
+    {
+        return match ($field) {
+            'tax_number' => MozambiqueTaxNumber::normalize(is_string($value) ? $value : null) ?: '',
+            'billing_currency_code' => strtoupper(trim((string) $value)),
+            default => strtolower(trim((string) $value)),
+        };
     }
 
     private function customerHasFiscalHistory(Customer $customer): bool

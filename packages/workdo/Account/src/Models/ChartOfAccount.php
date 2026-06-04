@@ -100,6 +100,7 @@ class ChartOfAccount extends Model
             6 => 'Gastos e Perdas',
             7 => 'Rendimentos e Ganhos',
             8 => 'Resultados',
+            9 => 'Contabilidade Analítica e de Gestão',
             default => null,
         };
     }

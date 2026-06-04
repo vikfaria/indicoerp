@@ -2,9 +2,11 @@
 
 namespace Workdo\Account\Http\Requests;
 
+use App\Models\CompanyFiscalProfile;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
+use Workdo\Hrm\Models\Branch;
 
 class StoreBankAccountRequest extends FormRequest
 {
@@ -22,6 +24,12 @@ class StoreBankAccountRequest extends FormRequest
             'account_number' => 'required|string|max:255',
             'account_name' => 'required|string|max:100',
             'bank_name' => 'required|string|max:100',
+            'branch_id' => [
+                'required',
+                Rule::exists('branches', 'id')->where(function ($query) {
+                    $query->where('created_by', creatorId());
+                }),
+            ],
             'branch_name' => 'nullable|string|max:100',
             'account_type' => 'required',
 //            'payment_gateway' => 'nullable|string|max:100',
@@ -57,7 +65,12 @@ class StoreBankAccountRequest extends FormRequest
                 'min:0',
             ],
             'electronic_money_limit_exempt_for_enterprise' => 'boolean',
-            'electronic_money_account_purpose' => 'nullable|string|max:255',
+            'electronic_money_account_purpose' => [
+                Rule::requiredIf($isElectronicMoneyAccount && $hasEnterpriseExemption),
+                'nullable',
+                'string',
+                'max:255',
+            ],
             'gl_account_id' => 'required|exists:chart_of_accounts,id',
         ];
     }
@@ -73,12 +86,28 @@ class StoreBankAccountRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            $branchId = (int) $this->input('branch_id');
+            if ($branchId > 0) {
+                $branch = Branch::query()
+                    ->where('id', $branchId)
+                    ->where('created_by', creatorId())
+                    ->first();
+
+                if (!$branch) {
+                    $validator->errors()->add(
+                        'branch_id',
+                        __('The selected branch does not belong to the active company.')
+                    );
+                }
+            }
+
             if (!$this->boolean('is_electronic_money_account')) {
                 return;
             }
 
             $dailyLimit = $this->input('electronic_money_daily_limit_mzn');
             $monthlyLimit = $this->input('electronic_money_monthly_limit_mzn');
+            $hasEnterpriseExemption = $this->boolean('electronic_money_limit_exempt_for_enterprise');
 
             if (
                 is_numeric($dailyLimit)
@@ -90,6 +119,30 @@ class StoreBankAccountRequest extends FormRequest
                     __('The daily electronic money limit cannot be greater than the monthly limit.')
                 );
             }
+
+            if ($hasEnterpriseExemption && !$this->companyCanUseElectronicMoneyExemption()) {
+                $validator->errors()->add(
+                    'electronic_money_limit_exempt_for_enterprise',
+                    __('Electronic money limit exemptions are only allowed for medium or large enterprises with an active fiscal profile.')
+                );
+            }
+
+            if ($hasEnterpriseExemption && trim((string) $this->input('electronic_money_account_purpose', '')) === '') {
+                $validator->errors()->add(
+                    'electronic_money_account_purpose',
+                    __('Provide the electronic money account purpose when a limit exemption is enabled.')
+                );
+            }
         });
+    }
+
+    private function companyCanUseElectronicMoneyExemption(): bool
+    {
+        $classification = CompanyFiscalProfile::query()
+            ->where('company_id', creatorId())
+            ->where('is_active', true)
+            ->value('entity_classification');
+
+        return in_array(strtolower((string) $classification), ['medium', 'large'], true);
     }
 }

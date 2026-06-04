@@ -46,11 +46,17 @@ class LeaveBalanceController extends Controller
                     'leave_types' => [],
                 ];
 
-                foreach ($leaveTypes as $leaveType) {
-                    $usedLeaves = LeaveApplication::where('employee_id', $employee->id)
+            foreach ($leaveTypes as $leaveType) {
+                    $approvedLeaves = LeaveApplication::where('employee_id', $employee->id)
                         ->active()
                         ->where('leave_type_id', $leaveType->id)
                         ->where('status', 'approved')
+                        ->whereYear('start_date', $currentYear)
+                        ->sum('total_days');
+                    $pendingLeaves = LeaveApplication::where('employee_id', $employee->id)
+                        ->active()
+                        ->where('leave_type_id', $leaveType->id)
+                        ->where('status', 'pending')
                         ->whereYear('start_date', $currentYear)
                         ->sum('total_days');
                     $entitlement = $this->labourComplianceService->calculateLeaveEntitlementLimit(
@@ -60,6 +66,8 @@ class LeaveBalanceController extends Controller
                         (int) $currentYear
                     );
                     $totalDays = (int) ($entitlement['final_entitlement_days'] ?? 0);
+                    $usedLeaves = (float) $approvedLeaves + (float) $pendingLeaves;
+                    $availableLeaves = $totalDays - $usedLeaves;
 
                     $employeeBalance['leave_types'][] = [
                         'leave_type_name' => $leaveType->name,
@@ -67,8 +75,12 @@ class LeaveBalanceController extends Controller
                         'total_days' => $totalDays,
                         'base_entitlement_days' => (int) ($entitlement['base_entitlement_days'] ?? $totalDays),
                         'absence_penalty_days' => (int) ($entitlement['absence_penalty_days'] ?? 0),
+                        'unjustified_absence_days' => (int) ($entitlement['unjustified_absence_days'] ?? 0),
+                        'approved_days' => (float) $approvedLeaves,
+                        'pending_days' => (float) $pendingLeaves,
                         'used_days' => $usedLeaves,
-                        'available_days' => $totalDays - $usedLeaves,
+                        'available_days' => $availableLeaves,
+                        'service_year_index' => $entitlement['service_year_index'] ?? null,
                     ];
                 }
 

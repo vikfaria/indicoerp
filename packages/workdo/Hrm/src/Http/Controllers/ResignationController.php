@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Services\MozambiqueTerminationSettlementService;
+use App\Services\MozambiqueProbationCessationService;
 use App\Models\User;
 use Carbon\Carbon;
 use Workdo\Hrm\Models\Resignation;
@@ -18,7 +19,8 @@ use Workdo\Hrm\Models\Employee;
 class ResignationController extends Controller
 {
     public function __construct(
-        private readonly MozambiqueTerminationSettlementService $settlementService
+        private readonly MozambiqueTerminationSettlementService $settlementService,
+        private readonly MozambiqueProbationCessationService $probationCessationService
     ) {}
 
     public function index()
@@ -111,6 +113,7 @@ class ResignationController extends Controller
             $resignation->save();
             if ((string) $resignation->status === 'accepted') {
                 $this->syncForeignWorkerCessationFromResignation($resignation);
+                $this->syncProbationCessationFromResignation($resignation);
             }
 
             return redirect()->back()->with('success', __('The resignation details are updated successfully.'));
@@ -167,6 +170,7 @@ class ResignationController extends Controller
             $resignation->save();
             if ($status === 'accepted') {
                 $this->syncForeignWorkerCessationFromResignation($resignation);
+                $this->syncProbationCessationFromResignation($resignation);
             }
             UpdateResignaionStatus::dispatch($request, $resignation);
 
@@ -275,5 +279,26 @@ class ResignationController extends Controller
         $profile->cessation_effective_date = $effectiveDate;
         $profile->cessation_notification_due_at = Carbon::parse($effectiveDate)->addDays(5)->toDateString();
         $profile->save();
+    }
+
+    private function syncProbationCessationFromResignation(Resignation $resignation): void
+    {
+        $employee = $this->resolveScopedEmployee((int) $resignation->employee_id);
+        if (!$employee) {
+            return;
+        }
+
+        $this->probationCessationService->close(
+            $employee,
+            $resignation->last_working_date ?? now(),
+            (string) ($resignation->reason ?? ''),
+            $resignation->description ? sprintf(
+                'Resignation #%d accepted with description: %s',
+                (int) $resignation->id,
+                (string) $resignation->description
+            ) : sprintf('Resignation #%d accepted.', (int) $resignation->id),
+            'resignation',
+            null
+        );
     }
 }

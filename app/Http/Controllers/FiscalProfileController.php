@@ -106,7 +106,9 @@ class FiscalProfileController extends Controller
             $payload
         );
 
-        FiscalCalendarEvent::generateForYear(creatorId(), (int) date('Y'));
+        $calendarYear = (int) date('Y');
+        FiscalCalendarEvent::generateForYear(creatorId(), $calendarYear);
+        FiscalCalendarEvent::generateForYear(creatorId(), $calendarYear + 1);
 
         return back()->with('success', __('Perfil fiscal actualizado com sucesso.'));
     }
@@ -148,9 +150,13 @@ class FiscalProfileController extends Controller
             return back()->with('error', __('Permission denied'));
         }
 
-        $year = $request->input('year', date('Y'));
-        FiscalCalendarEvent::generateForYear(creatorId(), (int) $year);
-        return back()->with('success', __('Calendário fiscal gerado para :year.', ['year' => $year]));
+        $year = (int) $request->input('year', date('Y'));
+        FiscalCalendarEvent::generateForYear(creatorId(), $year);
+        FiscalCalendarEvent::generateForYear(creatorId(), $year + 1);
+        return back()->with('success', __('Calendário fiscal gerado para :year e :next_year.', [
+            'year' => $year,
+            'next_year' => $year + 1,
+        ]));
     }
 
     public function completeCalendarEvent(FiscalCalendarEvent $event)
@@ -245,5 +251,100 @@ class FiscalProfileController extends Controller
             'Content-Type' => 'application/xml; charset=UTF-8',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
         ]);
+    }
+
+    public function exportCalendar(Request $request)
+    {
+        if (!$this->canViewSceSuite()) {
+            abort(403, __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
+        ]);
+
+        $year = (int) ($validated['year'] ?? date('Y'));
+
+        FiscalCalendarEvent::generateForYear(creatorId(), $year);
+
+        $events = FiscalCalendarEvent::query()
+            ->where('company_id', creatorId())
+            ->whereYear('due_date', $year)
+            ->orderBy('due_date')
+            ->orderBy('code')
+            ->get();
+
+        $filename = sprintf('mozambique-fiscal-calendar-%d.csv', $year);
+        $csv = $this->buildFiscalCalendarCsv($events);
+
+        $relativePath = sprintf(
+            'fiscal-exports/%d/fiscal_calendar_csv/%s-%s',
+            creatorId(),
+            now()->format('YmdHis'),
+            substr(hash('sha256', $csv), 0, 12) . '-' . $filename
+        );
+        Storage::disk('local')->put($relativePath, $csv);
+
+        FiscalExportHistory::query()->create([
+            'company_id' => creatorId(),
+            'export_type' => 'fiscal_calendar_csv',
+            'period_start' => sprintf('%d-01-01', $year),
+            'period_end' => sprintf('%d-12-31', $year),
+            'generated_by' => Auth::id(),
+            'file_name' => $filename,
+            'file_hash' => hash('sha256', $csv),
+            'file_path' => $relativePath,
+            'status' => 'generated',
+            'metadata' => [
+                'content_type' => 'text/csv',
+                'fiscal_year' => $year,
+                'events_count' => $events->count(),
+                'generated_at' => now()->toIso8601String(),
+                'source' => 'sce.fiscal.calendar.export',
+            ],
+        ]);
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ]);
+    }
+
+    /**
+     * @param iterable<FiscalCalendarEvent> $events
+     */
+    private function buildFiscalCalendarCsv(iterable $events): string
+    {
+        $stream = fopen('php://temp', 'r+');
+
+        fputcsv($stream, [
+            'code',
+            'title',
+            'obligation_type',
+            'due_date',
+            'reference_period',
+            'status',
+            'completed_date',
+            'notes',
+        ]);
+
+        foreach ($events as $event) {
+            fputcsv($stream, [
+                (string) $event->code,
+                (string) $event->title,
+                (string) $event->obligation_type,
+                optional($event->due_date)->toDateString(),
+                (string) $event->reference_period,
+                (string) $event->status,
+                optional($event->completed_date)->toDateString(),
+                (string) ($event->notes ?? ''),
+            ]);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        return $csv;
     }
 }

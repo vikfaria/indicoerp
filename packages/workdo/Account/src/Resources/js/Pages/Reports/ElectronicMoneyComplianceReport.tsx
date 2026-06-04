@@ -16,6 +16,9 @@ interface ElectronicMoneyAccount {
     bank_name: string;
     electronic_money_entity?: string | null;
     electronic_money_level?: string | null;
+    electronic_money_account_purpose?: string | null;
+    company_classification?: string | null;
+    requires_attention_reason?: string | null;
     usage_mzn?: number;
     monthly_limit_mzn?: number;
     usage_ratio?: number;
@@ -27,10 +30,12 @@ interface ElectronicMoneyCompliancePayload {
     summary: {
         electronic_money_accounts: number;
         missing_classification: number;
+        enterprise_exemption_misconfigured: number;
         monthly_limit_exceeded: number;
         monthly_limit_near_threshold: number;
     };
     missing_classification: ElectronicMoneyAccount[];
+    enterprise_exemption_misconfigured: ElectronicMoneyAccount[];
     monthly_limit_exceeded: ElectronicMoneyAccount[];
     monthly_limit_near_threshold: ElectronicMoneyAccount[];
 }
@@ -67,6 +72,7 @@ export default function ElectronicMoneyComplianceReport() {
         return [
             { label: t('Accounts'), value: data.summary.electronic_money_accounts },
             { label: t('Missing Classification'), value: data.summary.missing_classification },
+            { label: t('Invalid Exemptions'), value: data.summary.enterprise_exemption_misconfigured },
             { label: t('Over Limit'), value: data.summary.monthly_limit_exceeded },
             { label: t('Near Threshold'), value: data.summary.monthly_limit_near_threshold },
         ];
@@ -253,6 +259,42 @@ export default function ElectronicMoneyComplianceReport() {
                                 </CardContent>
                             </Card>
                         </div>
+
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-base">{t('Invalid Exemptions')}</CardTitle>
+                            </CardHeader>
+                            <CardContent className="overflow-y-auto max-h-[20rem] p-0">
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        {data.enterprise_exemption_misconfigured.map((account) => (
+                                            <tr key={`exempt-${account.bank_account_id}`} className="border-b">
+                                                <td className="px-4 py-3">
+                                                    <div className="font-medium">{account.account_name}</div>
+                                                    <div className="text-xs text-muted-foreground">{account.account_number}</div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="text-xs text-muted-foreground">{account.company_classification || '-'}</div>
+                                                    <div className="text-xs text-muted-foreground">{account.electronic_money_account_purpose || '-'}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <Badge className={account.requires_attention_reason === 'company_not_medium_or_large' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}>
+                                                        {account.requires_attention_reason || '-'}
+                                                    </Badge>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {data.enterprise_exemption_misconfigured.length === 0 && (
+                                            <tr>
+                                                <td className="py-8 text-center text-muted-foreground" colSpan={3}>
+                                                    {t('No invalid exemptions')}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </CardContent>
+                        </Card>
                     </div>
                 ) : (
                     <NoRecordsFound

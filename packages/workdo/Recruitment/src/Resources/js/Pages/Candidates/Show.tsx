@@ -15,9 +15,10 @@ export default function Show() {
     const { imageUrlPrefix } = pageProps;
 
     const downloadFile = (filePath: string, fileName: string) => {
+        const normalizedPath = filePath.replace(/^\/+/, '');
         const link = document.createElement('a');
-        link.href = `${imageUrlPrefix}/${filePath}`;
-        link.download = filePath.split('/').pop() || fileName;
+        link.href = `${imageUrlPrefix}/${normalizedPath}`;
+        link.download = normalizedPath.split('/').pop() || fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -246,7 +247,7 @@ export default function Show() {
                 </Card>
 
                 {/* Documents */}
-                {(candidate.resume_path || candidate.cover_letter_path) && (
+                {(candidate.resume_path || candidate.cover_letter_path || candidate.professional_license_document_path) && (
                     <Card className="shadow-sm">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -284,6 +285,24 @@ export default function Show() {
                                                 size="sm"
                                                 variant="outline"
                                                 onClick={() => downloadFile(candidate.cover_letter_path, 'cover_letter')}
+                                                className="h-8 px-3"
+                                            >
+                                                <Download className="h-4 w-4 mr-1" />
+                                                {t('Download')}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
+                                {candidate.professional_license_document_path && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-muted-foreground">{t('Professional License Document')}</label>
+                                        <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-md">
+                                            <FileText className="h-5 w-5 text-indigo-600" />
+                                            <span className="flex-1 text-sm font-medium">{t('Professional License Document')}</span>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => downloadFile(candidate.professional_license_document_path, 'professional_license_document')}
                                                 className="h-8 px-3"
                                             >
                                                 <Download className="h-4 w-4 mr-1" />

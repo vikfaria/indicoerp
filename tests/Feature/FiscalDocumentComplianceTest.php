@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\PlanModuleCheck;
+use App\Models\PurchaseInvoice;
 use App\Models\SalesInvoice;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -72,6 +73,59 @@ class FiscalDocumentComplianceTest extends TestCase
         $this->assertSame("FT-MPM-{$period}-001", $maputoInvoice->invoice_number);
         $this->assertSame("FT-GRL-{$period}-001", $matolaInvoice->invoice_number);
         $this->assertSame('FT', $maputoInvoice->document_type);
+        $this->assertSame('MPM', $maputoInvoice->document_series);
+        $this->assertSame($warehouseMaputo->id, $maputoInvoice->establishment_id);
+        $this->assertSame(1, $maputoInvoice->document_sequence);
+    }
+
+    public function test_purchase_invoice_number_uses_establishment_series_when_configured(): void
+    {
+        $company = $this->makeCompany();
+        $vendor = $this->makeVendor($company, 'Fornecedor Serie');
+        $warehouseMaputo = $this->makeWarehouse($company, 'Maputo Warehouse');
+        $warehouseMatola = $this->makeWarehouse($company, 'Matola Warehouse');
+
+        setSetting('purchase_invoice_prefix', 'PI', $company->id);
+        setSetting('purchase_invoice_series', 'GRL', $company->id);
+        setSetting('purchase_invoice_series_warehouse_' . $warehouseMaputo->id, 'MPM', $company->id);
+
+        $maputoInvoice = PurchaseInvoice::create([
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDay()->toDateString(),
+            'vendor_id' => $vendor->id,
+            'warehouse_id' => $warehouseMaputo->id,
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 100,
+            'paid_amount' => 0,
+            'balance_amount' => 100,
+            'status' => 'draft',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $matolaInvoice = PurchaseInvoice::create([
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDay()->toDateString(),
+            'vendor_id' => $vendor->id,
+            'warehouse_id' => $warehouseMatola->id,
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 100,
+            'paid_amount' => 0,
+            'balance_amount' => 100,
+            'status' => 'draft',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $period = now()->format('Y-m');
+
+        $this->assertSame("PI-MPM-{$period}-001", $maputoInvoice->invoice_number);
+        $this->assertSame("PI-GRL-{$period}-001", $matolaInvoice->invoice_number);
+        $this->assertSame('PI', $maputoInvoice->document_type);
         $this->assertSame('MPM', $maputoInvoice->document_series);
         $this->assertSame($warehouseMaputo->id, $maputoInvoice->establishment_id);
         $this->assertSame(1, $maputoInvoice->document_sequence);
@@ -168,6 +222,16 @@ class FiscalDocumentComplianceTest extends TestCase
         return User::factory()->create([
             'name' => $name,
             'type' => 'client',
+            'created_by' => $company->id,
+            'creator_id' => $company->id,
+        ]);
+    }
+
+    private function makeVendor(User $company, string $name): User
+    {
+        return User::factory()->create([
+            'name' => $name,
+            'type' => 'vendor',
             'created_by' => $company->id,
             'creator_id' => $company->id,
         ]);

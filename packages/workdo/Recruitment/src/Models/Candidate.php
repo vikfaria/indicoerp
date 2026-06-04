@@ -29,6 +29,7 @@ class Candidate extends Model
         'professional_license_type',
         'professional_license_number',
         'professional_license_expiry_date',
+        'professional_license_document_path',
         'minor_work_authorization_path',
         'legal_exception_notes',
         'country',

@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
 use Closure;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\Request;
@@ -9,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\Response;
+use Workdo\Hrm\Models\HrmModel;
 
 class PlanModuleCheck
 {
@@ -27,6 +30,11 @@ class PlanModuleCheck
         if ($user->type === 'company' && !$request->session()->get('company_role_checked')) {
             try {
                 $user->ensureCompanyAccessRole();
+                User::MakeRole($user->id);
+                HrmModel::defaultdata($user->id);
+                Artisan::call('account:sync-finance-roles', [
+                    '--company_id' => $user->id,
+                ]);
             } catch (\Throwable $exception) {
                 report($exception);
             } finally {

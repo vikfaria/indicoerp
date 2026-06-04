@@ -85,6 +85,47 @@ class BankStatementImportReconciliationTest extends TestCase
         ]);
     }
 
+    public function test_import_csv_rejects_bank_account_from_another_company(): void
+    {
+        $company = $this->makeCompany();
+        $otherCompany = $this->makeCompany();
+        $bankAccount = $this->makeBankAccount($otherCompany);
+
+        $csvPath = tempnam(sys_get_temp_dir(), 'bank-csv-');
+        file_put_contents($csvPath, implode("\n", [
+            'transaction_date,transaction_type,reference_number,description,amount,running_balance,transaction_status',
+            '2026-04-01,credit,CP-2026-04-001,Customer payment,1000.00,1000.00,cleared',
+        ]));
+
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('Invalid bank account selected.');
+
+            app(BankTransactionsService::class)->importBankStatementCsv(
+                $csvPath,
+                $bankAccount->id,
+                $company->id
+            );
+        } finally {
+            @unlink($csvPath);
+        }
+    }
+
+    public function test_auto_reconcile_rejects_bank_account_from_another_company(): void
+    {
+        $company = $this->makeCompany();
+        $otherCompany = $this->makeCompany();
+        $bankAccount = $this->makeBankAccount($otherCompany);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid bank account selected.');
+
+        app(BankTransactionsService::class)->autoReconcileImportedTransactions(
+            $company->id,
+            $bankAccount->id
+        );
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([
@@ -121,4 +162,3 @@ class BankStatementImportReconciliationTest extends TestCase
         ]);
     }
 }
-

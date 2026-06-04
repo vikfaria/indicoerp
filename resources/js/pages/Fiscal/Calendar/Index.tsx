@@ -5,7 +5,7 @@ import AccountingSuiteNavigation from '@/components/accounting/accounting-suite-
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, CheckCircle2, Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Calendar, CheckCircle2, Clock, AlertCircle, RefreshCw, Download } from 'lucide-react';
 
 interface FiscalEvent { id: number; code: string; title: string; obligation_type: string; due_date: string; reference_period: string; status: string; }
 
@@ -16,6 +16,7 @@ export default function FiscalCalendarIndex() {
     const { events, year } = usePage<{ events: FiscalEvent[]; year: number }>().props;
 
     const generateCalendar = () => router.post(route('sce.fiscal.generate-calendar'), { year });
+    const exportCalendar = () => window.location.assign(route('sce.fiscal.calendar.export', { year }));
     const completeEvent = (id: number) => router.post(route('sce.fiscal.complete-event', id));
 
     const pending = events.filter(e => e.status === 'pending');
@@ -31,7 +32,16 @@ export default function FiscalCalendarIndex() {
 
     return (
         <AuthenticatedLayout breadcrumbs={[{ label: t('Contabilidade') }, { label: t('Fiscal') }, { label: t('Calendário Fiscal') }]} pageTitle={`${t('Calendário Fiscal')} ${year}`}
-            pageActions={<Button size="sm" variant="outline" onClick={generateCalendar}><RefreshCw className="h-4 w-4 mr-1" /> {t('Gerar Calendário')}</Button>}>
+            pageActions={
+                <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={exportCalendar}>
+                        <Download className="h-4 w-4 mr-1" /> {t('Exportar CSV')}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={generateCalendar}>
+                        <RefreshCw className="h-4 w-4 mr-1" /> {t('Gerar Calendário')}
+                    </Button>
+                </div>
+            }>
             <Head title={t('Calendário Fiscal')} />
             <AccountingSuiteNavigation section="fiscal" className="mb-4" />
 

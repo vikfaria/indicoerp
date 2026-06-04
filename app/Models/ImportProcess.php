@@ -49,6 +49,15 @@ class ImportProcess extends Model
         // Note: import_vat is NOT part of landed cost if deductible
     }
 
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::saving(function (self $process): void {
+            $process->calculateCosts();
+        });
+    }
+
     private function resolveImportVatRate(): float
     {
         if ($this->import_vat_rate !== null && $this->import_vat_rate !== '') {

@@ -5,6 +5,7 @@ namespace Workdo\Account\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Workdo\Account\Models\ChartOfAccount;
+use Workdo\Hrm\Models\Branch;
 
 class BankAccount extends Model
 {
@@ -15,6 +16,7 @@ class BankAccount extends Model
         'account_name',
         'bank_name',
         'branch_name',
+        'branch_id',
         'account_type',
         'payment_gateway',
         'opening_balance',
@@ -58,5 +60,10 @@ class BankAccount extends Model
     public function gl_account()
     {
         return $this->belongsTo(ChartOfAccount::class, 'gl_account_id');
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
     }
 }

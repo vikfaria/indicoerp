@@ -38,4 +38,24 @@ return [
         */
         'default_import_rate' => env('SCE_DEFAULT_IMPORT_VAT_RATE', 16.00),
     ],
+    'gifim' => [
+        /*
+        |--------------------------------------------------------------------------
+        | GIFiM compliance thresholds
+        |--------------------------------------------------------------------------
+        |
+        | These thresholds are used by the backend to classify high-value
+        | payments for GIFiM communication and approval workflows.
+        |
+        */
+        'cash_threshold_mzn' => env('SCE_GIFIM_CASH_THRESHOLD_MZN', 250000),
+        'electronic_threshold_mzn' => env('SCE_GIFIM_ELECTRONIC_THRESHOLD_MZN', 750000),
+        'electronic_payment_methods' => [
+            'bank_transfer',
+            'cheque',
+            'card',
+            'mobile_money',
+            'other',
+        ],
+    ],
 ];

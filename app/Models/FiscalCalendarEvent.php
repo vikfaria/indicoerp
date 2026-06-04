@@ -41,112 +41,97 @@ class FiscalCalendarEvent extends Model
     /**
      * Generate standard Mozambican fiscal calendar for a year.
      */
-    public static function generateForYear(int $companyId, int $year): void
+    public static function expectedDefinitionsForYear(int $year): array
     {
         $events = [];
 
+        $addMonthlyEvents = static function (array &$events, int $year, string $prefix, string $titlePrefix, string $obligationType, int $dueDay): void {
+            for ($month = 1; $month <= 12; $month++) {
+                $nextMonth = $month === 12 ? 1 : $month + 1;
+                $nextYear = $month === 12 ? $year + 1 : $year;
+
+                $events[] = [
+                    'code' => sprintf('%s-%d-%d', $prefix, $year, $month),
+                    'title' => sprintf('%s — %02d/%d', $titlePrefix, $month, $year),
+                    'obligation_type' => $obligationType,
+                    'due_date' => sprintf('%04d-%02d-%02d', $nextYear, $nextMonth, $dueDay),
+                    'reference_period' => sprintf('%04d-%02d', $year, $month),
+                ];
+            }
+        };
+
         // IVA monthly (até dia 20 do mês seguinte)
-        for ($m = 1; $m <= 12; $m++) {
-            $nextMonth = $m === 12 ? 1 : $m + 1;
-            $nextYear = $m === 12 ? $year + 1 : $year;
-            $events[] = [
-                'code' => "IVA-{$year}-{$m}",
-                'title' => "Declaração Periódica IVA — " . sprintf('%02d/%d', $m, $year),
-                'type' => 'vat',
-                'due' => sprintf('%04d-%02d-20', $nextYear, $nextMonth),
-                'ref' => sprintf('%04d-%02d', $year, $m),
-            ];
-        }
+        $addMonthlyEvents($events, $year, 'IVA', 'Declaração Periódica IVA', 'vat', 20);
 
         // Retenções na fonte (até dia 20 do mês seguinte)
-        for ($m = 1; $m <= 12; $m++) {
-            $nextMonth = $m === 12 ? 1 : $m + 1;
-            $nextYear = $m === 12 ? $year + 1 : $year;
-            $events[] = [
-                'code' => "RET-{$year}-{$m}",
-                'title' => "Declaração Retenções Fonte — " . sprintf('%02d/%d', $m, $year),
-                'type' => 'withholding',
-                'due' => sprintf('%04d-%02d-20', $nextYear, $nextMonth),
-                'ref' => sprintf('%04d-%02d', $year, $m),
-            ];
-        }
+        $addMonthlyEvents($events, $year, 'RET', 'Declaração Retenções Fonte', 'withholding', 20);
 
         // IRPS (até dia 20 do mês seguinte)
-        for ($m = 1; $m <= 12; $m++) {
-            $nextMonth = $m === 12 ? 1 : $m + 1;
-            $nextYear = $m === 12 ? $year + 1 : $year;
-            $events[] = [
-                'code' => "IRPS-{$year}-{$m}",
-                'title' => "Declaração IRPS — " . sprintf('%02d/%d', $m, $year),
-                'type' => 'irps',
-                'due' => sprintf('%04d-%02d-20', $nextYear, $nextMonth),
-                'ref' => sprintf('%04d-%02d', $year, $m),
-            ];
-        }
+        $addMonthlyEvents($events, $year, 'IRPS', 'Declaração IRPS', 'irps', 20);
 
         // INSS (até dia 10 do mês seguinte)
-        for ($m = 1; $m <= 12; $m++) {
-            $nextMonth = $m === 12 ? 1 : $m + 1;
-            $nextYear = $m === 12 ? $year + 1 : $year;
-            $events[] = [
-                'code' => "INSS-{$year}-{$m}",
-                'title' => "Contribuição INSS — " . sprintf('%02d/%d', $m, $year),
-                'type' => 'inss',
-                'due' => sprintf('%04d-%02d-10', $nextYear, $nextMonth),
-                'ref' => sprintf('%04d-%02d', $year, $m),
-            ];
-        }
+        $addMonthlyEvents($events, $year, 'INSS', 'Contribuição INSS', 'inss', 10);
 
         // PPC IRPC (Maio, Julho, Setembro)
-        foreach ([5, 7, 9] as $m) {
+        foreach ([5, 7, 9] as $month) {
             $events[] = [
-                'code' => "PPC-{$year}-{$m}",
-                'title' => "Pagamento por Conta IRPC — " . sprintf('%02d/%d', $m, $year),
-                'type' => 'irpc',
-                'due' => sprintf('%04d-%02d-30', $year, $m),
-                'ref' => sprintf('%04d-%02d', $year, $m),
+                'code' => sprintf('PPC-%d-%d', $year, $month),
+                'title' => sprintf('Pagamento por Conta IRPC — %02d/%d', $month, $year),
+                'obligation_type' => 'irpc',
+                'due_date' => sprintf('%04d-%02d-30', $year, $month),
+                'reference_period' => sprintf('%04d-%02d', $year, $month),
             ];
         }
 
         // Declaração Modelo 20 IRPC (até 31 de Maio do ano seguinte)
         $events[] = [
-            'code' => "M20-{$year}",
-            'title' => "Declaração Modelo 20 IRPC — Exercício {$year}",
-            'type' => 'irpc',
-            'due' => sprintf('%04d-05-31', $year + 1),
-            'ref' => (string) $year,
+            'code' => sprintf('M20-%d', $year),
+            'title' => sprintf('Declaração Modelo 20 IRPC — Exercício %d', $year),
+            'obligation_type' => 'irpc',
+            'due_date' => sprintf('%04d-05-31', $year + 1),
+            'reference_period' => (string) $year,
         ];
 
         // SAF-T anual (até 30 de Junho do ano seguinte)
         $events[] = [
-            'code' => "SAFT-{$year}",
-            'title' => "Entrega SAF-T — Exercício {$year}",
-            'type' => 'saft',
-            'due' => sprintf('%04d-06-30', $year + 1),
-            'ref' => (string) $year,
+            'code' => sprintf('SAFT-%d', $year),
+            'title' => sprintf('Entrega SAF-T — Exercício %d', $year),
+            'obligation_type' => 'saft',
+            'due_date' => sprintf('%04d-06-30', $year + 1),
+            'reference_period' => (string) $year,
         ];
 
         // Contas anuais aprovação (até 31 de Março do ano seguinte)
         $events[] = [
-            'code' => "CONTAS-{$year}",
-            'title' => "Aprovação Contas Anuais — Exercício {$year}",
-            'type' => 'annual_accounts',
-            'due' => sprintf('%04d-03-31', $year + 1),
-            'ref' => (string) $year,
+            'code' => sprintf('CONTAS-%d', $year),
+            'title' => sprintf('Aprovação Contas Anuais — Exercício %d', $year),
+            'obligation_type' => 'annual_accounts',
+            'due_date' => sprintf('%04d-03-31', $year + 1),
+            'reference_period' => (string) $year,
         ];
 
-        foreach ($events as $event) {
-            static::firstOrCreate(
-                ['company_id' => $companyId, 'code' => $event['code']],
-                [
-                    'title' => $event['title'],
-                    'obligation_type' => $event['type'],
-                    'due_date' => $event['due'],
-                    'reference_period' => $event['ref'],
-                    'status' => 'pending',
-                    'created_by' => $companyId,
-                ]
-            );
+        return $events;
+    }
+
+    public static function generateForYear(int $companyId, int $year): void
+    {
+        foreach (static::expectedDefinitionsForYear($year) as $event) {
+            $calendarEvent = static::firstOrNew([
+                'company_id' => $companyId,
+                'code' => $event['code'],
+            ]);
+
+            $calendarEvent->title = $event['title'];
+            $calendarEvent->obligation_type = $event['obligation_type'];
+            $calendarEvent->due_date = $event['due_date'];
+            $calendarEvent->reference_period = $event['reference_period'];
+
+            if (!$calendarEvent->exists) {
+                $calendarEvent->status = 'pending';
+                $calendarEvent->created_by = $companyId;
+            }
+
+            $calendarEvent->save();
         }
     }
 }

@@ -5,12 +5,19 @@ export interface ChartOfAccount {
     name: string;
 }
 
+export interface Branch {
+    id: number;
+    branch_name: string;
+}
+
 export interface BankAccount {
     id: number;
     account_number: string;
     account_name: string;
     bank_name: string;
     branch_name?: string;
+    branch_id?: number;
+    branch?: Branch;
     account_type: string;
     //    payment_gateway?: string;
     opening_balance: number;
@@ -37,6 +44,7 @@ export interface CreateBankAccountFormData {
     account_name: string;
     bank_name: string;
     branch_name: string;
+    branch_id: string;
     account_type: string;
     //    payment_gateway: string;
     opening_balance: string;
@@ -60,6 +68,7 @@ export interface EditBankAccountFormData {
     account_name: string;
     bank_name: string;
     branch_name: string;
+    branch_id: string;
     account_type: string;
     //    payment_gateway: string;
     opening_balance: string;
@@ -93,6 +102,7 @@ export interface BankAccountsIndexProps {
     bankaccounts: PaginatedBankAccounts;
     auth: AuthContext;
     chartofaccounts: any[];
+    branches: Branch[];
     [key: string]: unknown;
 }
 

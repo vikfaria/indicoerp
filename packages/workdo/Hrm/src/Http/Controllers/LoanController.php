@@ -9,9 +9,11 @@ use Workdo\Hrm\Http\Requests\StoreLoanRequest;
 use Workdo\Hrm\Http\Requests\UpdateLoanRequest;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Workdo\Hrm\Events\CreateLoan;
 use Workdo\Hrm\Events\UpdateLoan;
 use Workdo\Hrm\Events\DestroyLoan;
+use Workdo\Account\Models\JournalEntry;
 
 class LoanController extends Controller
 {
@@ -20,42 +22,48 @@ class LoanController extends Controller
         if (Auth::user()->can('create-loans')) {
             $validated = $request->validated();
 
-            $employee = Employee::query()
-                ->where('id', (int) $validated['employee_id'])
-                ->where('created_by', creatorId())
-                ->first();
+            try {
+                return DB::transaction(function () use ($request, $validated) {
+                    $employee = Employee::query()
+                        ->where('id', (int) $validated['employee_id'])
+                        ->where('created_by', creatorId())
+                        ->first();
 
-            if ($employee) {
-                // Check if employee already has a loan
-                $existingLoan = Loan::query()
-                    ->active()
-                    ->where('created_by', creatorId())
-                    ->where('employee_id', $employee->user_id)
-                    ->where('loan_type_id', $validated['loan_type_id'])
-                    ->first();
+                    if (!$employee) {
+                        return redirect()->back()->with('error', __('Employee Not Found.'));
+                    }
 
-                if ($existingLoan) {
-                    return redirect()->back()->with('error', __('Employee already has a loan.'));
-                }
+                    // Check if employee already has a loan
+                    $existingLoan = Loan::query()
+                        ->active()
+                        ->where('created_by', creatorId())
+                        ->where('employee_id', $employee->user_id)
+                        ->where('loan_type_id', $validated['loan_type_id'])
+                        ->first();
 
-                $loan = new Loan();
-                $loan->title = $validated['title'];
-                $loan->employee_id = $employee->user_id;
-                $loan->loan_type_id = $validated['loan_type_id'];
-                $loan->type = $validated['type'];
-                $loan->amount = $validated['amount'];
-                $loan->start_date = $validated['start_date'];
-                $loan->end_date = $validated['end_date'];
-                $loan->reason = $validated['reason'];
-                $loan->creator_id = Auth::id();
-                $loan->created_by = creatorId();
-                $loan->save();
+                    if ($existingLoan) {
+                        return redirect()->back()->with('error', __('Employee already has a loan.'));
+                    }
 
-                CreateLoan::dispatch($request, $loan);
+                    $loan = new Loan();
+                    $loan->title = $validated['title'];
+                    $loan->employee_id = $employee->user_id;
+                    $loan->loan_type_id = $validated['loan_type_id'];
+                    $loan->type = $validated['type'];
+                    $loan->amount = $validated['amount'];
+                    $loan->start_date = $validated['start_date'];
+                    $loan->end_date = $validated['end_date'];
+                    $loan->reason = $validated['reason'];
+                    $loan->creator_id = Auth::id();
+                    $loan->created_by = creatorId();
+                    $loan->save();
 
-                return redirect()->back()->with('success', __('The loan has been created successfully.'))->with('timestamp', time());
-            } else {
-                return redirect()->back()->with('error', __('Employee Not Found.'));
+                    CreateLoan::dispatch($request, $loan);
+
+                    return redirect()->back()->with('success', __('The loan has been created successfully.'))->with('timestamp', time());
+                });
+            } catch (\Exception $e) {
+                return redirect()->back()->with('error', $e->getMessage());
             }
         } else {
             return redirect()->back()->with('error', __('Permission denied'));
@@ -67,6 +75,10 @@ class LoanController extends Controller
         if (Auth::user()->can('edit-loans')) {
             if (!$this->canAccessLoan($loan)) {
                 return redirect()->back()->with('error', __('Permission denied'));
+            }
+
+            if ($this->hasAccountingEntry($loan)) {
+                return redirect()->back()->with('error', __('Posted loans cannot be edited.'));
             }
 
             if ((bool) ($loan->is_cancelled ?? false)) {
@@ -116,6 +128,10 @@ class LoanController extends Controller
                 return redirect()->back()->with('error', __('Loan is already cancelled.'));
             }
 
+            if ($this->hasAccountingEntry($loan)) {
+                return redirect()->back()->with('error', __('Posted loans cannot be cancelled.'));
+            }
+
             $validated = request()->validate([
                 'cancellation_reason' => 'required|string|min:5|max:1000',
             ]);
@@ -137,5 +153,14 @@ class LoanController extends Controller
     private function canAccessLoan(Loan $loan): bool
     {
         return (int) $loan->created_by === (int) creatorId();
+    }
+
+    private function hasAccountingEntry(Loan $loan): bool
+    {
+        return JournalEntry::query()
+            ->where('created_by', creatorId())
+            ->where('reference_type', 'employee_loan')
+            ->where('reference_id', $loan->id)
+            ->exists();
     }
 }

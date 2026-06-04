@@ -2,6 +2,8 @@
 
 namespace Workdo\Hrm\Http\Controllers;
 
+use App\Services\MozambiqueLegalTablesValidationService;
+use App\Services\MozambiqueLabourComplianceService;
 use App\Services\MozambiquePayrollTaxService;
 use App\Models\MozInssRate;
 use App\Models\MozIrpsBracket;
@@ -32,13 +34,17 @@ use Workdo\Hrm\Events\PaySalary;
 
 class PayrollController extends Controller
 {
-    public function __construct(private readonly MozambiquePayrollTaxService $mozambiquePayrollTaxService)
-    {
-    }
+    public function __construct(
+        private readonly MozambiquePayrollTaxService $mozambiquePayrollTaxService,
+        private readonly MozambiqueLegalTablesValidationService $mozambiqueLegalTablesValidationService,
+        private readonly MozambiqueLabourComplianceService $mozambiqueLabourComplianceService
+    ) {}
 
     private function checkPayrollAccess(Payroll $payroll)
     {
-        if(Auth::user()->can('manage-any-payrolls')) {
+        if (Auth::user()->can('manage-payrolls')) {
+            return $payroll->created_by == creatorId();
+        } elseif(Auth::user()->can('manage-any-payrolls')) {
             return $payroll->created_by == creatorId();
         } elseif(Auth::user()->can('manage-own-payrolls')) {
             return $payroll->creator_id == Auth::id();
@@ -408,6 +414,65 @@ class PayrollController extends Controller
             }
         }
 
+        $legalTablesValidation = $this->mozambiqueLegalTablesValidationService->validate($companyId);
+        $payrollRelevantTableCodes = [
+            'legal.tables.irps_table',
+            'legal.tables.inss_rate',
+            'legal.tables.minimum_wages',
+        ];
+        $payrollRelevantFailures = collect($legalTablesValidation['checks'] ?? [])
+            ->filter(function (array $check) use ($payrollRelevantTableCodes): bool {
+                return in_array((string) ($check['code'] ?? ''), $payrollRelevantTableCodes, true)
+                    && (string) ($check['status'] ?? 'warn') !== 'pass';
+            })
+            ->values();
+
+        if ($payrollRelevantFailures->isNotEmpty()) {
+            $issues[] = __('Official payroll tables do not match the seeded Mozambique configuration.');
+
+            $failureDetails = $payrollRelevantFailures
+                ->map(function (array $check): string {
+                    return trim((string) ($check['details'] ?? ''));
+                })
+                ->filter()
+                ->implode(' ');
+
+            if ($failureDetails !== '') {
+                $issues[] = $failureDetails;
+            }
+        }
+
+        $minimumWageBreaches = [];
+        foreach ($employees as $employee) {
+            $employeeSectorCode = $employee->employment_type ? strtoupper((string) $employee->employment_type) : 'GENERAL';
+            $minimumWageData = $this->mozambiquePayrollTaxService->validateMinimumWage(
+                $employeeSectorCode,
+                (float) ($employee->basic_salary ?? 0),
+                $companyId,
+                $effectiveDate
+            );
+
+            if (!($minimumWageData['is_compliant'] ?? true)) {
+                $employeeName = trim((string) (optional($employee->user)->name ?? $employee->employee_id ?? 'Employee'));
+                $providedSalary = number_format((float) ($minimumWageData['provided_salary'] ?? 0), 2, '.', '');
+                $minimumRequired = number_format((float) ($minimumWageData['minimum_required'] ?? 0), 2, '.', '');
+
+                $minimumWageBreaches[] = sprintf(
+                    '%s [%s]: %s < %s',
+                    $employeeName,
+                    (string) ($minimumWageData['sector_code'] ?? $employeeSectorCode),
+                    $providedSalary,
+                    $minimumRequired
+                );
+            }
+        }
+
+        if ($minimumWageBreaches !== []) {
+            $issues[] = __('Minimum wage non-compliance found for employees: :details', [
+                'details' => implode('; ', $minimumWageBreaches),
+            ]);
+        }
+
         if ($issues !== []) {
             return [
                 'valid' => false,
@@ -431,11 +496,16 @@ class PayrollController extends Controller
         $deductionData = $this->calculateDeductions($employee, $basicSalary);
         $manualOvertimeData = $this->calculateOvertimes($employee, $basicSalary, $startDate, $endDate);
         $loanData = $this->calculateLoans($employee, $basicSalary, $startDate, $endDate);
+        $nightWorkData = $this->calculateNightWorkPremium($employee, $basicSalary, $workingDaysCount, $startDate, $endDate);
 
 
         // Allowance breakdown
         $allowancesBreakdown = $allowanceData['breakdown'];
         $totalAllowances = $allowanceData['total'];
+        if (($nightWorkData['night_work_amount'] ?? 0) > 0) {
+            $allowancesBreakdown = array_merge($allowancesBreakdown, $nightWorkData['breakdown']);
+            $totalAllowances += (float) $nightWorkData['night_work_amount'];
+        }
 
         // deduction breakdown
         $deductionsBreakdown = $deductionData['breakdown'];
@@ -651,6 +721,80 @@ class PayrollController extends Controller
         return ['breakdown' => $breakdown, 'total' => $total];
     }
 
+    private function calculateNightWorkPremium($employee, float $basicSalary, int $workingDaysCount, $startDate, $endDate): array
+    {
+        $policy = $this->mozambiqueLabourComplianceService->getPolicy(creatorId());
+        $premiumPercent = max(0.0, (float) ($policy['night_work_premium_percent'] ?? 20.0));
+
+        if ($premiumPercent <= 0) {
+            return [
+                'night_work_hours' => 0.0,
+                'night_work_rate' => 0.0,
+                'night_work_amount' => 0.0,
+                'breakdown' => [],
+            ];
+        }
+
+        $attendances = Attendance::query()
+            ->active()
+            ->where('employee_id', $employee->user_id)
+            ->where('created_by', creatorId())
+            ->whereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->with('shift:id,shift_name,start_time,end_time,is_night_shift')
+            ->get(['id', 'shift_id', 'date', 'clock_in', 'clock_out']);
+
+        $nightMinutes = 0;
+
+        foreach ($attendances as $attendance) {
+            if (!$attendance->clock_in || !$attendance->clock_out) {
+                continue;
+            }
+
+            $clockIn = \Carbon\Carbon::parse((string) $attendance->clock_in);
+            $clockOut = \Carbon\Carbon::parse((string) $attendance->clock_out);
+
+            if ($clockOut->lessThanOrEqualTo($clockIn)) {
+                $clockOut = $clockOut->copy()->addDay();
+            }
+
+            $daysToInspect = max(1, $clockIn->copy()->startOfDay()->diffInDays($clockOut->copy()->startOfDay()) + 1);
+            for ($i = 0; $i <= $daysToInspect; $i++) {
+                $day = $clockIn->copy()->startOfDay()->addDays($i);
+
+                $windowAStart = $day->copy()->setTime(22, 0, 0);
+                $windowAEnd = $day->copy()->addDay()->startOfDay();
+                $nightMinutes += $this->overlapMinutes($clockIn, $clockOut, $windowAStart, $windowAEnd);
+
+                $windowBStart = $day->copy()->startOfDay();
+                $windowBEnd = $day->copy()->setTime(7, 0, 0);
+                $nightMinutes += $this->overlapMinutes($clockIn, $clockOut, $windowBStart, $windowBEnd);
+            }
+        }
+
+        $nightWorkHours = round($nightMinutes / 60, 2);
+        $hourlyRate = $this->resolveEmployeeHourlyRate($employee, $basicSalary, $workingDaysCount);
+        $nightWorkRate = round($hourlyRate * ($premiumPercent / 100), 2);
+        $nightWorkAmount = round($nightWorkHours * $nightWorkRate, 2);
+
+        if ($nightWorkAmount <= 0) {
+            return [
+                'night_work_hours' => $nightWorkHours,
+                'night_work_rate' => $nightWorkRate,
+                'night_work_amount' => 0.0,
+                'breakdown' => [],
+            ];
+        }
+
+        return [
+            'night_work_hours' => $nightWorkHours,
+            'night_work_rate' => $nightWorkRate,
+            'night_work_amount' => $nightWorkAmount,
+            'breakdown' => [
+                sprintf('%s (%.2fh @ %.2f%%)', __('Night Work Premium'), $nightWorkHours, $premiumPercent) => $nightWorkAmount,
+            ],
+        ];
+    }
+
     private function calculateDeductions($employee, $basicSalary)
     {
         $deductions = Deduction::query()
@@ -676,6 +820,38 @@ class PayrollController extends Controller
         }
 
         return ['breakdown' => $breakdown, 'total' => $total];
+    }
+
+    private function resolveEmployeeHourlyRate($employee, float $basicSalary, int $workingDaysCount): float
+    {
+        $ratePerHour = (float) ($employee->rate_per_hour ?? 0);
+        if ($ratePerHour > 0) {
+            return $ratePerHour;
+        }
+
+        $hoursPerDay = (float) ($employee->hours_per_day ?? 0);
+        if ($hoursPerDay <= 0) {
+            $hoursPerDay = 8.0;
+        }
+
+        $denominator = max(1, $workingDaysCount * $hoursPerDay);
+        if ($basicSalary <= 0) {
+            return 0.0;
+        }
+
+        return round($basicSalary / $denominator, 2);
+    }
+
+    private function overlapMinutes(\Carbon\Carbon $start, \Carbon\Carbon $end, \Carbon\Carbon $windowStart, \Carbon\Carbon $windowEnd): int
+    {
+        $effectiveStart = $start->greaterThan($windowStart) ? $start : $windowStart;
+        $effectiveEnd = $end->lessThan($windowEnd) ? $end : $windowEnd;
+
+        if ($effectiveEnd->lessThanOrEqualTo($effectiveStart)) {
+            return 0;
+        }
+
+        return max(0, $effectiveStart->diffInMinutes($effectiveEnd));
     }
 
     private function calculateAttendance($employee, $startDate, $endDate)
@@ -870,6 +1046,10 @@ class PayrollController extends Controller
         if (Auth::user()->can('pay-payslip')) {
             if ((bool) ($payrollEntry->is_cancelled ?? false)) {
                 return redirect()->back()->with('error', __('Cancelled payslips cannot be paid.'));
+            }
+
+            if (($payrollEntry->status ?? 'unpaid') === 'paid') {
+                return redirect()->back()->with('error', __('Paid payslips cannot be paid again.'));
             }
 
             $payroll = $payrollEntry->payroll;

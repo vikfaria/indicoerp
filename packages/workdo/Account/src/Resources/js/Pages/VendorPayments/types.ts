@@ -16,6 +16,11 @@ export interface BankAccount {
     account_name: string;
     account_number: string;
     bank_name: string;
+    branch_name?: string;
+    branch?: {
+        id: number;
+        branch_name: string;
+    } | null;
 }
 
 export interface PurchaseInvoice {
@@ -54,7 +59,9 @@ export interface VendorPayment {
     payment_number: string;
     payment_date: string;
     vendor_id: number;
+    payment_purpose?: 'settlement' | 'advance';
     bank_account_id: number;
+    branch_id?: number | null;
     payment_method: 'bank_transfer' | 'cash' | 'cheque' | 'card' | 'mobile_money' | 'other';
     mobile_money_provider?: 'mpesa' | 'emola' | 'mkesh' | null;
     mobile_money_number?: string | null;
@@ -76,6 +83,11 @@ export interface VendorPayment {
     fiscal_compliance_reference?: string | null;
     financial_approval_reference?: string | null;
     fx_authorization_reference?: string | null;
+    contract_reference?: string | null;
+    invoice_reference?: string | null;
+    bank_settlement_reference?: string | null;
+    withholding_receipt_reference?: string | null;
+    correspondence_reference?: string | null;
     gifim_alert_required?: boolean;
     gifim_alert_category?: 'cash_threshold' | 'electronic_threshold' | null;
     gifim_alert_status?: 'not_required' | 'pending' | 'communicated' | null;
@@ -97,6 +109,11 @@ export interface VendorPayment {
     rejected_by?: number | null;
     status: 'pending' | 'cleared' | 'cancelled';
     notes?: string;
+    branch_id?: number | null;
+    branch?: {
+        id: number;
+        branch_name: string;
+    } | null;
     vendor: Vendor;
     bank_account: BankAccount;
     allocations: VendorPaymentAllocation[];
@@ -106,6 +123,7 @@ export interface VendorPayment {
 export interface CreateVendorPaymentFormData {
     payment_date: string;
     vendor_id: string;
+    payment_purpose: 'settlement' | 'advance';
     bank_account_id: string;
     payment_method: 'bank_transfer' | 'cash' | 'cheque' | 'card' | 'mobile_money' | 'other';
     mobile_money_provider: '' | 'mpesa' | 'emola' | 'mkesh';

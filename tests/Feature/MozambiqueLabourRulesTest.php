@@ -40,6 +40,7 @@ class MozambiqueLabourRulesTest extends TestCase
             'overtime_monthly_limit_hours' => 40,
             'overtime_quarterly_limit_hours' => 100,
             'overtime_yearly_limit_hours' => 200,
+            'night_work_premium_percent' => 25,
             'leave_min_notice_days' => 3,
             'leave_max_consecutive_days' => 30,
             'leave_count_non_working_days' => false,
@@ -53,6 +54,7 @@ class MozambiqueLabourRulesTest extends TestCase
         $this->assertSame('40', (string) $this->settingValue('mz_overtime_monthly_limit_hours', $company->id));
         $this->assertSame('100', (string) $this->settingValue('mz_overtime_quarterly_limit_hours', $company->id));
         $this->assertSame('200', (string) $this->settingValue('mz_overtime_yearly_limit_hours', $company->id));
+        $this->assertSame('25', (string) $this->settingValue('mz_night_work_premium_percent', $company->id));
         $this->assertSame('3', (string) $this->settingValue('mz_leave_min_notice_days', $company->id));
         $this->assertSame('30', (string) $this->settingValue('mz_leave_max_consecutive_days', $company->id));
         $this->assertSame('0', (string) $this->settingValue('mz_leave_count_non_working_days', $company->id));

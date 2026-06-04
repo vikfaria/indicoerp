@@ -13,6 +13,11 @@ export interface BankAccount {
     account_name: string;
     account_number: string;
     bank_name: string;
+    branch_name?: string;
+    branch?: {
+        id: number;
+        branch_name: string;
+    } | null;
 }
 
 export interface SalesInvoice {
@@ -52,6 +57,7 @@ export interface CustomerPayment {
     payment_date: string;
     customer_id: number;
     bank_account_id: number;
+    branch_id?: number | null;
     payment_method: 'bank_transfer' | 'cash' | 'cheque' | 'card' | 'mobile_money' | 'other';
     mobile_money_provider?: 'mpesa' | 'emola' | 'mkesh' | null;
     mobile_money_number?: string | null;
@@ -90,6 +96,11 @@ export interface CustomerPayment {
     rejected_by?: number | null;
     status: 'pending' | 'cleared' | 'cancelled';
     notes?: string;
+    branch_id?: number | null;
+    branch?: {
+        id: number;
+        branch_name: string;
+    } | null;
     customer: Customer;
     bank_account: BankAccount;
     allocations: CustomerPaymentAllocation[];

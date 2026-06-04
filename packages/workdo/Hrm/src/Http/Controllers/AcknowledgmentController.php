@@ -91,6 +91,10 @@ class AcknowledgmentController extends Controller
                 return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
             }
 
+            if ($this->acknowledgmentExists((int) $validated['employee_id'], (int) $validated['document_id'])) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('This employee has already acknowledged this document.'));
+            }
+
             $acknowledgment = new Acknowledgment();
             $acknowledgment->employee_id = $validated['employee_id'];
             $acknowledgment->document_id = $validated['document_id'];
@@ -132,6 +136,10 @@ class AcknowledgmentController extends Controller
                 ->exists();
             if (!$documentExists) {
                 return redirect()->route('hrm.acknowledgments.index')->with('error', __('Permission denied'));
+            }
+
+            if ($this->acknowledgmentExists((int) $validated['employee_id'], (int) $validated['document_id'], (int) $acknowledgment->id)) {
+                return redirect()->route('hrm.acknowledgments.index')->with('error', __('This employee has already acknowledged this document.'));
             }
 
             $acknowledgment->employee_id = $validated['employee_id'];
@@ -208,5 +216,15 @@ class AcknowledgmentController extends Controller
         }
 
         return false;
+    }
+
+    private function acknowledgmentExists(int $employeeId, int $documentId, ?int $ignoreId = null): bool
+    {
+        return Acknowledgment::query()
+            ->where('created_by', creatorId())
+            ->where('employee_id', $employeeId)
+            ->where('document_id', $documentId)
+            ->when($ignoreId !== null, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->exists();
     }
 }

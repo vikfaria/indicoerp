@@ -227,6 +227,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::post('monthly-closing/start', [AccountingJournalController::class, 'startClosing'])->name('monthly-closing.start');
         Route::post('monthly-closing/check/{check}', [AccountingJournalController::class, 'completeCheck'])->name('monthly-closing.complete-check');
         Route::post('monthly-closing/finalize', [AccountingJournalController::class, 'finalizeClosing'])->name('monthly-closing.finalize');
+        Route::post('monthly-closing/reopen', [AccountingJournalController::class, 'reopenClosing'])->name('monthly-closing.reopen');
 
         // Fiscal Profile & Periods
         Route::get('fiscal', [FiscalProfileController::class, 'index'])->name('fiscal.index');
@@ -237,6 +238,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::get('fiscal/calendar', [FiscalProfileController::class, 'calendar'])->name('fiscal.calendar');
         Route::post('fiscal/calendar/generate', [FiscalProfileController::class, 'generateCalendar'])->name('fiscal.generate-calendar');
         Route::post('fiscal/calendar/{event}/complete', [FiscalProfileController::class, 'completeCalendarEvent'])->name('fiscal.complete-event');
+        Route::get('fiscal/calendar/export', [FiscalProfileController::class, 'exportCalendar'])->name('fiscal.calendar.export');
 
         // SAF-T Export
         Route::get('fiscal/saft-export', [FiscalProfileController::class, 'exportSaft'])->name('fiscal.saft-export');
@@ -244,6 +246,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         // PGC Import
         Route::get('fiscal/pgc', [PgcImportController::class, 'index'])->name('fiscal.pgc');
         Route::post('fiscal/pgc/import', [PgcImportController::class, 'import'])->name('fiscal.pgc.import');
+        Route::post('fiscal/pgc/reconcile', [PgcImportController::class, 'reconcile'])->name('fiscal.pgc.reconcile');
         Route::post('fiscal/pgc/validate', [PgcImportController::class, 'validate'])->name('fiscal.pgc.validate');
 
         // Document Series
@@ -291,10 +294,12 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::post('fixed-assets', [FixedAssetController::class, 'store'])->name('fixed-assets.store');
         Route::get('fixed-assets/{fixedAsset}', [FixedAssetController::class, 'show'])->name('fixed-assets.show');
         Route::post('fixed-assets/depreciation', [FixedAssetController::class, 'runDepreciation'])->name('fixed-assets.depreciation');
+        Route::post('fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose'])->name('fixed-assets.dispose');
 
         // Financial Reports
         Route::get('reports/balance-sheet', [FinancialReportController::class, 'balanceSheet'])->name('reports.balance-sheet');
         Route::get('reports/income-statement', [FinancialReportController::class, 'incomeStatement'])->name('reports.income-statement');
+        Route::get('reports/equity-changes', [FinancialReportController::class, 'equityChanges'])->name('reports.equity-changes');
         Route::get('reports/cash-flow', [FinancialReportController::class, 'cashFlow'])->name('reports.cash-flow');
     });
 });

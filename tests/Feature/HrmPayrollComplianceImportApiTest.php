@@ -154,6 +154,114 @@ class HrmPayrollComplianceImportApiTest extends TestCase
         $response->assertJsonPath('success', false);
     }
 
+    public function test_api_import_and_export_are_scoped_to_the_authenticated_company(): void
+    {
+        $companyA = $this->makeCompany();
+        $companyB = $this->makeCompany();
+        $this->grantPermissions($companyA, ['edit-payrolls', 'view-payrolls']);
+
+        $employeeUserA = $this->makeEmployeeUser($companyA, 'Company A Employee');
+        $employeeA = Employee::query()->create([
+            'employee_id' => 'EMP-A-001',
+            'user_id' => $employeeUserA->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 15000,
+            'creator_id' => $companyA->id,
+            'created_by' => $companyA->id,
+        ]);
+
+        $employeeUserB = $this->makeEmployeeUser($companyB, 'Company B Employee');
+        $employeeB = Employee::query()->create([
+            'employee_id' => 'EMP-B-001',
+            'user_id' => $employeeUserB->id,
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 18000,
+            'creator_id' => $companyB->id,
+            'created_by' => $companyB->id,
+        ]);
+
+        $exportResponse = $this->actingAs($companyA, 'sanctum')->get(route(
+            'hrm.mozambique-payroll-compliance.reports.workforce-register.json',
+            ['reference_date' => '2026-05-31']
+        ));
+
+        $exportResponse->assertOk();
+        $exportResponse->assertJsonPath('summary.workers_total', 1);
+        $exportResponse->assertJsonCount(1, 'rows');
+        $exportResponse->assertJsonPath('rows.0.employee_name', 'Company A Employee');
+        $exportResponse->assertJsonMissingPath('rows.1');
+
+        $workforceCsv = implode("\n", [
+            'Employee Record ID,Employee Internal ID,Employee NUIT,Employment Type,Basic Salary',
+            $employeeB->id . ',EMP-B-001,400999111,SPECIAL,22000',
+        ]);
+        $workforceFile = UploadedFile::fake()->createWithContent('workforce_import.csv', $workforceCsv);
+
+        $workforceResponse = $this->actingAs($companyA, 'sanctum')->post(
+            '/api/hrm/payroll-compliance/import/workforce',
+            ['csv_file' => $workforceFile]
+        );
+
+        $workforceResponse->assertOk();
+        $workforceResponse->assertJsonPath('success', true);
+        $workforceResponse->assertJsonPath('data.processed', 1);
+        $workforceResponse->assertJsonPath('data.updated', 0);
+        $workforceResponse->assertJsonPath('data.skipped', 1);
+        $workforceResponse->assertJsonPath('data.errors.0.message', 'Employee not found for supplied identifiers.');
+
+        $this->assertDatabaseHas('employees', [
+            'id' => $employeeB->id,
+            'employee_id' => 'EMP-B-001',
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 18000,
+            'created_by' => $companyB->id,
+        ]);
+
+        $attendanceCsv = implode("\n", [
+            'Employee Record ID,Attendance Date,Clock In,Clock Out,Break Hours,Status,Source Channel,Source Device ID,Source Reference',
+            $employeeB->id . ',2026-05-28,2026-05-28 08:00,2026-05-28 17:00,1,present,biometric,DEV-B,BIO-REF-B',
+        ]);
+        $attendanceFile = UploadedFile::fake()->createWithContent('attendance_import.csv', $attendanceCsv);
+
+        $attendanceResponse = $this->actingAs($companyA, 'sanctum')->post(
+            '/api/hrm/payroll-compliance/import/attendance',
+            ['csv_file' => $attendanceFile]
+        );
+
+        $attendanceResponse->assertOk();
+        $attendanceResponse->assertJsonPath('data.processed', 1);
+        $attendanceResponse->assertJsonPath('data.updated', 0);
+        $attendanceResponse->assertJsonPath('data.skipped', 1);
+        $attendanceResponse->assertJsonPath('data.errors.0.message', 'Employee not found for supplied identifiers.');
+        $this->assertDatabaseMissing('attendances', [
+            'employee_id' => $employeeB->user_id,
+            'created_by' => $companyA->id,
+            'source_reference' => 'BIO-REF-B',
+        ]);
+
+        $annualLeaveCsv = implode("\n", [
+            'Employee Record ID,Leave Type ID,Leave Year,Planned Start Date,Planned End Date,Status,Notes',
+            $employeeB->id . ',999,2026,2026-09-01,2026-09-10,approved,Cross-company leave attempt',
+        ]);
+        $annualLeaveFile = UploadedFile::fake()->createWithContent('annual_leave_plan_import.csv', $annualLeaveCsv);
+
+        $annualLeaveResponse = $this->actingAs($companyA, 'sanctum')->post(
+            '/api/hrm/payroll-compliance/import/annual-leave-plans',
+            ['csv_file' => $annualLeaveFile]
+        );
+
+        $annualLeaveResponse->assertOk();
+        $annualLeaveResponse->assertJsonPath('data.processed', 1);
+        $annualLeaveResponse->assertJsonPath('data.updated', 0);
+        $annualLeaveResponse->assertJsonPath('data.skipped', 1);
+        $annualLeaveResponse->assertJsonPath('data.errors.0.message', 'Employee not found for supplied identifiers.');
+        $this->assertDatabaseMissing('annual_leave_plans', [
+            'employee_id' => $employeeB->user_id,
+            'created_by' => $companyA->id,
+            'leave_year' => 2026,
+        ]);
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([
@@ -197,4 +305,3 @@ class HrmPayrollComplianceImportApiTest extends TestCase
         $user->refresh();
     }
 }
-

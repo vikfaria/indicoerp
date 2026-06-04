@@ -19,9 +19,23 @@ class UpdateRetainerPaymentStatusListener
 
     public function handle(UpdateRetainerPaymentStatus $event)
     {
-        if (Module_is_active('Account') && $event->request->status === 'cleared') {
+        if ($event->request->status === 'cleared') {
+            $event->retainerPayment->loadMissing('bankAccount.glAccount', 'customer', 'allocations.retainer');
+
             $this->journalService->createRetainerPaymentJournal($event->retainerPayment);
             $this->bankTransactionsService->createRetainerPayment($event->retainerPayment);
+
+            foreach ($event->retainerPayment->allocations as $allocation) {
+                $retainer = $allocation->retainer;
+
+                if (!$retainer) {
+                    continue;
+                }
+
+                $retainer->balance_amount = max(0, (float) $retainer->balance_amount - (float) $allocation->allocated_amount);
+                $retainer->status = $retainer->balance_amount <= 0.01 ? 'paid' : 'partial';
+                $retainer->save();
+            }
         }
     }
 }

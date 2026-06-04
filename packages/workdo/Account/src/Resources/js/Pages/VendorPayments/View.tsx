@@ -30,6 +30,28 @@ export default function View({ payment }: VendorPaymentViewProps) {
         return labels[provider || ''] || '-';
     };
 
+    const paymentPurposeLabel = (purpose?: string | null) => {
+        const labels: Record<string, string> = {
+            settlement: t('Invoice settlement'),
+            advance: t('Supplier advance'),
+        };
+
+        return labels[purpose || 'settlement'] || t('Invoice settlement');
+    };
+
+    const hasInternationalCompliance = Boolean(
+        payment.is_international_payment
+        || payment.contract_reference
+        || payment.invoice_reference
+        || payment.bank_settlement_reference
+        || payment.withholding_receipt_reference
+        || payment.correspondence_reference
+        || payment.fiscal_compliance_reference
+        || payment.financial_approval_reference
+        || payment.fx_authorization_reference
+        || payment.adt_certificate_reference
+    );
+
     return (
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -57,10 +79,19 @@ export default function View({ payment }: VendorPaymentViewProps) {
                                 <p className="mt-1 text-gray-500">{payment.vendor?.name || '-'}</p>
                             </div>
                             <div>
+                                <span className="font-semibold">{t('Payment Purpose')}</span>
+                                <p className="mt-1 text-gray-500">{paymentPurposeLabel(payment.payment_purpose)}</p>
+                            </div>
+                            <div>
                                 <span className="font-semibold">{t('Bank Account')}</span>
                                 <p className="mt-1 text-gray-500">
                                     {payment.bank_account?.account_name || '-'}
                                     {payment.bank_account?.account_number && ` (${payment.bank_account.account_number})`}
+                                    {(payment.branch?.branch_name || payment.bank_account?.branch?.branch_name || payment.bank_account?.branch_name) && (
+                                        <span className="block text-xs text-muted-foreground">
+                                            {payment.branch?.branch_name || payment.bank_account?.branch?.branch_name || payment.bank_account?.branch_name}
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                             <div>
@@ -124,14 +155,74 @@ export default function View({ payment }: VendorPaymentViewProps) {
                                 <p className="mt-1 text-gray-500">{formatDate(payment.created_at)}</p>
                             </div>
                         </div>
-                        {payment.notes && (
-                            <div className="mt-4">
-                                <span className="font-semibold">{t('Notes')}</span>
-                                <p className="mt-1 p-3 bg-gray-50 rounded text-sm">{payment.notes}</p>
+                {payment.notes && (
+                    <div className="mt-4">
+                        <span className="font-semibold">{t('Notes')}</span>
+                        <p className="mt-1 p-3 bg-gray-50 rounded text-sm">{payment.notes}</p>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+
+                {hasInternationalCompliance && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-base">{t('International Compliance')}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <span className="font-semibold">{t('International Payment')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.is_international_payment ? t('Yes') : t('No')}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Beneficiary Country')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.beneficiary_country || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Service Type')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.service_type || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('ADT Certificate Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.adt_certificate_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Contract Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.contract_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Invoice Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.invoice_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Bank Settlement Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.bank_settlement_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Withholding Receipt Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.withholding_receipt_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Correspondence Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.correspondence_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Fiscal Compliance Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.fiscal_compliance_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('Financial Approval Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.financial_approval_reference || '-'}</p>
+                                </div>
+                                <div>
+                                    <span className="font-semibold">{t('FX Authorization Reference')}</span>
+                                    <p className="mt-1 text-gray-500">{payment.fx_authorization_reference || '-'}</p>
+                                </div>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Invoice Allocations */}
                 {payment.allocations && payment.allocations.length > 0 && (

@@ -9,6 +9,8 @@ CURRENT_LINK="${APP_DIR}/current"
 PHP_BIN="${PHP_BIN:-php}"
 COMPOSER_BIN="${COMPOSER_BIN:-composer}"
 PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php8.3-fpm}"
+QUEUE_SERVICE="${QUEUE_SERVICE:-hrm-queue.service}"
+SCHEDULER_SERVICE="${SCHEDULER_SERVICE:-hrm-scheduler.service}"
 APP_ENV_FILE="${APP_ENV_FILE:-${SHARED_DIR}/.env}"
 
 if [ ! -f "$ARCHIVE_PATH" ]; then
@@ -58,6 +60,8 @@ systemctl restart "$PHP_FPM_SERVICE"
 systemctl restart nginx
 systemctl restart hrm-queue 2>/dev/null || true
 systemctl restart hrm-scheduler 2>/dev/null || true
+systemctl restart "$QUEUE_SERVICE" 2>/dev/null || true
+systemctl restart "$SCHEDULER_SERVICE" 2>/dev/null || true
 
 # manter apenas as últimas 5 releases
 cd "$RELEASES_DIR"

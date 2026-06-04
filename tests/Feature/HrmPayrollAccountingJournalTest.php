@@ -50,6 +50,39 @@ class HrmPayrollAccountingJournalTest extends TestCase
         $this->assertSame(4240.0, $sumByAccount('2400', 'credit_amount'));
     }
 
+    public function test_payroll_journal_posts_employee_loan_recovery_on_separate_advance_account(): void
+    {
+        [$company, $entry] = $this->bootstrapPayrollEntry(1000);
+
+        $this->actingAs($company);
+
+        $journal = app(JournalService::class)->createPayrollJournal($entry);
+
+        $this->assertNotNull($journal);
+        $this->assertSame('payroll', $journal->reference_type);
+        $this->assertSame($entry->id, $journal->reference_id);
+        $this->assertSame(33280.0, (float) $journal->total_debit);
+        $this->assertSame(33280.0, (float) $journal->total_credit);
+
+        $journal->load('items.account');
+
+        $sumByAccount = function (string $code, string $column) use ($journal): float {
+            return round(
+                (float) $journal->items
+                    ->filter(fn ($item): bool => (string) $item->account?->account_code === $code)
+                    ->sum($column),
+                2
+            );
+        };
+
+        $this->assertSame(32000.0, $sumByAccount('5200', 'debit_amount'));
+        $this->assertSame(1280.0, $sumByAccount('5210', 'debit_amount'));
+        $this->assertSame(26840.0, $sumByAccount('1030', 'credit_amount'));
+        $this->assertSame(1200.0, $sumByAccount('2200', 'credit_amount'));
+        $this->assertSame(4240.0, $sumByAccount('2400', 'credit_amount'));
+        $this->assertSame(1000.0, $sumByAccount('1320', 'credit_amount'));
+    }
+
     public function test_payroll_journal_creation_is_idempotent_for_same_payslip(): void
     {
         [$company, $entry] = $this->bootstrapPayrollEntry();
@@ -73,7 +106,7 @@ class HrmPayrollAccountingJournalTest extends TestCase
         );
     }
 
-    private function bootstrapPayrollEntry(): array
+    private function bootstrapPayrollEntry(float $totalLoans = 0): array
     {
         $company = User::factory()->create([
             'type' => 'company',
@@ -127,8 +160,8 @@ class HrmPayrollAccountingJournalTest extends TestCase
             'status' => 'completed',
             'is_payroll_paid' => 'unpaid',
             'total_gross_pay' => 32000,
-            'total_deductions' => 4160,
-            'total_net_pay' => 27840,
+            'total_deductions' => 4160 + $totalLoans,
+            'total_net_pay' => 27840 - $totalLoans,
             'total_irps' => 1200,
             'total_inss_employee' => 960,
             'total_inss_employer' => 1280,
@@ -143,7 +176,7 @@ class HrmPayrollAccountingJournalTest extends TestCase
             'employee_id' => $employeeUser->id,
             'basic_salary' => 30000,
             'gross_pay' => 32000,
-            'net_pay' => 27840,
+            'net_pay' => 27840 - $totalLoans,
             'taxable_income' => 32000,
             'irps_amount' => 1200,
             'inss_employee_rate' => 3,
@@ -153,8 +186,8 @@ class HrmPayrollAccountingJournalTest extends TestCase
             'statutory_deductions_total' => 2160,
             'total_allowances' => 2000,
             'total_manual_overtimes' => 0,
-            'total_deductions' => 4160,
-            'total_loans' => 0,
+            'total_deductions' => 4160 + $totalLoans,
+            'total_loans' => $totalLoans,
             'working_days' => 22,
             'status' => 'unpaid',
             'creator_id' => $company->id,
@@ -164,4 +197,3 @@ class HrmPayrollAccountingJournalTest extends TestCase
         return [$company, $entry];
     }
 }
-

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\User;
+use Workdo\Hrm\Models\Branch;
 
 class VendorPayment extends Model
 {
@@ -13,7 +14,9 @@ class VendorPayment extends Model
         'payment_number',
         'payment_date',
         'vendor_id',
+        'payment_purpose',
         'bank_account_id',
+        'branch_id',
         'payment_method',
         'mobile_money_provider',
         'mobile_money_number',
@@ -35,6 +38,11 @@ class VendorPayment extends Model
         'fiscal_compliance_reference',
         'financial_approval_reference',
         'fx_authorization_reference',
+        'contract_reference',
+        'invoice_reference',
+        'bank_settlement_reference',
+        'withholding_receipt_reference',
+        'correspondence_reference',
         'gifim_alert_required',
         'gifim_alert_category',
         'gifim_alert_status',
@@ -87,6 +95,11 @@ class VendorPayment extends Model
     public function bankAccount(): BelongsTo
     {
         return $this->belongsTo(BankAccount::class, 'bank_account_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
     }
 
     public function allocations(): HasMany

@@ -3,7 +3,9 @@
 namespace Workdo\Account\Services;
 
 use App\Models\AccountingJournal;
+use App\Models\StockMovement;
 use App\Services\PayrollCostCenterAllocatorService;
+use Workdo\Account\Helpers\AccountUtility;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\JournalEntryItem;
 use Workdo\Account\Models\ChartOfAccount;
@@ -13,6 +15,7 @@ use Workdo\Account\Events\UpdateBudgetSpending;
 use Workdo\Account\Models\BankAccount;
 use Workdo\Account\Models\MozTaxAccountMapping;
 use Workdo\Retainer\Models\RetainerPaymentAllocation;
+use Workdo\Hrm\Models\Loan;
 
 /**
  * JournalService - Automatic double-entry journal creation for all transactions
@@ -38,6 +41,64 @@ class JournalService
         }
 
         return $this->chartAccountCache[$cacheKey];
+    }
+
+    private function getOrCreateAccountByCode(string $accountCode, ?int $companyId = null): ChartOfAccount
+    {
+        $account = $this->getAccountByCode($accountCode, $companyId);
+        if ($account) {
+            return $account;
+        }
+
+        $definition = $this->resolveChartAccountDefinition($accountCode);
+        if (!$definition) {
+            throw new \Exception("Account with code {$accountCode} not found");
+        }
+
+        $ownerId = $companyId ?? creatorId();
+        $accountType = \Workdo\Account\Models\AccountType::query()
+            ->where('code', $definition['type_code'] ?? null)
+            ->where('created_by', $ownerId)
+            ->first();
+
+        if (!$accountType) {
+            throw new \Exception("Account type {$definition['type_code']} not found for company");
+        }
+
+        $account = ChartOfAccount::query()->create([
+            'account_code' => $definition['account_code'],
+            'account_name' => $definition['account_name'],
+            'account_type_id' => $accountType->id,
+            'normal_balance' => $definition['normal_balance'] ?? 'debit',
+            'opening_balance' => 0,
+            'current_balance' => 0,
+            'is_active' => true,
+            'is_system_account' => true,
+            'is_movement_account' => true,
+            'description' => $definition['description'] ?? null,
+            'creator_id' => Auth::id(),
+            'created_by' => $ownerId,
+        ]);
+
+        $this->chartAccountCache[$ownerId . '|' . $accountCode] = $account;
+
+        return $account;
+    }
+
+    private function resolveChartAccountDefinition(string $accountCode): ?array
+    {
+        $definitions = array_merge(
+            AccountUtility::chartOfAccountDefinitions('pt'),
+            AccountUtility::chartOfAccountDefinitions('en'),
+        );
+
+        foreach ($definitions as $definition) {
+            if ((string) ($definition['account_code'] ?? '') === $accountCode) {
+                return $definition;
+            }
+        }
+
+        return null;
     }
 
     private function getBankAccountByGateway(string $paymentGateway, int $companyId): ?BankAccount
@@ -527,9 +588,19 @@ class JournalService
             throw new \Exception("Bank account must have a GL account assigned");
         }
 
-        // Validate A/P account exists
-        $this->validateAccounts(['2000']);
-        $apAccount = $this->getAccountByCode('2000');
+        $companyId = (int) ($vendorPayment->created_by ?: creatorId());
+        $paymentPurpose = strtolower((string) ($vendorPayment->payment_purpose ?? 'settlement'));
+
+        $apAccount = null;
+        $advanceAccount = null;
+        if ($paymentPurpose === 'advance') {
+            $advanceAccount = $this->getOrCreateAccountByCode('1310', $companyId);
+        } else {
+            // Validate A/P account exists
+            $this->validateAccounts(['2000'], $companyId);
+            $apAccount = $this->getAccountByCode('2000', $companyId);
+        }
+
         // Validate amounts balance
         $this->validateBalance($vendorPayment->payment_amount, $vendorPayment->payment_amount);
 
@@ -538,23 +609,37 @@ class JournalService
             'entry_type' => 'automatic',
             'reference_type' => 'vendor_payment',
             'reference_id' => $vendorPayment->id,
-            'description' => 'Vendor Payment #' . $vendorPayment->payment_number,
+            'description' => ($paymentPurpose === 'advance' ? 'Vendor Advance #' : 'Vendor Payment #') . $vendorPayment->payment_number,
             'total_debit' => $vendorPayment->payment_amount,
             'total_credit' => $vendorPayment->payment_amount,
             'status' => 'posted',
             'creator_id' => Auth::id(),
-            'created_by' => creatorId()
+            'created_by' => $companyId
         ]);
-        // Debit: Accounts Payable
-        JournalEntryItem::create([
-            'journal_entry_id' => $journalEntry->id,
-            'account_id' => $apAccount->id,
-            'description' => 'Payment to ' . $vendorPayment->vendor->name,
-            'debit_amount' => $vendorPayment->payment_amount,
-            'credit_amount' => 0,
-            'creator_id' => Auth::id(),
-            'created_by' => creatorId()
-        ]);
+
+        if ($paymentPurpose === 'advance') {
+            // Debit: Supplier Advances
+            JournalEntryItem::create([
+                'journal_entry_id' => $journalEntry->id,
+                'account_id' => $advanceAccount->id,
+                'description' => 'Advance to ' . $vendorPayment->vendor->name,
+                'debit_amount' => $vendorPayment->payment_amount,
+                'credit_amount' => 0,
+                'creator_id' => Auth::id(),
+                'created_by' => $companyId
+            ]);
+        } else {
+            // Debit: Accounts Payable
+            JournalEntryItem::create([
+                'journal_entry_id' => $journalEntry->id,
+                'account_id' => $apAccount->id,
+                'description' => 'Payment to ' . $vendorPayment->vendor->name,
+                'debit_amount' => $vendorPayment->payment_amount,
+                'credit_amount' => 0,
+                'creator_id' => Auth::id(),
+                'created_by' => $companyId
+            ]);
+        }
 
         // Credit: Specific Bank Account (from GL Account)
         JournalEntryItem::create([
@@ -564,7 +649,7 @@ class JournalService
             'debit_amount' => 0,
             'credit_amount' => $vendorPayment->payment_amount,
             'creator_id' => Auth::id(),
-            'created_by' => creatorId()
+            'created_by' => $companyId
         ]);
 
         try {
@@ -574,6 +659,67 @@ class JournalService
         }
 
         $this->updateAccountBalances($journalEntry);
+        return $journalEntry;
+    }
+
+    public function createVendorAdvanceSettlementJournal($vendorPayment)
+    {
+        $vendorPayment->loadMissing('allocations.invoice');
+
+        $totalAmount = round((float) $vendorPayment->allocations->sum('allocated_amount'), 2);
+        if ($totalAmount <= 0) {
+            return null;
+        }
+
+        $companyId = (int) ($vendorPayment->created_by ?: creatorId());
+        $this->validateAccounts(['2000'], $companyId);
+
+        $advanceAccount = $this->getOrCreateAccountByCode('1310', $companyId);
+        $apAccount = $this->getAccountByCode('2000', $companyId);
+
+        $this->validateBalance($totalAmount, $totalAmount);
+
+        $journalEntry = JournalEntry::create([
+            'journal_date' => now(),
+            'entry_type' => 'automatic',
+            'reference_type' => 'vendor_advance_to_invoice',
+            'reference_id' => $vendorPayment->id,
+            'description' => 'Vendor advance applied to invoices - ' . $vendorPayment->payment_number,
+            'total_debit' => $totalAmount,
+            'total_credit' => $totalAmount,
+            'status' => 'posted',
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        JournalEntryItem::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $apAccount->id,
+            'description' => 'Advance applied to supplier invoice(s)',
+            'debit_amount' => $totalAmount,
+            'credit_amount' => 0,
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        JournalEntryItem::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $advanceAccount->id,
+            'description' => 'Advance applied to supplier invoice(s)',
+            'debit_amount' => 0,
+            'credit_amount' => $totalAmount,
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        try {
+            UpdateBudgetSpending::dispatch($journalEntry);
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->updateAccountBalances($journalEntry);
+
         return $journalEntry;
     }
 
@@ -1168,6 +1314,62 @@ class JournalService
         return $journalEntry;
     }
 
+    public function createEmployeeLoanJournal(Loan $loan, BankAccount $bankAccount, float $disbursementAmount)
+    {
+        $bankGLAccount = $bankAccount->glAccount;
+        if (!$bankGLAccount) {
+            throw new \Exception("Bank account must have a GL account assigned");
+        }
+
+        $companyId = (int) ($loan->created_by ?: creatorId());
+        $advanceAccount = $this->getOrCreateAccountByCode('1320', $companyId);
+
+        $this->validateBalance($disbursementAmount, $disbursementAmount);
+
+        $journalEntry = JournalEntry::create([
+            'journal_date' => $loan->start_date ?? now(),
+            'entry_type' => 'automatic',
+            'reference_type' => 'employee_loan',
+            'reference_id' => $loan->id,
+            'description' => 'Employee Loan #' . $loan->id . ' - ' . ($loan->title ?: ($loan->employee?->name ?? 'Employee')),
+            'total_debit' => $disbursementAmount,
+            'total_credit' => $disbursementAmount,
+            'status' => 'posted',
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        JournalEntryItem::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $advanceAccount->id,
+            'description' => 'Employee advance disbursement',
+            'debit_amount' => $disbursementAmount,
+            'credit_amount' => 0,
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        JournalEntryItem::create([
+            'journal_entry_id' => $journalEntry->id,
+            'account_id' => $bankGLAccount->id,
+            'description' => 'Employee advance disbursement',
+            'debit_amount' => 0,
+            'credit_amount' => $disbursementAmount,
+            'creator_id' => Auth::id(),
+            'created_by' => $companyId,
+        ]);
+
+        try {
+            UpdateBudgetSpending::dispatch($journalEntry);
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $this->updateAccountBalances($journalEntry);
+
+        return $journalEntry;
+    }
+
     /**
      * Creates payroll posting with statutory liabilities:
      * Dr: Salaries expense + employer INSS expense
@@ -1213,10 +1415,15 @@ class JournalService
         $employerInssExpenseAccount = $this->getAccountByCode('5210', $companyId) ?? $salaryExpenseAccount;
         $irpsPayableAccount = $this->getAccountByCode('2200', $companyId);
         $payrollLiabilityAccount = $this->getAccountByCode('2400', $companyId);
+        $employeeAdvanceAccount = null;
 
         $posting = $this->resolvePayrollPostingAmounts($payrollEntry);
         if ($posting['total_debit'] <= 0 && $posting['total_credit'] <= 0) {
             return null;
+        }
+
+        if ($posting['total_loans'] > 0) {
+            $employeeAdvanceAccount = $this->getOrCreateAccountByCode('1320', $companyId);
         }
 
         $this->validateBalance($posting['total_debit'], $posting['total_credit']);
@@ -1308,6 +1515,15 @@ class JournalService
             $posting['other_withholdings']
         );
 
+        if ($posting['total_loans'] > 0 && $employeeAdvanceAccount) {
+            $createItem(
+                $employeeAdvanceAccount,
+                'Adiantamentos / emprestimos a recuperar - ' . $employeeName,
+                0,
+                $posting['total_loans']
+            );
+        }
+
         try {
             UpdateBudgetSpending::dispatch($journalEntry);
         } catch (\Exception $e) {
@@ -1323,20 +1539,22 @@ class JournalService
     {
         $grossPay = round(max(0, (float) ($payrollEntry->gross_pay ?? 0)), 2);
         $netPay = round(max(0, (float) ($payrollEntry->net_pay ?? 0)), 2);
+        $totalLoans = round(max(0, (float) ($payrollEntry->total_loans ?? 0)), 2);
         $irpsAmount = round(max(0, (float) ($payrollEntry->irps_amount ?? 0)), 2);
         $inssEmployeeAmount = round(max(0, (float) ($payrollEntry->inss_employee_amount ?? 0)), 2);
         $inssEmployerAmount = round(max(0, (float) ($payrollEntry->inss_employer_amount ?? 0)), 2);
 
         $totalEmployeeWithholdings = round(max(0, $grossPay - $netPay), 2);
         $inssPayableTotal = round($inssEmployeeAmount + $inssEmployerAmount, 2);
-        $otherWithholdings = round(max(0, $totalEmployeeWithholdings - ($irpsAmount + $inssEmployeeAmount)), 2);
+        $otherWithholdings = round(max(0, $totalEmployeeWithholdings - ($irpsAmount + $inssEmployeeAmount + $totalLoans)), 2);
 
         $totalDebit = round($grossPay + $inssEmployerAmount, 2);
-        $totalCredit = round($netPay + $irpsAmount + $inssPayableTotal + $otherWithholdings, 2);
+        $totalCredit = round($netPay + $irpsAmount + $inssPayableTotal + $otherWithholdings + $totalLoans, 2);
 
         return [
             'gross_pay' => $grossPay,
             'net_pay' => $netPay,
+            'total_loans' => $totalLoans,
             'irps_amount' => $irpsAmount,
             'inss_employee_amount' => $inssEmployeeAmount,
             'inss_employer_amount' => $inssEmployerAmount,
@@ -1440,14 +1658,22 @@ class JournalService
     public function createSalesCOGSJournal($salesInvoice)
     {
         $salesInvoice->load('items.product');
-        $totalCost = 0;
+        $totalCost = $this->resolveInventoryMovementCost(
+            'sales_invoice',
+            $salesInvoice->id,
+            $salesInvoice->warehouse_id ? (string) $salesInvoice->warehouse_id : null
+        );
 
-        foreach ($salesInvoice->items as $item) {
-            if (!$item->product) {
-                continue;
+        if ($totalCost === null) {
+            $totalCost = 0;
+
+            foreach ($salesInvoice->items as $item) {
+                if (!$item->product) {
+                    continue;
+                }
+                $costPrice = $item->product->purchase_price ?? 0;
+                $totalCost += $item->quantity * $costPrice;
             }
-            $costPrice = $item->product->purchase_price ?? 0;
-            $totalCost += $item->quantity * $costPrice;
         }
 
         if ($totalCost <= 0.01) {
@@ -1506,14 +1732,22 @@ class JournalService
     {
         try {
             $posSale->load('items.product');
-            $totalCost = 0;
+            $totalCost = $this->resolveInventoryMovementCost(
+                'pos_sale',
+                $posSale->id,
+                $posSale->warehouse_id ? (string) $posSale->warehouse_id : null
+            );
 
-            foreach ($posSale->items as $item) {
-                if (!$item->product) {
-                    continue;
+            if ($totalCost === null) {
+                $totalCost = 0;
+
+                foreach ($posSale->items as $item) {
+                    if (!$item->product) {
+                        continue;
+                    }
+                    $costPrice = $item->product->purchase_price ?? 0;
+                    $totalCost += $item->quantity * $costPrice;
                 }
-                $costPrice = $item->product->purchase_price ?? 0;
-                $totalCost += $item->quantity * $costPrice;
             }
 
             if ($totalCost <= 0.01) {
@@ -1575,14 +1809,26 @@ class JournalService
     {
         try {
             $creditNote->load('items.product');
-            $totalCost = 0;
+            $totalCost = null;
 
-            foreach ($creditNote->items as $item) {
-                if (!$item->product) {
-                    continue;
+            if (!empty($creditNote->return_id)) {
+                $totalCost = $this->resolveInventoryMovementCost(
+                    'sales_return',
+                    (int) $creditNote->return_id,
+                    optional($creditNote->salesReturn)->warehouse_id ? (string) optional($creditNote->salesReturn)->warehouse_id : null
+                );
+            }
+
+            if ($totalCost === null) {
+                $totalCost = 0;
+
+                foreach ($creditNote->items as $item) {
+                    if (!$item->product) {
+                        continue;
+                    }
+                    $costPrice = $item->product->purchase_price ?? 0;
+                    $totalCost += $item->quantity * $costPrice;
                 }
-                $costPrice = $item->product->purchase_price ?? 0;
-                $totalCost += $item->quantity * $costPrice;
             }
 
             if ($totalCost <= 0.01) {
@@ -1634,6 +1880,24 @@ class JournalService
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    private function resolveInventoryMovementCost(string $referenceType, int $referenceId, ?string $warehouseCode = null): ?float
+    {
+        $query = StockMovement::query()
+            ->where('company_id', creatorId())
+            ->where('reference_type', $referenceType)
+            ->where('reference_id', $referenceId);
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $query->where('warehouse_code', $warehouseCode);
+        }
+
+        $totalCost = $query->get()->sum(function (StockMovement $movement): float {
+            return abs((float) $movement->total_cost);
+        });
+
+        return $totalCost > 0 ? round($totalCost, 2) : null;
     }
 
     /**

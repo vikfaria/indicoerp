@@ -120,6 +120,14 @@ export default function FiscalExportsHistory() {
             return;
         }
 
+        const defaultSubmissionStatus = ['submitted', 'validated', 'rejected'].includes((row.status || '').toLowerCase())
+            ? (row.status || 'submitted')
+            : 'submitted';
+
+        const submissionStatus = window.prompt(
+            t('Submission status (submitted, validated, rejected)'),
+            defaultSubmissionStatus
+        ) || '';
         const submissionChannel = window.prompt(
             t('Submission channel (manual_upload, xml_export, webservice, api)'),
             row.submission_channel || 'manual_upload'
@@ -130,7 +138,12 @@ export default function FiscalExportsHistory() {
         ) || '';
         const notes = window.prompt(t('Submission notes (optional)'), '') || '';
 
-        if (!submissionChannel || !submissionReference) {
+        if (!submissionStatus || !submissionChannel || !submissionReference) {
+            return;
+        }
+
+        const normalizedStatus = submissionStatus.trim().toLowerCase();
+        if (!['submitted', 'validated', 'rejected'].includes(normalizedStatus)) {
             return;
         }
 
@@ -139,7 +152,7 @@ export default function FiscalExportsHistory() {
             await axios.post(route('account.reports.mozambique-fiscal-exports-history.submit', row.id), {
                 submission_channel: submissionChannel,
                 submission_reference: submissionReference,
-                status: 'submitted',
+                status: normalizedStatus,
                 notes: notes || null,
             });
             await fetchHistory();

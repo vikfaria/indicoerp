@@ -22,6 +22,18 @@ class HrmModel extends Model
 
     public static function defaultdata($company_id = null)
     {
+        if ($company_id) {
+            Branch::query()->firstOrCreate(
+                [
+                    'branch_name' => 'Main Office',
+                    'created_by' => $company_id,
+                ],
+                [
+                    'creator_id' => $company_id,
+                ]
+            );
+        }
+
         $hrRolePermissions = [
             // HRM
             'manage-hrm-dashboard',

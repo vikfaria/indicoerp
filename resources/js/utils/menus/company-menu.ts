@@ -222,10 +222,16 @@ export const getCompanyMenu = (t: (key: string) => string): NavItem[] => [
                         order: 2,
                     },
                     {
+                        title: t('Alterações no Capital Próprio'),
+                        href: route('sce.reports.equity-changes'),
+                        permissionsAny: ['manage-account', 'manage-account-reports', 'view-tax-summary'],
+                        order: 3,
+                    },
+                    {
                         title: t('Fluxos de Caixa'),
                         href: route('sce.reports.cash-flow'),
                         permissionsAny: ['manage-account', 'manage-account-reports', 'view-tax-summary'],
-                        order: 3,
+                        order: 4,
                     },
                 ],
             },

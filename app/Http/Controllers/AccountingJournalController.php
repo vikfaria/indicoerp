@@ -164,6 +164,7 @@ class AccountingJournalController extends Controller
 
         return Inertia::render('Accounting/MonthlyClosing/Index', [
             'periods' => $periods,
+            'currentPeriod' => $currentPeriod,
             'checklists' => $checklists,
             'currentYear' => $year,
             'currentMonth' => $month,
@@ -238,6 +239,34 @@ class AccountingJournalController extends Controller
         }
 
         return back()->with('success', __('Período fechado com sucesso.'));
+    }
+
+    public function reopenClosing(Request $request)
+    {
+        if (!$this->canManageSceAccounting()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $validated = $request->validate([
+            'year' => 'required|string|size:4',
+            'month' => 'required|integer|min:1|max:13',
+            'reopen_reason' => 'required|string|min:10',
+        ]);
+
+        $period = $this->resolvePeriod($validated['year'], (int) $validated['month']);
+        if (!$period) {
+            return back()->with('error', __('Período contabilístico não encontrado.'));
+        }
+
+        $service = app(MonthlyClosingService::class);
+        try {
+            $service->reopenPeriod($period->id, creatorId(), $validated['reopen_reason']);
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first() ?: __('Não foi possível reabrir o período.');
+            return back()->with('error', $message);
+        }
+
+        return back()->with('success', __('Período reaberto com sucesso.'));
     }
 
     private function resolveAccountId(?string $accountCode): ?int

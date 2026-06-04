@@ -32,6 +32,7 @@ class UpdateCandidateRequest extends FormRequest
             'professional_license_type' => 'nullable|string|max:100',
             'professional_license_number' => 'nullable|string|max:100',
             'professional_license_expiry_date' => 'nullable|date',
+            'professional_license_document_path' => 'nullable|string|max:255',
             'minor_work_authorization_path' => 'nullable|string|max:255',
             'legal_exception_notes' => 'nullable|string|max:2000',
             'country' => 'nullable|max:100',
@@ -118,6 +119,10 @@ class UpdateCandidateRequest extends FormRequest
 
                 if (!$this->filled('professional_license_number')) {
                     $validator->errors()->add('professional_license_number', __('Professional license number is required for regulated professions.'));
+                }
+
+                if (!$this->filled('professional_license_document_path')) {
+                    $validator->errors()->add('professional_license_document_path', __('Professional license evidence is required for regulated professions.'));
                 }
             }
         });

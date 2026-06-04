@@ -188,6 +188,9 @@ class CandidateController extends Controller
             $candidate->professional_license_type = $validated['professional_license_type'] ?? $candidate->professional_license_type;
             $candidate->professional_license_number = $validated['professional_license_number'] ?? $candidate->professional_license_number;
             $candidate->professional_license_expiry_date = $validated['professional_license_expiry_date'] ?? $candidate->professional_license_expiry_date;
+            $candidate->professional_license_document_path = isset($validated['professional_license_document_path'])
+                ? ltrim((string) $validated['professional_license_document_path'], '/')
+                : $candidate->professional_license_document_path;
             $candidate->minor_work_authorization_path = $validated['minor_work_authorization_path'] ?? $candidate->minor_work_authorization_path;
             $candidate->legal_exception_notes = $validated['legal_exception_notes'] ?? $candidate->legal_exception_notes;
             $candidate->country = $validated['country'] ?? null;
@@ -286,6 +289,9 @@ class CandidateController extends Controller
             $candidate->professional_license_type = $validated['professional_license_type'] ?? null;
             $candidate->professional_license_number = $validated['professional_license_number'] ?? null;
             $candidate->professional_license_expiry_date = $validated['professional_license_expiry_date'] ?? null;
+            $candidate->professional_license_document_path = isset($validated['professional_license_document_path'])
+                ? ltrim((string) $validated['professional_license_document_path'], '/')
+                : null;
             $candidate->minor_work_authorization_path = $validated['minor_work_authorization_path'] ?? null;
             $candidate->legal_exception_notes = $validated['legal_exception_notes'] ?? null;
             $candidate->country = $validated['country'] ?? $candidate->country;
@@ -336,6 +342,14 @@ class CandidateController extends Controller
             // Delete cover letter file if exists
             if ($candidate->cover_letter_path) {
                 delete_file($candidate->cover_letter_path);
+            }
+
+            if ($candidate->professional_license_document_path) {
+                delete_file($candidate->professional_license_document_path);
+            }
+
+            if ($candidate->minor_work_authorization_path) {
+                delete_file($candidate->minor_work_authorization_path);
             }
 
             DestroyCandidate::dispatch($candidate);

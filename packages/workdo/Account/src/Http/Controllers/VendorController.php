@@ -185,19 +185,59 @@ class VendorController extends Controller
 
     private function hasCriticalFiscalChange(Vendor $vendor, array $validated): bool
     {
-        $incomingTaxNumber = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null) ?: '';
-        $currentTaxNumber = MozambiqueTaxNumber::normalize($vendor->tax_number) ?: '';
+        return $this->changedCriticalFiscalFields($vendor, $validated) !== [];
+    }
 
-        $incomingCompanyName = trim((string) ($validated['company_name'] ?? $vendor->company_name));
-        $incomingResidency = strtolower((string) ($validated['fiscal_residency_status'] ?? $vendor->fiscal_residency_status ?: 'resident'));
-        $incomingType = strtolower((string) ($validated['vendor_type'] ?? $vendor->vendor_type ?: ''));
-        $incomingCountry = strtolower((string) ($validated['fiscal_country'] ?? $vendor->fiscal_country ?: ''));
+    /**
+     * @return array<int, string>
+     */
+    private function changedCriticalFiscalFields(Vendor $vendor, array $validated): array
+    {
+        $criticalFields = $this->criticalFiscalFields();
+        $changedFields = [];
 
-        return $incomingTaxNumber !== $currentTaxNumber
-            || $incomingCompanyName !== trim((string) $vendor->company_name)
-            || $incomingResidency !== strtolower((string) ($vendor->fiscal_residency_status ?: 'resident'))
-            || $incomingType !== strtolower((string) ($vendor->vendor_type ?: ''))
-            || $incomingCountry !== strtolower((string) ($vendor->fiscal_country ?: ''));
+        foreach ($criticalFields as $field) {
+            $currentValue = $vendor->getAttribute($field);
+            $incomingValue = array_key_exists($field, $validated) ? $validated[$field] : $currentValue;
+
+            if ($this->normalizeCriticalFiscalValue($field, $incomingValue) !== $this->normalizeCriticalFiscalValue($field, $currentValue)) {
+                $changedFields[] = $field;
+            }
+        }
+
+        return $changedFields;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function criticalFiscalFields(): array
+    {
+        return [
+            'tax_number',
+            'company_name',
+            'fiscal_residency_status',
+            'vendor_type',
+            'fiscal_country',
+            'vat_regime',
+            'supply_type',
+            'payment_currency_code',
+            'foreign_tax_number',
+            'withholding_tax_applicable',
+            'reverse_charge_applicable',
+            'adt_eligible',
+            'adt_country',
+        ];
+    }
+
+    private function normalizeCriticalFiscalValue(string $field, mixed $value): string
+    {
+        return match ($field) {
+            'tax_number', 'foreign_tax_number' => MozambiqueTaxNumber::normalize(is_string($value) ? $value : null) ?: '',
+            'withholding_tax_applicable', 'reverse_charge_applicable', 'adt_eligible' => filter_var($value, FILTER_VALIDATE_BOOL) ? '1' : '0',
+            'payment_currency_code' => strtoupper(trim((string) $value)),
+            default => strtolower(trim((string) $value)),
+        };
     }
 
     private function vendorHasFiscalHistory(Vendor $vendor): bool

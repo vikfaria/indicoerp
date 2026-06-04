@@ -41,7 +41,7 @@ export const bankAccountField = (data: any, setData: any, errors: any, mode: str
                     <SelectContent>
                         {bankAccounts?.map((account) => (
                             <SelectItem key={account.id} value={account.id.toString()}>
-                                {account.account_name} ({account.account_number})
+                                {account.account_name} ({account.account_number}){account.branch?.branch_name ? ` - ${account.branch.branch_name}` : ''}
                             </SelectItem>
                         ))}
                     </SelectContent>

@@ -17,6 +17,8 @@ class PurchaseInvoiceItem extends Model
         'discount_percentage',
         'discount_amount',
         'tax_percentage',
+        'vat_code',
+        'tax_exemption_reason',
         'tax_amount',
         'total_amount'
     ];

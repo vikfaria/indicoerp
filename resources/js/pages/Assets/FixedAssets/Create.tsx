@@ -68,11 +68,13 @@ export default function CreateFixedAsset() {
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="straight_line">{t('Linha Recta')}</SelectItem>
-                                            <SelectItem value="declining_balance">{t('Quotas Degressivas')}</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                             </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t('O sistema automatiza apenas depreciação em linha recta. Reavaliação, impairment e outros métodos avançados ficam para validação contabilística manual.')}
+                            </p>
                             <div className="grid grid-cols-3 gap-4">
                                 <div><Label>{t('Nº Série')}</Label><Input value={form.data.serial_number} onChange={e => form.setData('serial_number', e.target.value)} /></div>
                                 <div><Label>{t('Fornecedor')}</Label><Input value={form.data.supplier} onChange={e => form.setData('supplier', e.target.value)} /></div>

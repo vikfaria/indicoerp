@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,15 @@ import { formatCurrency } from '@/utils/helpers';
 
 export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendorPaymentProps) {
     const { t } = useTranslation();
+    const { mozambiqueCompliance } = usePage<any>().props as {
+        mozambiqueCompliance?: {
+            gifim?: {
+                cash_threshold_mzn?: number;
+                electronic_threshold_mzn?: number;
+                electronic_payment_methods?: string[];
+            };
+        };
+    };
     const [outstandingInvoices, setOutstandingInvoices] = useState<PurchaseInvoice[]>([]);
     const [availableDebitNotes, setAvailableDebitNotes] = useState<DebitNote[]>([]);
     const [selectedAllocations, setSelectedAllocations] = useState<{invoice_id: number; amount: number}[]>([]);
@@ -30,6 +39,11 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
         { value: 'card', label: t('Card') },
         { value: 'mobile_money', label: t('Mobile Money') },
         { value: 'other', label: t('Other') }
+    ] as const;
+
+    const paymentPurposeOptions = [
+        { value: 'settlement', label: t('Invoice settlement') },
+        { value: 'advance', label: t('Supplier advance') },
     ] as const;
 
     const mobileMoneyProviders = [
@@ -45,6 +59,12 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
         { value: 'ZAR', label: 'ZAR' },
     ] as const;
 
+    const gifimConfig = mozambiqueCompliance?.gifim ?? {
+        cash_threshold_mzn: 250000,
+        electronic_threshold_mzn: 750000,
+        electronic_payment_methods: ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'],
+    };
+
     const serviceTypes = [
         { value: 'consulting', label: t('Consulting') },
         { value: 'digital_services', label: t('Digital Services') },
@@ -53,9 +73,18 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
         { value: 'other', label: t('Other') },
     ] as const;
 
+    const bankAccountLabel = (account: any) => {
+        const branchName = account.branch?.branch_name || account.branch_name;
+
+        return branchName
+            ? `${account.account_name} (${account.account_number}) - ${branchName}`
+            : `${account.account_name} (${account.account_number})`;
+    };
+
     const { data, setData, post, processing, errors } = useForm<CreateVendorPaymentFormData>({
         payment_date: new Date().toISOString().split('T')[0],
         vendor_id: '',
+        payment_purpose: 'settlement',
         bank_account_id: '',
         payment_method: 'bank_transfer',
         mobile_money_provider: '',
@@ -140,7 +169,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
     };
 
     useEffect(() => {
-        if (data.vendor_id) {
+        if (data.vendor_id && data.payment_purpose !== 'advance') {
             fetchOutstandingInvoices(data.vendor_id);
         } else {
             setOutstandingInvoices([]);
@@ -150,7 +179,18 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
         setSelectedAllocations([]);
         setSelectedDebitNotes([]);
         setData('payment_amount', '');
-    }, [data.vendor_id]);
+    }, [data.vendor_id, data.payment_purpose]);
+
+    useEffect(() => {
+        if (data.payment_purpose === 'advance') {
+            setSelectedAllocations([]);
+            setSelectedDebitNotes([]);
+            setOutstandingInvoices([]);
+            setAvailableDebitNotes([]);
+        } else if (data.vendor_id) {
+            fetchOutstandingInvoices(data.vendor_id);
+        }
+    }, [data.payment_purpose]);
 
     const addAllocation = (invoice: PurchaseInvoice) => {
         const existing = selectedAllocations.find(a => a.invoice_id === invoice.id);
@@ -203,6 +243,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
 
     const getInvoiceById = (id: number) => outstandingInvoices.find(inv => inv.id === id);
     const selectedVendor = vendors.find((vendor) => vendor.id.toString() === data.vendor_id);
+    const isAdvancePayment = data.payment_purpose === 'advance';
     const isForeignCurrency = data.currency_code !== 'MZN';
     const isNonResidentVendor = selectedVendor?.fiscal_residency_status === 'non_resident';
     const isInternationalRequiredByContext = isForeignCurrency || isNonResidentVendor;
@@ -215,10 +256,10 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
         : paymentAmountValue;
     const fxDifferenceAmount = paymentAmountValue - convertedAmountMzn;
     const normalizedPaymentMethod = (data.payment_method || '').toLowerCase();
-    const gifimThresholdCategory = normalizedPaymentMethod === 'cash' && paymentAmountValue >= 250000
+    const gifimThresholdCategory = normalizedPaymentMethod === 'cash' && paymentAmountValue >= Number(gifimConfig.cash_threshold_mzn ?? 250000)
         ? 'cash_threshold'
-        : (['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'].includes(normalizedPaymentMethod)
-            && paymentAmountValue >= 750000
+        : ((gifimConfig.electronic_payment_methods ?? ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']).includes(normalizedPaymentMethod)
+            && paymentAmountValue >= Number(gifimConfig.electronic_threshold_mzn ?? 750000)
             ? 'electronic_threshold'
             : null);
     const gifimAlertRequired = Boolean(gifimThresholdCategory);
@@ -254,7 +295,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
     }, [selectedVendor?.id]);
 
     useEffect(() => {
-        if (selectedAllocations.length !== 1 || data.invoice_reference) {
+        if (isAdvancePayment || selectedAllocations.length !== 1 || data.invoice_reference) {
             return;
         }
 
@@ -307,6 +348,23 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                     </div>
 
                     <div>
+                        <Label htmlFor="payment_purpose" required>{t('Payment Purpose')}</Label>
+                        <Select value={data.payment_purpose} onValueChange={(value) => setData('payment_purpose', value as CreateVendorPaymentFormData['payment_purpose'])}>
+                            <SelectTrigger>
+                                <SelectValue placeholder={t('Select Purpose')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {paymentPurposeOptions.map((purpose) => (
+                                    <SelectItem key={purpose.value} value={purpose.value}>
+                                        {purpose.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <InputError message={errors.payment_purpose} />
+                    </div>
+
+                    <div>
                         <Label htmlFor="bank_account_id" required>{t('Bank Account')}</Label>
                         <Select value={data.bank_account_id} onValueChange={(value) => setData('bank_account_id', value)}>
                             <SelectTrigger>
@@ -315,7 +373,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                             <SelectContent>
                                 {bankAccounts?.map((account) => (
                                     <SelectItem key={account.id} value={account.id.toString()}>
-                                        {account.account_name} ({account.account_number})
+                                        {bankAccountLabel(account)}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -751,7 +809,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                     </div>
                 )}
 
-                {data.vendor_id && (
+                {data.vendor_id && !isAdvancePayment && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Card>
                             <CardHeader>
@@ -852,7 +910,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                     </div>
                 )}
 
-                {(selectedAllocations.length > 0 || selectedDebitNotes.length > 0) && (
+                {!isAdvancePayment && (selectedAllocations.length > 0 || selectedDebitNotes.length > 0) && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-sm">{t('Payment Summary')}</CardTitle>
@@ -961,7 +1019,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                         onChange={(value) => {
                             setData('payment_amount', value);
                             // Clear allocations if total is changed manually
-                            if (parseFloat(value) !== selectedAllocations.reduce((sum, a) => sum + a.amount, 0)) {
+                            if (!isAdvancePayment && parseFloat(value) !== selectedAllocations.reduce((sum, a) => sum + a.amount, 0)) {
                                 setSelectedAllocations([]);
                             }
                         }}
@@ -988,7 +1046,7 @@ export default function Create({ vendors, bankAccounts, onSuccess }: CreateVendo
                     </Button>
                     <Button
                         type="submit"
-                        disabled={processing || (!selectedAllocations.length && !selectedDebitNotes.length)}
+                        disabled={processing || (isAdvancePayment ? Number(data.payment_amount || 0) <= 0 : (!selectedAllocations.length && !selectedDebitNotes.length))}
                     >
                         {processing ? t('Creating...') : t('Create')}
                     </Button>

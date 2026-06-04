@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { useFormFields } from '@/hooks/useFormFields';
-import { SalesInvoice, SalesInvoiceItem } from './types';
+import { SalesInvoice, SalesInvoiceItem, VatCodeOption } from './types';
 import AuthenticatedLayout from '@/layouts/authenticated-layout';
 import InvoiceItemsTable from './components/InvoiceItemsTable';
 import { useTaxCalculator, calculateLineItemAmounts } from './components/TaxCalculator';
@@ -23,12 +23,13 @@ interface EditProps {
     customers: Array<{id: number; name: string; email: string}>;
     warehouses: Array<{id: number; name: string; address: string}>;
     modules?: {recurringinvoicebill?: boolean};
+    vatCodes?: VatCodeOption[];
     [key: string]: any;
 }
 
 export default function Edit() {
     const { t } = useTranslation();
-    const { invoice, customers, warehouses, modules } = usePage<EditProps>().props;
+    const { invoice, customers, warehouses, modules, vatCodes = [] } = usePage<EditProps>().props;
     const [availableProducts, setAvailableProducts] = useState([]);
 
 
@@ -47,6 +48,8 @@ export default function Edit() {
             return {
                 ...item,
                 taxes: item.taxes || [],
+                vat_code: item.vat_code || null,
+                tax_exemption_reason: item.tax_exemption_reason || null,
                 discount_amount: calculations.discountAmount,
                 tax_amount: calculations.taxAmount,
                 total_amount: calculations.totalAmount
@@ -267,6 +270,8 @@ export default function Edit() {
                                             discount_percentage: 0,
                                             discount_amount: 0,
                                             tax_percentage: 0,
+                                            vat_code: '',
+                                            tax_exemption_reason: '',
                                             tax_amount: 0,
                                             total_amount: 0,
                                             taxes: []
@@ -286,6 +291,7 @@ export default function Edit() {
                                 onChange={(items) => setData('items', items)}
                                 errors={errors}
                                 products={availableProducts}
+                                vatCodes={vatCodes}
                                 showAddButton={false}
                                 invoiceType={data.type}
                             />

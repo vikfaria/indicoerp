@@ -14,6 +14,21 @@ PHP_FPM_SERVICE="${PHP_FPM_SERVICE:-php8.2-fpm}"
 QUEUE_SERVICE="${QUEUE_SERVICE:-indicoerp-queue}"
 SCHEDULER_SERVICE="${SCHEDULER_SERVICE:-indicoerp-scheduler}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/indicoerp}"
+OPS_DIR="${OPS_DIR:-${BACKUP_DIR}/ops}"
+PRE_DEPLOY_BACKUP_SCRIPT="${PRE_DEPLOY_BACKUP_SCRIPT:-$APP_DIR/deploy/scripts/17_pre_deploy_backup_indicoerp.sh}"
+PRE_DEPLOY_BACKUP_ENV_FILE="${PRE_DEPLOY_BACKUP_ENV_FILE:-$BACKUP_DIR/pre_deploy_backup_latest.env}"
+PRE_DEPLOY_BACKUP_LOG_FILE="${PRE_DEPLOY_BACKUP_LOG_FILE:-$BACKUP_DIR/pre_deploy_backup_latest.log}"
+POST_DEPLOY_HEALTHCHECK_SCRIPT="${POST_DEPLOY_HEALTHCHECK_SCRIPT:-$APP_DIR/deploy/scripts/19_post_deploy_healthcheck_indicoerp.sh}"
+POST_DEPLOY_HEALTHCHECK_ENV_FILE="${POST_DEPLOY_HEALTHCHECK_ENV_FILE:-$OPS_DIR/post_deploy_healthcheck_latest.env}"
+POST_DEPLOY_HEALTHCHECK_LATEST_LOG_FILE="${POST_DEPLOY_HEALTHCHECK_LATEST_LOG_FILE:-$OPS_DIR/post_deploy_healthcheck_latest.log}"
+POST_DEPLOY_SMOKE_SCRIPT="${POST_DEPLOY_SMOKE_SCRIPT:-$APP_DIR/deploy/scripts/20_post_deploy_smoke_indicoerp.sh}"
+POST_DEPLOY_SMOKE_ENV_FILE="${POST_DEPLOY_SMOKE_ENV_FILE:-$OPS_DIR/post_deploy_smoke_latest.env}"
+POST_DEPLOY_SMOKE_LOG_FILE="${POST_DEPLOY_SMOKE_LOG_FILE:-$OPS_DIR/post_deploy_smoke_latest.log}"
+POST_DEPLOY_K6_MATRIX_SCRIPT="${POST_DEPLOY_K6_MATRIX_SCRIPT:-$APP_DIR/deploy/scripts/21_post_deploy_k6_matrix_indicoerp.sh}"
+POST_DEPLOY_K6_MATRIX_ENV_FILE="${POST_DEPLOY_K6_MATRIX_ENV_FILE:-$OPS_DIR/post_deploy_k6_matrix_latest.env}"
+POST_DEPLOY_K6_MATRIX_LOG_FILE="${POST_DEPLOY_K6_MATRIX_LOG_FILE:-$OPS_DIR/post_deploy_k6_matrix_latest.log}"
+POST_DEPLOY_K6_MATRIX_LATEST_LOG_FILE="${POST_DEPLOY_K6_MATRIX_LATEST_LOG_FILE:-$OPS_DIR/post_deploy_k6_matrix_latest.log}"
+POST_DEPLOY_K6_MATRIX_LATEST_SUMMARY_FILE="${POST_DEPLOY_K6_MATRIX_LATEST_SUMMARY_FILE:-$OPS_DIR/k6_matrix_summary_latest.md}"
 
 if [ -z "$DB_PASS" ]; then
   echo "DB_PASS nao definido."
@@ -131,14 +146,39 @@ fi
 echo "==> Pre-check: git status"
 git status --short || true
 
-echo "==> Backup"
-mkdir -p "$BACKUP_DIR"
-DB_BACKUP_FILE="${BACKUP_DIR}/db_$(date +%F_%H%M%S).sql.gz"
-APP_BACKUP_FILE="${BACKUP_DIR}/app_storage_env_$(date +%F_%H%M%S).tar.gz"
+echo "==> Pre-deploy backup"
+BACKUP_DIR="$BACKUP_DIR" \
+DB_HOST="$DB_HOST" \
+DB_PORT="$DB_PORT" \
+DB_NAME="$DB_NAME" \
+DB_USER="$DB_USER" \
+DB_PASS="$DB_PASS" \
+PRE_DEPLOY_BACKUP_ENV_FILE="$PRE_DEPLOY_BACKUP_ENV_FILE" \
+PRE_DEPLOY_BACKUP_LOG_FILE="$PRE_DEPLOY_BACKUP_LOG_FILE" \
+bash "$PRE_DEPLOY_BACKUP_SCRIPT"
 
-MYSQL_PWD="$DB_PASS" mysqldump --no-tablespaces -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" "$DB_NAME" \
-  | gzip > "$DB_BACKUP_FILE"
-tar -czf "$APP_BACKUP_FILE" storage .env
+if [ ! -f "$PRE_DEPLOY_BACKUP_ENV_FILE" ]; then
+  echo "FAIL: pre-deploy backup metadata not found: $PRE_DEPLOY_BACKUP_ENV_FILE"
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+. "$PRE_DEPLOY_BACKUP_ENV_FILE"
+
+if [ -z "${PRE_DEPLOY_BACKUP_MANIFEST:-}" ] || [ ! -f "$PRE_DEPLOY_BACKUP_MANIFEST" ]; then
+  echo "FAIL: pre-deploy backup manifest missing."
+  exit 1
+fi
+
+if [ -z "${PRE_DEPLOY_BACKUP_DB_FILE:-}" ] || [ ! -f "$PRE_DEPLOY_BACKUP_DB_FILE" ]; then
+  echo "FAIL: pre-deploy backup db file missing."
+  exit 1
+fi
+
+gzip -t "$PRE_DEPLOY_BACKUP_DB_FILE"
+
+echo "Backup manifest: $PRE_DEPLOY_BACKUP_MANIFEST"
+echo "Backup log: $PRE_DEPLOY_BACKUP_LOG_FILE"
 
 echo "==> Maintenance mode"
 php artisan down --retry=60
@@ -193,11 +233,66 @@ echo "==> Application up"
 php artisan up
 APP_DOWN=0
 
-echo "==> Health checks"
-curl -I "$APP_URL_VALUE"
-php artisan migrate:status | tail -n 15
-tail -n 80 storage/logs/laravel.log
+echo "==> Post-deploy healthcheck"
+mkdir -p "$OPS_DIR"
+APP_DIR="$APP_DIR" \
+BACKUP_DIR="$BACKUP_DIR" \
+OPS_DIR="$OPS_DIR" \
+APP_URL="$APP_URL_VALUE" \
+LOG_SINCE="${LOG_SINCE:-30 min ago}" \
+REQUIRE_QUEUE="${REQUIRE_QUEUE:-1}" \
+SENSITIVE_PATHS_CSV="${SENSITIVE_PATHS_CSV:-/.env,/.git/config,/storage/logs/laravel.log,/composer.json}" \
+PRE_DEPLOY_BACKUP_ENV_FILE="$PRE_DEPLOY_BACKUP_ENV_FILE" \
+POST_DEPLOY_HEALTHCHECK_ENV_FILE="$POST_DEPLOY_HEALTHCHECK_ENV_FILE" \
+POST_DEPLOY_HEALTHCHECK_LATEST_LOG_FILE="$POST_DEPLOY_HEALTHCHECK_LATEST_LOG_FILE" \
+bash "$POST_DEPLOY_HEALTHCHECK_SCRIPT"
+
+echo "==> Post-deploy smoke"
+APP_DIR="$APP_DIR" \
+BACKUP_DIR="$BACKUP_DIR" \
+OPS_DIR="$OPS_DIR" \
+K6_BASE_URL="$APP_URL_VALUE" \
+K6_DURATION="${K6_DURATION:-1m}" \
+K6_VUS="${K6_VUS:-1}" \
+K6_THINK_TIME_SECONDS="${K6_THINK_TIME_SECONDS:-0}" \
+K6_AUTH_PATHS="${K6_AUTH_PATHS:-/dashboard,/dashboard/account,/dashboard/hrm,/account/reports/mozambique-financial-compliance-dashboard,/account/reports/mozambique-go-live-readiness,/sales-invoices,/purchase-invoices,/hrm/reports/modelo19-support,/hrm/reports/inss-guide,/hrm/reports/accounting-journal-lines}" \
+SMOKE_LOGIN_EMAIL="${SMOKE_LOGIN_EMAIL:-${K6_LOGIN_EMAIL:-}}" \
+SMOKE_LOGIN_PASSWORD="${SMOKE_LOGIN_PASSWORD:-${K6_LOGIN_PASSWORD:-}}" \
+PRE_DEPLOY_BACKUP_ENV_FILE="$PRE_DEPLOY_BACKUP_ENV_FILE" \
+POST_DEPLOY_HEALTHCHECK_ENV_FILE="$POST_DEPLOY_HEALTHCHECK_ENV_FILE" \
+POST_DEPLOY_SMOKE_ENV_FILE="$POST_DEPLOY_SMOKE_ENV_FILE" \
+POST_DEPLOY_SMOKE_LOG_FILE="$POST_DEPLOY_SMOKE_LOG_FILE" \
+bash "$POST_DEPLOY_SMOKE_SCRIPT"
+
+echo "==> Post-deploy k6 matrix"
+APP_DIR="$APP_DIR" \
+BACKUP_DIR="$BACKUP_DIR" \
+OPS_DIR="$OPS_DIR" \
+K6_BASE_URL="$APP_URL_VALUE" \
+K6_DURATION="${K6_DURATION:-2m}" \
+K6_VUS_MATRIX="${K6_VUS_MATRIX:-25,50}" \
+K6_THINK_TIME_SECONDS="${K6_THINK_TIME_SECONDS:-1}" \
+K6_AUTH_PATHS="${K6_AUTH_PATHS:-/dashboard,/dashboard/account,/dashboard/hrm,/account/reports/mozambique-financial-compliance-dashboard,/account/reports/mozambique-go-live-readiness,/sales-invoices,/purchase-invoices,/hrm/reports/modelo19-support,/hrm/reports/inss-guide,/hrm/reports/accounting-journal-lines}" \
+K6_LOGIN_EMAIL="${K6_LOGIN_EMAIL:-${SMOKE_LOGIN_EMAIL:-}}" \
+K6_LOGIN_PASSWORD="${K6_LOGIN_PASSWORD:-${SMOKE_LOGIN_PASSWORD:-}}" \
+PRE_DEPLOY_BACKUP_ENV_FILE="$PRE_DEPLOY_BACKUP_ENV_FILE" \
+POST_DEPLOY_SMOKE_ENV_FILE="$POST_DEPLOY_SMOKE_ENV_FILE" \
+POST_DEPLOY_K6_MATRIX_ENV_FILE="$POST_DEPLOY_K6_MATRIX_ENV_FILE" \
+POST_DEPLOY_K6_MATRIX_LOG_FILE="$POST_DEPLOY_K6_MATRIX_LOG_FILE" \
+POST_DEPLOY_K6_MATRIX_LATEST_LOG_FILE="$POST_DEPLOY_K6_MATRIX_LATEST_LOG_FILE" \
+POST_DEPLOY_K6_MATRIX_LATEST_SUMMARY_FILE="$POST_DEPLOY_K6_MATRIX_LATEST_SUMMARY_FILE" \
+bash "$POST_DEPLOY_K6_MATRIX_SCRIPT"
 
 echo "Deploy concluido."
-echo "DB backup: $DB_BACKUP_FILE"
-echo "APP backup: $APP_BACKUP_FILE"
+echo "DB backup: $PRE_DEPLOY_BACKUP_DB_FILE"
+if [ -n "${PRE_DEPLOY_BACKUP_APP_FILE:-}" ]; then
+  echo "APP backup: $PRE_DEPLOY_BACKUP_APP_FILE"
+fi
+echo "Backup manifest: $PRE_DEPLOY_BACKUP_MANIFEST"
+echo "Healthcheck log: $POST_DEPLOY_HEALTHCHECK_LATEST_LOG_FILE"
+echo "Healthcheck metadata: $POST_DEPLOY_HEALTHCHECK_ENV_FILE"
+echo "Smoke log: $POST_DEPLOY_SMOKE_LOG_FILE"
+echo "Smoke metadata: $POST_DEPLOY_SMOKE_ENV_FILE"
+echo "K6 matrix log: $POST_DEPLOY_K6_MATRIX_LATEST_LOG_FILE"
+echo "K6 matrix summary: $POST_DEPLOY_K6_MATRIX_LATEST_SUMMARY_FILE"
+echo "K6 matrix metadata: $POST_DEPLOY_K6_MATRIX_ENV_FILE"

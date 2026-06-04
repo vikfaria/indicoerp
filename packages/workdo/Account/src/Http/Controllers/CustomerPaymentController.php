@@ -22,6 +22,7 @@ use Workdo\Account\Events\CreateCustomerPayment;
 use Workdo\Account\Events\UpdateCustomerPaymentStatus;
 use Workdo\Account\Events\DestroyCustomerPayment;
 use App\Services\ExchangeControlDossierService;
+use Workdo\Hrm\Models\Branch;
 
 class CustomerPaymentController extends Controller
 {
@@ -43,7 +44,7 @@ class CustomerPaymentController extends Controller
     public function index(Request $request)
     {
         if(Auth::user()->can('manage-customer-payments')){
-            $query = CustomerPayment::with(['customer', 'bankAccount', 'allocations.invoice', 'creditNoteApplications.creditNote'])
+            $query = CustomerPayment::with(['customer', 'bankAccount.branch', 'branch', 'allocations.invoice', 'creditNoteApplications.creditNote'])
                 ->where(function($q) {
                     if(Auth::user()->can('manage-any-customer-payments')) {
                         $q->where('created_by', creatorId());
@@ -100,7 +101,10 @@ class CustomerPaymentController extends Controller
                 })
                 ->values();
 
-            $bankAccounts = BankAccount::where('is_active', true)->where('created_by', creatorId())->get();
+            $bankAccounts = BankAccount::where('is_active', true)
+                ->where('created_by', creatorId())
+                ->with('branch')
+                ->get();
 
             return Inertia::render('Account/CustomerPayments/Index', [
                 'payments' => $payments,
@@ -127,6 +131,7 @@ class CustomerPaymentController extends Controller
                 $payment->payment_date = $request->payment_date;
                 $payment->customer_id = $request->customer_id;
                 $payment->bank_account_id = $request->bank_account_id;
+                $payment->branch_id = $this->resolveBankAccountBranchId((int) $request->bank_account_id);
                 $payment->payment_method = $request->payment_method;
                 $payment->mobile_money_provider = $request->payment_method === 'mobile_money' ? $request->mobile_money_provider : null;
                 $payment->mobile_money_number = $request->payment_method === 'mobile_money' ? $request->mobile_money_number : null;
@@ -194,6 +199,32 @@ class CustomerPaymentController extends Controller
         else{
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function resolveBankAccountBranchId(int $bankAccountId): ?int
+    {
+        $bankAccount = BankAccount::query()
+            ->where('id', $bankAccountId)
+            ->where('created_by', creatorId())
+            ->first();
+
+        if (!$bankAccount) {
+            return null;
+        }
+
+        if ((int) ($bankAccount->branch_id ?? 0) > 0) {
+            return (int) $bankAccount->branch_id;
+        }
+
+        $branchName = trim((string) $bankAccount->branch_name);
+        if ($branchName === '') {
+            return null;
+        }
+
+        return Branch::query()
+            ->where('created_by', creatorId())
+            ->whereRaw('LOWER(TRIM(branch_name)) = ?', [strtolower($branchName)])
+            ->value('id');
     }
 
 
@@ -531,11 +562,14 @@ class CustomerPaymentController extends Controller
             $riskFlags[] = 'gifim_threshold';
         }
 
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             $riskFlags[] = 'high_value_cash';
         }
 
-        if ($paymentMethod !== 'cash' && $amountMzn >= 750000) {
+        if ($paymentMethod !== 'cash' && $amountMzn >= $electronicThreshold) {
             $riskFlags[] = 'high_value_electronic';
         }
 
@@ -603,12 +637,15 @@ class CustomerPaymentController extends Controller
     private function resolveGifimThresholdCategory(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 

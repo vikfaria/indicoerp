@@ -45,7 +45,9 @@ class FixedAsset extends Model
      */
     public function getMonthlyDepreciation(): float
     {
-        if ($this->status !== 'active') return 0;
+        if ($this->status !== 'active' || $this->depreciation_method !== 'straight_line') {
+            return 0;
+        }
         $depreciableBase = $this->acquisition_cost - $this->residual_value;
         return round($depreciableBase / $this->useful_life_months, 2);
     }

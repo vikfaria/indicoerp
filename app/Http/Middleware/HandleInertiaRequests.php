@@ -119,6 +119,7 @@ class HandleInertiaRequests extends Middleware
                 'imageUrlPrefix' =>  getImageUrlPrefix(),
                 'baseUrl' => url('/'),
                 'currencies' => [],
+                'mozambiqueCompliance' => $this->getMozambiqueComplianceSettings(),
                 'defaultLanguages' => fn () => $this->getDefaultLanguages(),
                 'is_demo' => config('app.is_demo', false),
             ];
@@ -158,6 +159,7 @@ class HandleInertiaRequests extends Middleware
             'imageUrlPrefix' =>  getImageUrlPrefix(),
             'baseUrl' => url('/'),
             'currencies' => config('default_currency.currencies', []),
+            'mozambiqueCompliance' => $this->getMozambiqueComplianceSettings(),
             'defaultLanguages' => fn () => $this->getDefaultLanguages(),
             'is_demo' => config('app.is_demo', false),
         ];
@@ -170,6 +172,20 @@ class HandleInertiaRequests extends Middleware
         }
 
         return parent::onException($request, $exception);
+    }
+
+    private function getMozambiqueComplianceSettings(): array
+    {
+        return [
+            'gifim' => [
+                'cash_threshold_mzn' => (float) config('sce.gifim.cash_threshold_mzn', 250000),
+                'electronic_threshold_mzn' => (float) config('sce.gifim.electronic_threshold_mzn', 750000),
+                'electronic_payment_methods' => array_values(array_filter(array_map(
+                    static fn ($value): string => trim((string) $value),
+                    (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'])
+                ))),
+            ],
+        ];
     }
 
     /**

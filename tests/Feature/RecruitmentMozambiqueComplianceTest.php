@@ -100,12 +100,14 @@ class RecruitmentMozambiqueComplianceTest extends TestCase
                 'is_regulated_profession' => true,
                 'professional_license_type' => '',
                 'professional_license_number' => '',
+                'professional_license_document_path' => '',
             ])
         );
 
         $invalidResponse->assertSessionHasErrors([
             'professional_license_type',
             'professional_license_number',
+            'professional_license_document_path',
         ]);
 
         $validResponse = $this->actingAs($company)->post(
@@ -116,6 +118,7 @@ class RecruitmentMozambiqueComplianceTest extends TestCase
                 'professional_license_type' => 'Ordem Profissional',
                 'professional_license_number' => 'OP-223344',
                 'professional_license_expiry_date' => Carbon::now()->addYear()->toDateString(),
+                'professional_license_document_path' => '/docs/licenses/op-223344.pdf',
             ])
         );
 
@@ -124,6 +127,62 @@ class RecruitmentMozambiqueComplianceTest extends TestCase
             'email' => 'regulated-with-license@example.com',
             'is_regulated_profession' => true,
             'professional_license_number' => 'OP-223344',
+            'professional_license_document_path' => 'docs/licenses/op-223344.pdf',
+        ]);
+    }
+
+    public function test_requires_professional_license_document_on_candidate_update(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-candidates', 'edit-candidates', 'manage-any-candidates']);
+
+        $source = $this->makeCandidateSource($company);
+        $jobPosting = $this->makeJobPosting($company);
+
+        $this->actingAs($company)->post(
+            route('recruitment.candidates.store'),
+            $this->candidatePayload($jobPosting, $source, [
+                'email' => 'regulated-update@example.com',
+                'is_regulated_profession' => true,
+                'professional_license_type' => 'Ordem Profissional',
+                'professional_license_number' => 'OP-998877',
+                'professional_license_expiry_date' => Carbon::now()->addYear()->toDateString(),
+                'professional_license_document_path' => '/docs/licenses/op-998877.pdf',
+            ])
+        )->assertRedirect(route('recruitment.candidates.index'));
+
+        $candidate = \Workdo\Recruitment\Models\Candidate::where('email', 'regulated-update@example.com')->firstOrFail();
+
+        $invalidResponse = $this->actingAs($company)->put(
+            route('recruitment.candidates.update', $candidate),
+            $this->candidatePayload($jobPosting, $source, [
+                'email' => 'regulated-update@example.com',
+                'is_regulated_profession' => true,
+                'professional_license_type' => 'Ordem Profissional',
+                'professional_license_number' => 'OP-998877',
+                'professional_license_expiry_date' => Carbon::now()->addYear()->toDateString(),
+                'professional_license_document_path' => '',
+            ])
+        );
+
+        $invalidResponse->assertSessionHasErrors(['professional_license_document_path']);
+
+        $validResponse = $this->actingAs($company)->put(
+            route('recruitment.candidates.update', $candidate),
+            $this->candidatePayload($jobPosting, $source, [
+                'email' => 'regulated-update@example.com',
+                'is_regulated_profession' => true,
+                'professional_license_type' => 'Ordem Profissional',
+                'professional_license_number' => 'OP-998877',
+                'professional_license_expiry_date' => Carbon::now()->addYear()->toDateString(),
+                'professional_license_document_path' => '/docs/licenses/op-998877-v2.pdf',
+            ])
+        );
+
+        $validResponse->assertRedirect();
+        $this->assertDatabaseHas('candidates', [
+            'id' => $candidate->id,
+            'professional_license_document_path' => 'docs/licenses/op-998877-v2.pdf',
         ]);
     }
 
@@ -187,6 +246,7 @@ class RecruitmentMozambiqueComplianceTest extends TestCase
             'professional_license_type' => '',
             'professional_license_number' => '',
             'professional_license_expiry_date' => null,
+            'professional_license_document_path' => '',
             'minor_work_authorization_path' => '',
             'legal_exception_notes' => '',
             'country' => 'Mozambique',

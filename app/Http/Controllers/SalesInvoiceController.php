@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\SalesInvoice;
 use App\Models\SalesInvoiceItem;
 use App\Models\SalesInvoiceItemTax;
+use App\Models\MzVatCode;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Http\Requests\StoreSalesInvoiceRequest;
@@ -131,10 +132,12 @@ class SalesInvoiceController extends Controller
         if(Auth::user()->can('create-sales-invoices')){
             $customers = User::where('type', 'client')->select('id', 'name', 'email')->where('created_by', creatorId())->get();
             $warehouses = Warehouse::where('is_active', true)->select('id', 'name', 'address')->where('created_by', creatorId())->get();
+            $vatCodes = $this->loadVatCodes();
 
             return Inertia::render('Sales/Create', [
                 'customers' => $customers,
                 'warehouses' => $warehouses,
+                'vatCodes' => $vatCodes,
                 'modules' => [
                     'recurringinvoicebill' => module_is_active('RecurringInvoiceBill')
                 ]
@@ -227,8 +230,10 @@ class SalesInvoiceController extends Controller
                 return redirect()->route('sales-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($salesInvoice->status != 'draft') {
-                return redirect()->route('sales-invoices.index')->with('error', __('Cannot update posted invoice.'));
+            try {
+                $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
+            } catch (ValidationException $e) {
+                return redirect()->route('sales-invoices.index')->with('error', $e->validator->errors()->first());
             }
 
             $salesInvoice->load(['items.taxes']);
@@ -237,11 +242,13 @@ class SalesInvoiceController extends Controller
 
             $customers = User::where('type', 'client')->select('id', 'name', 'email')->where('created_by', creatorId())->get();
             $warehouses = Warehouse::where('is_active', true)->select('id', 'name', 'address')->where('created_by', creatorId())->get();
+            $vatCodes = $this->loadVatCodes();
 
             return Inertia::render('Sales/Edit', [
                 'invoice' => $salesInvoice,
                 'customers' => $customers,
                 'warehouses' => $warehouses,
+                'vatCodes' => $vatCodes,
                 'modules' => [
                     'recurringinvoicebill' => module_is_active('RecurringInvoiceBill')
                 ]
@@ -259,15 +266,10 @@ class SalesInvoiceController extends Controller
                 return redirect()->route('sales-invoices.index')->with('error', __('Permission denied'));
             }
 
-            if ($salesInvoice->status != 'draft') {
-                return redirect()->route('sales-invoices.index')->with('error', __('Cannot update posted invoice.'));
-            }
-
-            // SCE: Enforce fiscal immutability for submitted/validated documents
             try {
                 $this->fiscalValidationService->validateDocumentMutable($salesInvoice);
             } catch (ValidationException $e) {
-                return back()->with('error', $e->validator->errors()->first());
+                return redirect()->route('sales-invoices.index')->with('error', $e->validator->errors()->first());
             }
 
             try {
@@ -383,19 +385,50 @@ class SalesInvoiceController extends Controller
             $item->tax_exemption_reason = $itemData['tax_exemption_reason'] ?? null;
             $item->save();
 
-            // Store individual taxes
-            if (isset($itemData['taxes']) && is_array($itemData['taxes'])) {
-                foreach ($itemData['taxes'] as $tax) {
-                    $salesInvoiceItemTax = new SalesInvoiceItemTax();
-                    $salesInvoiceItemTax->item_id = $item->id;
-                    $salesInvoiceItemTax->tax_name = $tax['tax_name'];
-                    $salesInvoiceItemTax->tax_rate = $tax['tax_rate'] ?? $tax['rate'] ?? 0;
-                    $salesInvoiceItemTax->vat_code = $tax['vat_code'] ?? $item->vat_code;
-                    $salesInvoiceItemTax->tax_exemption_reason = $tax['tax_exemption_reason'] ?? $item->tax_exemption_reason;
-                    $salesInvoiceItemTax->save();
-                }
+            $taxRows = [];
+            if (isset($itemData['taxes']) && is_array($itemData['taxes']) && !empty($itemData['taxes'])) {
+                $taxRows = $itemData['taxes'];
+            } elseif (trim((string) $item->vat_code) !== '' || (float) $item->tax_percentage > 0 || trim((string) $item->tax_exemption_reason) !== '') {
+                $vatDefinition = MzVatCode::query()
+                    ->where('code', $item->vat_code)
+                    ->first();
+
+                $taxRows = [[
+                    'tax_name' => $vatDefinition?->description ?? ($item->vat_code ?: 'IVA'),
+                    'tax_rate' => $item->tax_percentage ?? 0,
+                    'vat_code' => $item->vat_code,
+                    'tax_exemption_reason' => $item->tax_exemption_reason,
+                ]];
+            }
+
+            foreach ($taxRows as $tax) {
+                $salesInvoiceItemTax = new SalesInvoiceItemTax();
+                $salesInvoiceItemTax->item_id = $item->id;
+                $salesInvoiceItemTax->tax_name = $tax['tax_name'] ?? ($item->vat_code ?: 'IVA');
+                $salesInvoiceItemTax->tax_rate = $tax['tax_rate'] ?? $tax['rate'] ?? $item->tax_percentage ?? 0;
+                $salesInvoiceItemTax->vat_code = $tax['vat_code'] ?? $item->vat_code;
+                $salesInvoiceItemTax->tax_exemption_reason = $tax['tax_exemption_reason'] ?? $item->tax_exemption_reason;
+                $salesInvoiceItemTax->save();
             }
         }
+    }
+
+    private function loadVatCodes(): array
+    {
+        return MzVatCode::query()
+            ->active()
+            ->orderBy('code')
+            ->get(['code', 'description', 'rate', 'type', 'saft_tax_code'])
+            ->map(static function (MzVatCode $vatCode): array {
+                return [
+                    'code' => $vatCode->code,
+                    'description' => $vatCode->description,
+                    'rate' => (float) $vatCode->rate,
+                    'type' => $vatCode->type,
+                    'saft_tax_code' => $vatCode->saft_tax_code,
+                ];
+            })
+            ->all();
     }
 
     private function resolveLegalIssueCompliance(string $operationDate, string $invoiceDate, ?string $lateIssueReason): array

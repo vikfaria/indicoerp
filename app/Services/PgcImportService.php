@@ -219,43 +219,167 @@ class PgcImportService
 
     /**
      * Validate the PGC structure for a company.
+     *
+     * @return array<int, string>
      */
-    public function validateStructure(int $companyId): array
+    public function validateStructure(int $companyId, ?string $framework = null): array
     {
-        $issues = [];
+        return $this->buildValidationReport($companyId, $framework)['errors'];
+    }
 
-        $accounts = ChartOfAccount::where('created_by', $companyId)
+    /**
+     * Build a validation report for the official PGC catalog imported in the company.
+     *
+     * @return array{
+     *     framework: string,
+     *     profile_framework: string|null,
+     *     catalog_count: int,
+     *     company_pgc_count: int,
+     *     legacy_active_count: int,
+     *     missing_classes: array<int>,
+     *     missing_codes: array<int, string>,
+     *     extra_codes: array<int, string>,
+     *     class_coverage: array<int, array{class:int,label:string,official_count:int,company_count:int}>,
+     *     warnings: array<int, string>,
+     *     errors: array<int, string>,
+     *     valid: bool,
+     * }
+     */
+    public function buildValidationReport(int $companyId, ?string $framework = null): array
+    {
+        $resolvedFramework = $framework ?: 'pgc_nirf';
+        $profile = CompanyFiscalProfile::query()
+            ->where('company_id', $companyId)
             ->where('is_active', true)
-            ->whereNotNull('pgc_class')
+            ->first();
+
+        $catalog = PgcAccountCatalog::query()
+            ->where('framework', $resolvedFramework)
             ->orderBy('account_code')
             ->get();
 
-        // Check all required classes exist (1-9, 0 optional).
-        $classesFound = $accounts->pluck('pgc_class')->unique()->sort()->values()->toArray();
-        $requiredClasses = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        $companyAccounts = ChartOfAccount::query()
+            ->where('created_by', $companyId)
+            ->where('is_active', true)
+            ->get();
 
-        foreach ($requiredClasses as $class) {
-            if (!in_array($class, $classesFound)) {
-                $issues[] = "Classe {$class} não tem contas activas.";
-            }
+        if ($catalog->isEmpty()) {
+            return [
+                'framework' => $resolvedFramework,
+                'profile_framework' => $profile?->accounting_framework,
+                'catalog_count' => 0,
+                'company_pgc_count' => 0,
+                'legacy_active_count' => 0,
+                'missing_classes' => [],
+                'missing_codes' => [],
+                'extra_codes' => [],
+                'class_coverage' => [],
+                'warnings' => [],
+                'errors' => [
+                    __('Catálogo PGC não encontrado. Execute o seeder primeiro.'),
+                ],
+                'valid' => false,
+            ];
         }
 
-        // Check movement accounts exist
-        $movementCount = $accounts->where('is_movement_account', true)->count();
-        if ($movementCount === 0) {
-            $issues[] = 'Não existem contas de movimento. Verifique a flag is_movement_account.';
+        $officialAccounts = $companyAccounts->filter(function (ChartOfAccount $account) use ($resolvedFramework): bool {
+            return $account->pgc_class !== null
+                && (string) ($account->accounting_framework ?? '') === $resolvedFramework;
+        })->values();
+
+        $legacyActiveAccounts = $companyAccounts->filter(function (ChartOfAccount $account) use ($resolvedFramework): bool {
+            return $account->is_active
+                && (
+                    $account->pgc_class === null
+                    || (string) ($account->accounting_framework ?? '') !== $resolvedFramework
+                );
+        })->values();
+
+        $warnings = [];
+        $errors = [];
+
+        if ($profile !== null && (string) $profile->accounting_framework !== $resolvedFramework) {
+            $warnings[] = __('O perfil fiscal activo sugere :suggested, mas a validação está a ser executada sobre :framework.', [
+                'suggested' => $profile->accounting_framework,
+                'framework' => $resolvedFramework,
+            ]);
         }
 
-        // Check essential accounts exist
-        $essentialCodes = ['11', '12', '211', '221', '2432', '2433', '51', '56', '71', '61', '81'];
+        $classesFound = $officialAccounts
+            ->pluck('pgc_class')
+            ->filter(fn ($class): bool => $class !== null)
+            ->map(fn ($class): int => (int) $class)
+            ->unique()
+            ->sort()
+            ->values()
+            ->toArray();
+
+        $requiredClasses = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        $missingClasses = array_values(array_diff($requiredClasses, $classesFound));
+
+        foreach ($missingClasses as $class) {
+            $errors[] = __('Classe :class não tem contas PGC activas.', ['class' => $class]);
+        }
+
+        $catalogCodes = $catalog->pluck('account_code')->values()->all();
+        $officialCodes = $officialAccounts->pluck('account_code')->values()->all();
+        $missingCodes = array_values(array_diff($catalogCodes, $officialCodes));
+        $extraCodes = array_values(array_diff($officialCodes, $catalogCodes));
+
+        if (!empty($missingCodes)) {
+            $errors[] = __('Faltam :count contas oficiais PGC no catálogo importado. Exemplos: :codes', [
+                'count' => count($missingCodes),
+                'codes' => $this->summariseCodes($missingCodes),
+            ]);
+        }
+
+        if (!empty($extraCodes)) {
+            $warnings[] = __('Existem :count contas PGC activas fora do catálogo oficial. Exemplos: :codes', [
+                'count' => count($extraCodes),
+                'codes' => $this->summariseCodes($extraCodes),
+            ]);
+        }
+
+        $essentialCodes = ['0', '9', '11', '12', '211', '221', '2432', '2433', '51', '56', '71', '61', '81'];
         foreach ($essentialCodes as $code) {
-            $found = $accounts->first(fn ($a) => str_starts_with($a->account_code, $code));
+            $found = $officialAccounts->first(fn ($account) => str_starts_with((string) $account->account_code, $code));
             if (!$found) {
-                $issues[] = "Conta essencial '{$code}' não encontrada.";
+                $errors[] = __('Conta essencial ":code" não encontrada no PGC oficial.', ['code' => $code]);
             }
         }
 
-        return $issues;
+        $classCoverage = collect($requiredClasses)
+            ->map(function (int $class) use ($catalog, $officialAccounts): array {
+                return [
+                    'class' => $class,
+                    'label' => $this->resolveClassLabel($class),
+                    'official_count' => $catalog->where('class_number', $class)->count(),
+                    'company_count' => $officialAccounts->where('pgc_class', $class)->count(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        if ($legacyActiveAccounts->isNotEmpty()) {
+            $warnings[] = __('Existem :count contas legadas activas sem reconciliação PGC.', [
+                'count' => $legacyActiveAccounts->count(),
+            ]);
+        }
+
+        return [
+            'framework' => $resolvedFramework,
+            'profile_framework' => $profile?->accounting_framework,
+            'catalog_count' => $catalog->count(),
+            'company_pgc_count' => $officialAccounts->count(),
+            'legacy_active_count' => $legacyActiveAccounts->count(),
+            'missing_classes' => $missingClasses,
+            'missing_codes' => $missingCodes,
+            'extra_codes' => $extraCodes,
+            'class_coverage' => $classCoverage,
+            'warnings' => $warnings,
+            'errors' => $errors,
+            'valid' => empty($errors),
+        ];
     }
 
     /**
@@ -350,5 +474,37 @@ class PgcImportService
         $cache[$cacheKey] = $category->id;
 
         return $category->id;
+    }
+
+    private function resolveClassLabel(int $class): string
+    {
+        return match ($class) {
+            0 => 'Contas de Ordem',
+            1 => 'Meios Financeiros Líquidos',
+            2 => 'Contas a Receber e a Pagar',
+            3 => 'Inventários e Activos Biológicos',
+            4 => 'Investimentos',
+            5 => 'Capital, Reservas e Resultados Transitados',
+            6 => 'Gastos e Perdas',
+            7 => 'Rendimentos e Ganhos',
+            8 => 'Resultados',
+            9 => 'Contabilidade Analítica e de Gestão',
+            default => 'Outros',
+        };
+    }
+
+    /**
+     * @param array<int, string> $codes
+     */
+    private function summariseCodes(array $codes, int $limit = 5): string
+    {
+        $sample = array_slice($codes, 0, $limit);
+        $summary = implode(', ', $sample);
+
+        if (count($codes) > $limit) {
+            $summary .= '…';
+        }
+
+        return $summary;
     }
 }

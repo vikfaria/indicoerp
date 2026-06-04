@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CompanyFiscalProfile;
+use App\Models\FiscalCalendarEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -59,5 +60,39 @@ class SyncFiscalCalendarCommandTest extends TestCase
             'obligation_type' => 'vat',
             'status' => 'pending',
         ]);
+
+        $this->assertSame(54, FiscalCalendarEvent::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query): void {
+                $query->where('reference_period', '2026')
+                    ->orWhere('reference_period', 'like', '2026-%');
+            })
+            ->count());
+
+        $this->assertSame(54, FiscalCalendarEvent::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query): void {
+                $query->where('reference_period', '2027')
+                    ->orWhere('reference_period', 'like', '2027-%');
+            })
+            ->count());
+
+        $this->assertTrue(FiscalCalendarEvent::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'IVA-2026-1')
+            ->whereDate('due_date', '2026-02-20')
+            ->exists());
+
+        $this->assertTrue(FiscalCalendarEvent::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'INSS-2026-12')
+            ->whereDate('due_date', '2027-01-10')
+            ->exists());
+
+        $this->assertTrue(FiscalCalendarEvent::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'M20-2026')
+            ->whereDate('due_date', '2027-05-31')
+            ->exists());
     }
 }

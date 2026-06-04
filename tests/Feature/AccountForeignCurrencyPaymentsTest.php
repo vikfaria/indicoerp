@@ -22,6 +22,7 @@ use Workdo\Account\Models\ExchangeControlDossier;
 use Workdo\Account\Models\Vendor;
 use Workdo\Account\Models\VendorPayment;
 use Workdo\Account\Services\ReportService;
+use Workdo\Hrm\Models\Branch;
 use Workdo\ProductService\Models\ProductServiceItem;
 
 class AccountForeignCurrencyPaymentsTest extends TestCase
@@ -458,6 +459,10 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
             'fiscal_compliance_reference' => 'WHT-2026-0001',
             'financial_approval_reference' => 'FIN-APP-2026-0009',
             'fx_authorization_reference' => 'BM-AUT-2026-007',
+            'contract_reference' => 'CTR-2026-0001',
+            'invoice_reference' => 'FR-FX-VEND-001',
+            'bank_settlement_reference' => 'BANK-SETTLE-2026-0001',
+            'withholding_receipt_reference' => 'WHT-REC-2026-0001',
             'notes' => 'Pagamento em EUR com diferença cambial reconhecida.',
             'allocations' => [
                 ['invoice_id' => $invoice->id, 'amount' => 1000],
@@ -789,6 +794,15 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
             'status' => 'pending',
         ]);
 
+        $this->assertDatabaseHas('vendor_payments', [
+            'reference_number' => 'FX-VEND-003',
+            'contract_reference' => 'CTR-2026-0003',
+            'invoice_reference' => 'FR-FX-VEND-003',
+            'bank_settlement_reference' => 'BANK-SETTLE-2026-0003',
+            'withholding_receipt_reference' => 'WHT-REC-2026-0003',
+            'correspondence_reference' => 'MAIL-BANK-2026-0003',
+        ]);
+
         $dossier = ExchangeControlDossier::query()
             ->where('company_id', $company->id)
             ->where('direction', 'outbound')
@@ -802,6 +816,87 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
         $this->assertSame('BANK-SETTLE-2026-0003', data_get($dossier->documents, 'bank_settlement_reference'));
         $this->assertSame('WHT-REC-2026-0003', data_get($dossier->documents, 'withholding_receipt_reference'));
         $this->assertSame('BM-AUT-2026-015', data_get($dossier->documents, 'fx_authorization_reference'));
+    }
+
+    public function test_vendor_payment_requires_document_chain_references_for_international_remittance(): void
+    {
+        $company = $this->makeCompany();
+        $vendorUser = $this->makeCounterpartyUser($company, 'vendor');
+        $bankAccount = $this->makeBankAccount($company);
+        $this->grantPermissions($company, ['create-vendor-payments']);
+        $this->seedWithholdingRule(
+            code: 'IRPC-SRV-NR-DOC',
+            incomeType: 'services',
+            appliesTo: 'non_resident',
+            rate: 20
+        );
+
+        Vendor::create([
+            'user_id' => $vendorUser->id,
+            'company_name' => 'Fornecedor Internacional Documentos',
+            'contact_person_name' => 'Gestor Fiscal',
+            'tax_number' => '400123461',
+            'fiscal_residency_status' => 'non_resident',
+            'fiscal_country' => 'Portugal',
+            'withholding_tax_applicable' => true,
+            'billing_address' => ['country' => 'Portugal'],
+            'shipping_address' => ['country' => 'Portugal'],
+            'same_as_billing' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $invoice = PurchaseInvoice::create([
+            'invoice_number' => 'FR-FX-VEND-DOC-001',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(10)->toDateString(),
+            'vendor_id' => $vendorUser->id,
+            'subtotal' => 1500,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 1500,
+            'paid_amount' => 0,
+            'balance_amount' => 1500,
+            'status' => 'posted',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->from(route('account.vendor-payments.index'))->actingAs($company)->post(route('account.vendor-payments.store'), [
+            'payment_date' => now()->toDateString(),
+            'vendor_id' => $vendorUser->id,
+            'bank_account_id' => $bankAccount->id,
+            'payment_method' => 'bank_transfer',
+            'reference_number' => 'FX-VEND-DOC-001',
+            'payment_amount' => 1500,
+            'currency_code' => 'EUR',
+            'exchange_rate' => 75,
+            'foreign_amount' => 20,
+            'is_international_payment' => true,
+            'beneficiary_country' => 'Portugal',
+            'service_type' => 'consulting',
+            'withholding_tax_treatment' => 'withheld',
+            'withholding_tax_rate' => 20,
+            'withholding_tax_amount' => 300,
+            'fiscal_compliance_reference' => 'WHT-DOC-001',
+            'financial_approval_reference' => 'FIN-DOC-001',
+            'fx_authorization_reference' => 'FX-DOC-001',
+            'allocations' => [
+                ['invoice_id' => $invoice->id, 'amount' => 1500],
+            ],
+            'debit_notes' => [],
+        ]);
+
+        $response->assertRedirect(route('account.vendor-payments.index'));
+        $response->assertSessionHasErrors([
+            'contract_reference',
+            'invoice_reference',
+            'bank_settlement_reference',
+            'withholding_receipt_reference',
+        ]);
+        $this->assertDatabaseMissing('vendor_payments', [
+            'reference_number' => 'FX-VEND-DOC-001',
+        ]);
     }
 
     public function test_vendor_payment_with_adt_reduced_rate_requires_configured_treaty_rate(): void
@@ -1224,7 +1319,9 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
 
         $this->assertNotNull($dossier);
         $this->assertSame('EXP-REP-EP-001', data_get($dossier->documents, 'invoice_reference'));
+        $this->assertSame('EXP-REP-EP-001', data_get($dossier->documents, 'export_reference'));
         $this->assertSame('FX-REP-COMP-001', data_get($dossier->documents, 'bank_settlement_reference'));
+        $this->assertSame('Banco Intermediário', data_get($dossier->documents, 'intermediary_bank'));
         $this->assertSame('South Africa', (string) ($dossier->counterparty_country ?? ''));
 
         $auditEntry = AuditTrail::query()
@@ -1238,6 +1335,61 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
         $this->assertSame('account.reports.mozambique-exchange-control-report.repatriation', $auditEntry->route);
         $this->assertSame('completed', (string) data_get($auditEntry->changes, 'repatriation_status'));
         $this->assertSame('FX-REP-COMP-001', (string) data_get($auditEntry->changes, 'fx_compliance_reference'));
+    }
+
+    public function test_exchange_control_repatriation_requires_document_chain_for_completed_status(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+        $this->actingAs($company);
+
+        $customerUser = $this->makeCounterpartyUser($company, 'client');
+        Customer::create([
+            'user_id' => $customerUser->id,
+            'company_name' => 'Cliente Exportador Legacy',
+            'contact_person_name' => 'Financeiro',
+            'contact_person_email' => 'financeiro@legacy.test',
+            'fiscal_residency_status' => 'resident',
+            'fiscal_country' => 'Mozambique',
+            'billing_address' => ['country' => 'Mozambique'],
+            'shipping_address' => ['country' => 'Mozambique'],
+            'same_as_billing' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $payment = CustomerPayment::create([
+            'payment_date' => now()->toDateString(),
+            'customer_id' => $customerUser->id,
+            'bank_account_id' => $this->makeBankAccount($company)->id,
+            'payment_method' => 'bank_transfer',
+            'reference_number' => 'FX-LEGACY-001',
+            'payment_amount' => 900,
+            'currency_code' => 'USD',
+            'exchange_rate' => 63.5,
+            'foreign_amount' => 14.2,
+            'amount_mzn' => 900,
+            'is_export_receipt' => true,
+            'receipt_origin_country' => 'South Africa',
+            'repatriation_status' => 'pending',
+            'status' => 'pending',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->postJson(route('account.reports.mozambique-exchange-control-report.repatriation'), [
+            'payment_id' => $payment->id,
+            'repatriation_status' => 'completed',
+            'repatriated_amount_mzn' => 900,
+            'fx_compliance_reference' => 'FX-LEGACY-COMP-001',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['export_reference', 'intermediary_bank']);
+        $this->assertDatabaseHas('customer_payments', [
+            'id' => $payment->id,
+            'repatriation_status' => 'pending',
+        ]);
     }
 
     public function test_exchange_control_dossier_endpoint_supports_partial_and_complete_workflow(): void
@@ -1738,6 +1890,57 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
             'export_type' => 'gifim_communication_notice',
             'status' => 'generated',
         ]);
+    }
+
+    public function test_gifim_communication_endpoint_rejects_operations_that_do_not_require_gifim_reporting(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports']);
+        $this->actingAs($company);
+
+        $vendorUser = $this->makeCounterpartyUser($company, 'vendor');
+        Vendor::create([
+            'user_id' => $vendorUser->id,
+            'company_name' => 'Fornecedor GIFiM Não Obrigatório',
+            'contact_person_name' => 'Compliance',
+            'fiscal_residency_status' => 'resident',
+            'fiscal_country' => 'Mozambique',
+            'billing_address' => ['country' => 'Mozambique'],
+            'shipping_address' => ['country' => 'Mozambique'],
+            'same_as_billing' => true,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $payment = VendorPayment::create([
+            'payment_date' => now()->toDateString(),
+            'vendor_id' => $vendorUser->id,
+            'bank_account_id' => $this->makeBankAccount($company)->id,
+            'payment_method' => 'bank_transfer',
+            'reference_number' => 'GIFIM-NOT-REQ-001',
+            'payment_amount' => 12500,
+            'currency_code' => 'MZN',
+            'amount_mzn' => 12500,
+            'status' => 'pending',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->postJson(route('account.reports.mozambique-gifim-compliance-report.communicate'), [
+            'direction' => 'outbound',
+            'payment_id' => $payment->id,
+            'gifim_reference' => 'GIFIM-NOT-REQ-001',
+            'gifim_submitted_document' => 'comprovativo-gifim-not-req.pdf',
+            'high_value_approval_reference' => 'FIN-APP-NOT-REQ-001',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['payment_id']);
+
+        $payment->refresh();
+        $this->assertNotSame('communicated', $payment->gifim_alert_status);
+        $this->assertNull($payment->gifim_reference);
+        $this->assertNull($payment->gifim_reported_by);
     }
 
     public function test_vendor_mobile_money_payment_blocks_when_electronic_money_monthly_limit_is_exceeded(): void
@@ -3374,7 +3577,7 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
 
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $company = User::factory()->create([
             'type' => 'company',
             'created_by' => null,
             'creator_id' => null,
@@ -3382,6 +3585,18 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+
+        Branch::query()->firstOrCreate(
+            [
+                'branch_name' => 'Maputo',
+                'created_by' => $company->id,
+            ],
+            [
+                'creator_id' => $company->id,
+            ]
+        );
+
+        return $company;
     }
 
     private function makeCounterpartyUser(User $company, string $type): User
@@ -3396,11 +3611,18 @@ class AccountForeignCurrencyPaymentsTest extends TestCase
 
     private function makeBankAccount(User $company, string $accountType = 'current'): BankAccount
     {
+        $branch = \Workdo\Hrm\Models\Branch::query()->create([
+            'branch_name' => 'Maputo',
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
         return BankAccount::create([
             'account_number' => 'FX-001',
             'account_name' => 'Conta Operacional',
             'bank_name' => 'Banco Teste',
             'branch_name' => 'Maputo',
+            'branch_id' => $branch->id,
             'account_type' => $accountType,
             'opening_balance' => 0,
             'current_balance' => 0,

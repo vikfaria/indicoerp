@@ -39,6 +39,7 @@ export default function Edit({ customer, onSuccess }: EditCustomerProps) {
         operation_type: customer.operation_type ?? '',
         billing_currency_code: (customer.billing_currency_code ?? 'MZN').toUpperCase(),
         accounting_account_code: customer.accounting_account_code ?? '',
+        fiscal_identity_lock_reason: customer.fiscal_identity_lock_reason ?? '',
         payment_terms: customer.payment_terms ?? '',
         billing_address: customer.billing_address ?? {
             name: '',
@@ -231,6 +232,17 @@ export default function Edit({ customer, onSuccess }: EditCustomerProps) {
                         placeholder={t('Optional accounting account code')}
                     />
                     <InputError message={errors.accounting_account_code} />
+                </div>
+                <div>
+                    <Label htmlFor="fiscal_identity_lock_reason">{t('Fiscal Lock Reason')}</Label>
+                    <Textarea
+                        id="fiscal_identity_lock_reason"
+                        value={data.fiscal_identity_lock_reason ?? ''}
+                        onChange={(e) => setData('fiscal_identity_lock_reason', e.target.value)}
+                        placeholder={t('Required only when overriding critical fiscal data after documents have been issued')}
+                        rows={3}
+                    />
+                    <InputError message={errors.fiscal_identity_lock_reason} />
                 </div>
                 <div>
                     <Label htmlFor="billing_name">{t('Billing Name')}</Label>

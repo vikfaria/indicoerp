@@ -26,6 +26,14 @@ export interface SalesInvoice {
     items?: SalesInvoiceItem[];
 }
 
+export interface VatCodeOption {
+    code: string;
+    description: string;
+    rate: number;
+    type: string;
+    saft_tax_code?: string;
+}
+
 export interface SalesInvoiceItem {
     id?: number;
     invoice_id?: number;
@@ -35,9 +43,11 @@ export interface SalesInvoiceItem {
     discount_percentage: number;
     discount_amount: number;
     tax_percentage: number;
+    vat_code?: string | null;
+    tax_exemption_reason?: string | null;
     tax_amount: number;
     total_amount: number;
-    taxes?: Array<{id?: number; tax_name: string; tax_rate: number}>;
+    taxes?: Array<{id?: number; tax_name: string; tax_rate: number; vat_code?: string | null; tax_exemption_reason?: string | null}>;
     product?: ProductServiceItem;
 }
 

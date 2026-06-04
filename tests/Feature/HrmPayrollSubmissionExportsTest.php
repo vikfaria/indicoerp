@@ -739,7 +739,8 @@ class HrmPayrollSubmissionExportsTest extends TestCase
         $csvResponse->assertSee('Harassment Case', false);
         $csvResponse->assertSee('Response Deadline Overdue', false);
         $csvResponse->assertSee('Funcionario Disciplina', false);
-        $csvResponse->assertSee('466778899', false);
+        $csvResponse->assertSee('46*****99', false);
+        $csvResponse->assertDontSee('466778899', false);
         $csvResponse->assertDontSee('OUTSIDE DISCIPLINARY EMPLOYEE', false);
 
         $jsonResponse = $this->actingAs($company)->get(route(
@@ -752,6 +753,59 @@ class HrmPayrollSubmissionExportsTest extends TestCase
         $jsonResponse->assertJsonPath('summary.cases_total', 2);
         $jsonResponse->assertJsonPath('summary.disciplinary_cases_total', 1);
         $jsonResponse->assertJsonPath('summary.harassment_cases_total', 1);
+        collect((array) $jsonResponse->json('rows'))->each(function (array $row): void {
+            $this->assertSame('46*****99', $row['employee_nuit'] ?? null);
+        });
+    }
+
+    public function test_disciplinary_report_export_exposes_sensitive_data_with_sensitive_permission(): void
+    {
+        $company = $this->makeCompany();
+        $employeeUser = $this->makeEmployeeUser($company, 'Funcionario Disciplina Sensivel');
+
+        Employee::query()->create([
+            'employee_id' => 'EMP-DISC-SENS-001',
+            'user_id' => $employeeUser->id,
+            'tax_payer_id' => '488990011',
+            'employment_type' => 'GENERAL',
+            'basic_salary' => 32000,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        Warning::query()->create([
+            'employee_id' => $employeeUser->id,
+            'subject' => 'Atrasos sensiveis',
+            'severity' => 'high',
+            'warning_date' => '2026-05-10',
+            'response_deadline_at' => '2026-05-15',
+            'decision_deadline_at' => '2026-05-25',
+            'description' => 'Registo disciplinar sensivel.',
+            'warning_by' => $company->id,
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $this->grantPermissions($company, ['view-payrolls', 'view-sensitive-employee-data']);
+
+        $csvResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.disciplinary-cases.export',
+            ['reference_period' => '2026-05']
+        ));
+
+        $csvResponse->assertOk();
+        $csvResponse->assertSee('488990011', false);
+        $csvResponse->assertDontSee('48*****11', false);
+
+        $jsonResponse = $this->actingAs($company)->get(route(
+            'hrm.mozambique-payroll-compliance.reports.disciplinary-cases.json',
+            ['reference_period' => '2026-05']
+        ));
+
+        $jsonResponse->assertOk();
+        collect((array) $jsonResponse->json('rows'))->each(function (array $row): void {
+            $this->assertSame('488990011', $row['employee_nuit'] ?? null);
+        });
     }
 
     public function test_annual_leave_report_export_returns_leave_columns_and_is_company_scoped(): void

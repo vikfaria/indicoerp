@@ -37,9 +37,11 @@ class ExchangeControlDossierService
         $incomingDocuments = [
             'contract_reference' => trim((string) ($documents['contract_reference'] ?? '')),
             'invoice_reference' => trim((string) ($payment->export_reference ?: $payment->reference_number ?: $payment->payment_number ?: $payment->id)),
+            'export_reference' => trim((string) ($payment->export_reference ?? '')),
             'transport_document_reference' => trim((string) ($documents['transport_document_reference'] ?? '')),
             'customs_declaration_reference' => trim((string) ($documents['customs_declaration_reference'] ?? '')),
             'bank_settlement_reference' => trim((string) ($payment->fx_compliance_reference ?: $payment->reference_number ?: $payment->payment_number ?: $payment->id)),
+            'intermediary_bank' => trim((string) ($payment->intermediary_bank ?? '')),
             'withholding_receipt_reference' => trim((string) ($documents['withholding_receipt_reference'] ?? '')),
             'fx_authorization_reference' => trim((string) ($documents['fx_authorization_reference'] ?? '')),
             'correspondence_reference' => trim((string) ($documents['correspondence_reference'] ?? '')),
@@ -95,6 +97,7 @@ class ExchangeControlDossierService
         if ($isInternational && (bool) $payment->is_export_receipt) {
             $required[] = 'transport_document_reference';
             $required[] = 'customs_declaration_reference';
+            $required[] = 'intermediary_bank';
         }
 
         return array_values(array_unique($required));

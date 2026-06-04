@@ -20,12 +20,14 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Workdo\Account\Events\CreateVendorPayment;
 use Workdo\Account\Events\UpdateVendorPaymentStatus;
 use Workdo\Account\Events\DestroyVendorPayment;
 use Workdo\Account\Models\ExchangeControlDossier;
 use Workdo\Account\Services\AccountCacheService;
+use Workdo\Hrm\Models\Branch;
 
 class VendorPaymentController extends Controller
 {
@@ -41,7 +43,7 @@ class VendorPaymentController extends Controller
     public function index(Request $request)
     {
         if(Auth::user()->can('manage-vendor-payments')){
-            $query = VendorPayment::with(['vendor', 'bankAccount', 'allocations.invoice', 'debitNoteApplications.debitNote'])
+            $query = VendorPayment::with(['vendor', 'bankAccount.branch', 'branch', 'allocations.invoice', 'debitNoteApplications.debitNote'])
                 ->where(function($q) {
                     if(Auth::user()->can('manage-any-vendor-payments')) {
                         $q->where('created_by', creatorId());
@@ -101,7 +103,10 @@ class VendorPaymentController extends Controller
                 })
                 ->values();
 
-            $bankAccounts = BankAccount::where('is_active', true)->where('created_by', creatorId())->get();
+            $bankAccounts = BankAccount::where('is_active', true)
+                ->where('created_by', creatorId())
+                ->with('branch')
+                ->get();
 
             return Inertia::render('Account/VendorPayments/Index', [
                 'payments' => $payments,
@@ -127,7 +132,9 @@ class VendorPaymentController extends Controller
                 $payment = new VendorPayment();
                 $payment->payment_date = $request->payment_date;
                 $payment->vendor_id = $request->vendor_id;
+                $payment->payment_purpose = $request->input('payment_purpose', 'settlement');
                 $payment->bank_account_id = $request->bank_account_id;
+                $payment->branch_id = $this->resolveBankAccountBranchId((int) $request->bank_account_id);
                 $payment->payment_method = $request->payment_method;
                 $payment->mobile_money_provider = $request->payment_method === 'mobile_money' ? $request->mobile_money_provider : null;
                 $payment->mobile_money_number = $request->payment_method === 'mobile_money' ? $request->mobile_money_number : null;
@@ -149,6 +156,11 @@ class VendorPaymentController extends Controller
                 $payment->fiscal_compliance_reference = $internationalCompliancePayload['fiscal_compliance_reference'];
                 $payment->financial_approval_reference = $internationalCompliancePayload['financial_approval_reference'];
                 $payment->fx_authorization_reference = $internationalCompliancePayload['fx_authorization_reference'];
+                $payment->contract_reference = $internationalCompliancePayload['contract_reference'];
+                $payment->invoice_reference = $internationalCompliancePayload['invoice_reference'];
+                $payment->bank_settlement_reference = $internationalCompliancePayload['bank_settlement_reference'];
+                $payment->withholding_receipt_reference = $internationalCompliancePayload['withholding_receipt_reference'];
+                $payment->correspondence_reference = $internationalCompliancePayload['correspondence_reference'];
                 $payment->gifim_alert_required = $gifimPayload['gifim_alert_required'];
                 $payment->gifim_alert_category = $gifimPayload['gifim_alert_category'];
                 $payment->gifim_alert_status = $gifimPayload['gifim_alert_status'];
@@ -200,6 +212,32 @@ class VendorPaymentController extends Controller
         else{
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function resolveBankAccountBranchId(int $bankAccountId): ?int
+    {
+        $bankAccount = BankAccount::query()
+            ->where('id', $bankAccountId)
+            ->where('created_by', creatorId())
+            ->first();
+
+        if (!$bankAccount) {
+            return null;
+        }
+
+        if ((int) ($bankAccount->branch_id ?? 0) > 0) {
+            return (int) $bankAccount->branch_id;
+        }
+
+        $branchName = trim((string) $bankAccount->branch_name);
+        if ($branchName === '') {
+            return null;
+        }
+
+        return Branch::query()
+            ->where('created_by', creatorId())
+            ->whereRaw('LOWER(TRIM(branch_name)) = ?', [strtolower($branchName)])
+            ->value('id');
     }
 
     public function getOutstandingInvoices($vendorId)
@@ -306,6 +344,94 @@ class VendorPaymentController extends Controller
         }
         else{
             return back()->with('error', __('Permission denied'));
+        }
+    }
+
+    public function applyAdvance(Request $request, VendorPayment $vendorPayment)
+    {
+        if (!Auth::user()->can('cleared-vendor-payments') || $vendorPayment->created_by !== creatorId()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        if (($vendorPayment->payment_purpose ?? 'settlement') !== 'advance') {
+            return back()->with('error', __('Only vendor advance payments can be applied to invoices.'));
+        }
+
+        if ($vendorPayment->status !== 'cleared') {
+            return back()->with('error', __('The vendor advance payment must be cleared before it can be applied.'));
+        }
+
+        $validated = $request->validate([
+            'allocations' => ['required', 'array', 'min:1'],
+            'allocations.*.invoice_id' => [
+                'required',
+                Rule::exists('purchase_invoices', 'id')->where(function ($query) use ($vendorPayment) {
+                    $query->where('created_by', creatorId())
+                        ->where('vendor_id', $vendorPayment->vendor_id)
+                        ->whereIn('status', ['posted', 'partial'])
+                        ->where('balance_amount', '>', 0);
+                }),
+            ],
+            'allocations.*.amount' => ['required', 'numeric', 'min:0.01'],
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $vendorPayment, $validated): void {
+                $vendorPayment->loadMissing('vendor', 'allocations.invoice');
+
+                if ($vendorPayment->allocations()->exists()) {
+                    throw new \Exception(__('This vendor advance has already been applied to invoices.'));
+                }
+
+                $totalAllocated = 0;
+
+                foreach ($validated['allocations'] as $allocation) {
+                    $invoice = PurchaseInvoice::query()
+                        ->where('id', $allocation['invoice_id'])
+                        ->where('vendor_id', $vendorPayment->vendor_id)
+                        ->where('created_by', creatorId())
+                        ->whereIn('status', ['posted', 'partial'])
+                        ->where('balance_amount', '>', 0)
+                        ->firstOrFail();
+
+                    $amount = round((float) $allocation['amount'], 2);
+                    if ($amount > (float) $invoice->balance_amount + 0.0001) {
+                        throw new \Exception(__('Allocation amount cannot exceed the invoice balance.'));
+                    }
+
+                    VendorPaymentAllocation::query()->create([
+                        'payment_id' => $vendorPayment->id,
+                        'invoice_id' => $invoice->id,
+                        'allocated_amount' => $amount,
+                        'creator_id' => Auth::id(),
+                        'created_by' => creatorId(),
+                    ]);
+
+                    $invoice->paid_amount = round((float) $invoice->paid_amount + $amount, 2);
+                    $invoice->balance_amount = round(max(0, (float) $invoice->total_amount - (float) $invoice->paid_amount), 2);
+                    $invoice->status = $invoice->balance_amount <= 0.01
+                        ? 'paid'
+                        : ((float) $invoice->paid_amount > 0 ? 'partial' : $invoice->status);
+                    $invoice->save();
+
+                    $totalAllocated += $amount;
+                }
+
+                if ($totalAllocated <= 0) {
+                    throw new \Exception(__('At least one invoice allocation is required to apply a vendor advance.'));
+                }
+
+                if (abs($totalAllocated - (float) $vendorPayment->payment_amount) > 0.01) {
+                    throw new \Exception(__('The allocated amount must match the vendor advance amount exactly.'));
+                }
+
+                $vendorPayment->unsetRelation('allocations');
+                $this->journalService->createVendorAdvanceSettlementJournal($vendorPayment);
+            });
+
+            return back()->with('success', __('The vendor advance has been applied to invoices successfully.'));
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
         }
     }
 
@@ -505,6 +631,11 @@ class VendorPaymentController extends Controller
                 'fiscal_compliance_reference' => null,
                 'financial_approval_reference' => null,
                 'fx_authorization_reference' => null,
+                'contract_reference' => null,
+                'invoice_reference' => null,
+                'bank_settlement_reference' => null,
+                'withholding_receipt_reference' => null,
+                'correspondence_reference' => null,
             ];
         }
 
@@ -528,6 +659,21 @@ class VendorPaymentController extends Controller
             'fiscal_compliance_reference' => trim((string) $request->input('fiscal_compliance_reference')),
             'financial_approval_reference' => trim((string) $request->input('financial_approval_reference')),
             'fx_authorization_reference' => trim((string) $request->input('fx_authorization_reference')),
+            'contract_reference' => $request->filled('contract_reference')
+                ? trim((string) $request->input('contract_reference'))
+                : null,
+            'invoice_reference' => $request->filled('invoice_reference')
+                ? trim((string) $request->input('invoice_reference'))
+                : null,
+            'bank_settlement_reference' => $request->filled('bank_settlement_reference')
+                ? trim((string) $request->input('bank_settlement_reference'))
+                : null,
+            'withholding_receipt_reference' => $request->filled('withholding_receipt_reference')
+                ? trim((string) $request->input('withholding_receipt_reference'))
+                : null,
+            'correspondence_reference' => $request->filled('correspondence_reference')
+                ? trim((string) $request->input('correspondence_reference'))
+                : null,
         ];
     }
 
@@ -609,11 +755,14 @@ class VendorPaymentController extends Controller
             $riskFlags[] = 'gifim_threshold';
         }
 
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             $riskFlags[] = 'high_value_cash';
         }
 
-        if ($paymentMethod !== 'cash' && $amountMzn >= 750000) {
+        if ($paymentMethod !== 'cash' && $amountMzn >= $electronicThreshold) {
             $riskFlags[] = 'high_value_electronic';
         }
 
@@ -775,12 +924,12 @@ class VendorPaymentController extends Controller
         $withholdingTreatment = strtolower((string) ($payment->withholding_tax_treatment ?? ''));
 
         $incomingDocuments = [
-            'contract_reference' => trim((string) $request->input('contract_reference', '')),
-            'invoice_reference' => trim((string) $request->input('invoice_reference', '')) ?: trim((string) ($derivedInvoiceReference ?? '')),
-            'bank_settlement_reference' => trim((string) $request->input('bank_settlement_reference', '')) ?: trim((string) ($payment->reference_number ?? '')),
-            'withholding_receipt_reference' => trim((string) $request->input('withholding_receipt_reference', '')),
+            'contract_reference' => trim((string) ($payment->contract_reference ?? $request->input('contract_reference', ''))),
+            'invoice_reference' => trim((string) ($payment->invoice_reference ?? $request->input('invoice_reference', ''))) ?: trim((string) ($derivedInvoiceReference ?? '')),
+            'bank_settlement_reference' => trim((string) ($payment->bank_settlement_reference ?? $request->input('bank_settlement_reference', ''))) ?: trim((string) ($payment->reference_number ?? '')),
+            'withholding_receipt_reference' => trim((string) ($payment->withholding_receipt_reference ?? $request->input('withholding_receipt_reference', ''))),
             'fx_authorization_reference' => trim((string) ($payment->fx_authorization_reference ?? '')),
-            'correspondence_reference' => trim((string) $request->input('correspondence_reference', '')),
+            'correspondence_reference' => trim((string) ($payment->correspondence_reference ?? $request->input('correspondence_reference', ''))),
         ];
 
         if (
@@ -877,12 +1026,15 @@ class VendorPaymentController extends Controller
     private function resolveGifimThresholdCategory(string $paymentMethod, float $amountMzn): ?string
     {
         $paymentMethod = strtolower(trim($paymentMethod));
-        if ($paymentMethod === 'cash' && $amountMzn >= 250000) {
+        $cashThreshold = (float) config('sce.gifim.cash_threshold_mzn', 250000);
+        $electronicThreshold = (float) config('sce.gifim.electronic_threshold_mzn', 750000);
+        $electronicMethods = (array) config('sce.gifim.electronic_payment_methods', ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other']);
+
+        if ($paymentMethod === 'cash' && $amountMzn >= $cashThreshold) {
             return 'cash_threshold';
         }
 
-        $electronicMethods = ['bank_transfer', 'cheque', 'card', 'mobile_money', 'other'];
-        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= 750000) {
+        if (in_array($paymentMethod, $electronicMethods, true) && $amountMzn >= $electronicThreshold) {
             return 'electronic_threshold';
         }
 

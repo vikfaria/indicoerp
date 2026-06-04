@@ -41,6 +41,7 @@ export default function Edit({ vendor, onSuccess }: EditVendorProps) {
         adt_eligible: !!vendor.adt_eligible,
         adt_country: vendor.adt_country ?? '',
         compliance_documents: vendor.compliance_documents ?? [],
+        fiscal_identity_lock_reason: vendor.fiscal_identity_lock_reason ?? '',
         payment_terms: vendor.payment_terms ?? '',
         billing_address: vendor.billing_address ?? {
             name: '',
@@ -233,6 +234,17 @@ export default function Edit({ vendor, onSuccess }: EditVendorProps) {
                         placeholder={t('Enter foreign tax identifier')}
                     />
                     <InputError message={errors.foreign_tax_number} />
+                </div>
+                <div>
+                    <Label htmlFor="fiscal_identity_lock_reason">{t('Fiscal Lock Reason')}</Label>
+                    <Textarea
+                        id="fiscal_identity_lock_reason"
+                        value={data.fiscal_identity_lock_reason ?? ''}
+                        onChange={(e) => setData('fiscal_identity_lock_reason', e.target.value)}
+                        placeholder={t('Required only when overriding critical fiscal data after documents have been issued')}
+                        rows={3}
+                    />
+                    <InputError message={errors.fiscal_identity_lock_reason} />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                     <div className="flex items-center space-x-2 pt-6">

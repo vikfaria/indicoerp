@@ -47,10 +47,12 @@ use Workdo\Account\Listeners\UpdatePropertyPaymentStatusListener;
 use Workdo\Account\Listeners\UpdateSalesAgentCommissionPaymentStatusLis;
 use Workdo\Account\Listeners\ApproveSalesAgentCommissionAdjustmentLis;
 use Workdo\Account\Listeners\ConvertSalesRetainerListener;
+use Workdo\Account\Listeners\CreateLoanListener;
 use Workdo\Commission\Events\CreateCommissionPayment;
 use Workdo\PropertyManagement\Events\CreatePropertyPayment;
 use Workdo\PropertyManagement\Events\UpdatePropertyPaymentStatus;
 use Workdo\Hrm\Events\CreatePayroll;
+use Workdo\Hrm\Events\CreateLoan;
 use Workdo\Hrm\Events\UpdatePayroll;
 use Workdo\Retainer\Events\ConvertSalesRetainer;
 use Workdo\SalesAgent\Events\CreateSalesAgentCommissionPayment;
@@ -139,6 +141,9 @@ class EventServiceProvider extends ServiceProvider
         ],
         CreatePayroll::class => [
             BankAccountFieldUpdate::class,
+        ],
+        CreateLoan::class => [
+            CreateLoanListener::class,
         ],
         UpdatePayroll::class => [
             BankAccountFieldUpdate::class,

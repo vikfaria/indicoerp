@@ -232,6 +232,7 @@ class MozambiquePayrollComplianceController extends Controller
             'overtime_monthly_limit_hours' => 'nullable|numeric|min:1|max:744',
             'overtime_quarterly_limit_hours' => 'nullable|numeric|min:1|max:2208',
             'overtime_yearly_limit_hours' => 'nullable|numeric|min:1|max:9999',
+            'night_work_premium_percent' => 'nullable|numeric|min:0|max:500',
             'leave_min_notice_days' => 'required|integer|min:0|max:365',
             'leave_max_consecutive_days' => 'nullable|integer|min:1|max:366',
             'leave_count_non_working_days' => 'required|boolean',
@@ -248,6 +249,7 @@ class MozambiquePayrollComplianceController extends Controller
         setSetting('mz_overtime_monthly_limit_hours', $validated['overtime_monthly_limit_hours'] ?? '');
         setSetting('mz_overtime_quarterly_limit_hours', $validated['overtime_quarterly_limit_hours'] ?? '');
         setSetting('mz_overtime_yearly_limit_hours', $validated['overtime_yearly_limit_hours'] ?? '');
+        setSetting('mz_night_work_premium_percent', $validated['night_work_premium_percent'] ?? '');
         setSetting('mz_leave_min_notice_days', (string) $validated['leave_min_notice_days']);
         setSetting('mz_leave_max_consecutive_days', $validated['leave_max_consecutive_days'] ?? '');
         setSetting('mz_leave_count_non_working_days', $validated['leave_count_non_working_days'] ? '1' : '0');
@@ -1268,7 +1270,12 @@ class MozambiquePayrollComplianceController extends Controller
             'Description',
         ];
 
-        $rows = collect($dataset['rows'])->map(static function (array $row): array {
+        $maskSensitive = $this->shouldMaskSensitiveEmployeeData();
+        $rows = collect($dataset['rows'])->map(function (array $row) use ($maskSensitive): array {
+            $employeeNuit = $maskSensitive
+                ? $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2)
+                : ($row['employee_nuit'] ?? '');
+
             return [
                 $row['reference_period'] ?? '',
                 $row['case_type'] ?? '',
@@ -1276,7 +1283,7 @@ class MozambiquePayrollComplianceController extends Controller
                 $row['case_reference'] ?? '',
                 $row['case_opened_at'] ?? '',
                 $row['employee_name'] ?? '',
-                $row['employee_nuit'] ?? '',
+                $employeeNuit,
                 $row['against_employee_name'] ?? '',
                 $row['category_name'] ?? '',
                 $row['severity'] ?? '',
@@ -1314,6 +1321,17 @@ class MozambiquePayrollComplianceController extends Controller
             creatorId(),
             $validated['reference_period'] ?? null
         );
+
+        if ($this->shouldMaskSensitiveEmployeeData()) {
+            $dataset['rows'] = collect((array) ($dataset['rows'] ?? []))
+                ->map(function (array $row): array {
+                    $row['employee_nuit'] = $this->maskIdentifier((string) ($row['employee_nuit'] ?? ''), 2, 2);
+
+                    return $row;
+                })
+                ->values()
+                ->all();
+        }
 
         return response()->json($dataset);
     }

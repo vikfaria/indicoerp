@@ -100,6 +100,7 @@ export default function EditCandidate({ candidate, onSuccess }: EditCandidatePro
                 (typeof candidate.professional_license_expiry_date === 'string' ?
                  candidate.professional_license_expiry_date.split('T')[0] :
                  new Date(candidate.professional_license_expiry_date).toISOString().split('T')[0]) : '',
+            professional_license_document_path: candidate.professional_license_document_path ?? '',
             minor_work_authorization_path: candidate.minor_work_authorization_path ?? '',
             legal_exception_notes: candidate.legal_exception_notes ?? '',
             country: candidate.country ?? '',
@@ -567,6 +568,17 @@ export default function EditCandidate({ candidate, onSuccess }: EditCandidatePro
                                 placeholder={t('Select expiry date')}
                             />
                             <InputError message={errors.professional_license_expiry_date} />
+                        </div>
+
+                        <div className="col-span-2">
+                            <MediaPicker
+                                label={t('Professional License Document')}
+                                value={data.professional_license_document_path}
+                                onChange={(value) => setData('professional_license_document_path', value as string)}
+                                placeholder={t('Select professional license document')}
+                                id="professional_license_document_path"
+                            />
+                            <InputError message={errors.professional_license_document_path} />
                         </div>
                     </div>
                 )}

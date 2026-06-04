@@ -129,15 +129,85 @@ class FiscalDocumentSeriesDimensionsTest extends TestCase
         $this->assertSame(0, (int) $userSeries->fresh()->last_sequence);
     }
 
+    public function test_fiscal_series_resolution_prefers_terminal_specific_series_when_available(): void
+    {
+        $company = $this->makeCompany();
+
+        $docType = FiscalDocumentType::query()->create([
+            'code' => 'FT',
+            'name' => 'Factura',
+            'saft_document_type' => 'FT',
+            'category' => 'sales',
+            'requires_hash' => true,
+            'requires_series' => true,
+            'is_credit_document' => false,
+            'is_active' => true,
+        ]);
+
+        $year = (int) date('Y');
+        $generalSeries = FiscalDocumentSeries::query()->create([
+            'company_id' => $company->id,
+            'fiscal_document_type_id' => $docType->id,
+            'series_code' => 'GEN',
+            'fiscal_year' => $year,
+            'assigned_user_id' => null,
+            'terminal_code' => null,
+            'fiscal_regime_code' => null,
+            'last_sequence' => 0,
+            'is_active' => true,
+            'valid_from' => "{$year}-01-01",
+            'valid_to' => "{$year}-12-31",
+            'created_by' => $company->id,
+        ]);
+
+        $terminalSeries = FiscalDocumentSeries::query()->create([
+            'company_id' => $company->id,
+            'fiscal_document_type_id' => $docType->id,
+            'series_code' => 'POS1',
+            'fiscal_year' => $year,
+            'assigned_user_id' => null,
+            'terminal_code' => 'POS-01',
+            'fiscal_regime_code' => null,
+            'last_sequence' => 0,
+            'is_active' => true,
+            'valid_from' => "{$year}-01-01",
+            'valid_to' => "{$year}-12-31",
+            'created_by' => $company->id,
+        ]);
+
+        request()->headers->set('X-Terminal-Code', 'pos-01');
+
+        $invoice = new SalesInvoice([
+            'creator_id' => $company->id,
+            'created_by' => $company->id,
+        ]);
+
+        $observer = app(FiscalDocumentObserver::class);
+        $method = new \ReflectionMethod(FiscalDocumentObserver::class, 'resolveOrCreateSeries');
+        $method->setAccessible(true);
+
+        $resolvedSeries = $method->invoke($observer, $invoice, $company->id, 'FT', now()->toDateString());
+
+        $this->assertInstanceOf(FiscalDocumentSeries::class, $resolvedSeries);
+        $this->assertSame($terminalSeries->id, (int) $resolvedSeries->id);
+        $this->assertSame('POS-01', $resolvedSeries->terminal_code);
+        $this->assertSame(0, (int) $generalSeries->fresh()->last_sequence);
+        $this->assertSame(0, (int) $terminalSeries->fresh()->last_sequence);
+    }
+
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $user = User::factory()->create([
             'type' => 'company',
             'created_by' => null,
             'creator_id' => null,
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+
+        \App\Models\AccountingPeriod::generateForYear($user->id, now()->format('Y'));
+
+        return $user;
     }
 
     private function grantPermissions(User $user, array $permissions): void

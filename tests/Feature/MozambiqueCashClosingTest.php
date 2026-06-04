@@ -102,6 +102,76 @@ class MozambiqueCashClosingTest extends TestCase
         $this->assertSame($company->id, (int) $closing->reopened_by);
     }
 
+    public function test_cash_closing_endpoint_rejects_future_dates(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports', 'view-tax-summary']);
+        $this->actingAs($company);
+
+        $cashAccount = $this->makeCashAccount($company);
+        $futureDate = now()->addDay()->toDateString();
+
+        BankTransaction::query()->create([
+            'bank_account_id' => $cashAccount->id,
+            'transaction_date' => now()->toDateString(),
+            'transaction_type' => 'credit',
+            'reference_number' => 'CASH-FUT-001',
+            'description' => 'Cash receipt',
+            'amount' => 100,
+            'running_balance' => 1100,
+            'transaction_status' => 'cleared',
+            'reconciliation_status' => 'unreconciled',
+            'created_by' => $company->id,
+        ]);
+
+        $response = $this->actingAs($company)->post(route('account.reports.cash-closings.close'), [
+            'bank_account_id' => $cashAccount->id,
+            'closing_date' => $futureDate,
+            'counted_balance_mzn' => 1100,
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHasErrors(['closing_date']);
+    }
+
+    public function test_cash_closing_endpoint_rejects_duplicate_close_for_same_account_and_date(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['manage-account-reports', 'view-tax-summary']);
+        $this->actingAs($company);
+
+        $cashAccount = $this->makeCashAccount($company);
+        $closingDate = now()->toDateString();
+
+        BankTransaction::query()->create([
+            'bank_account_id' => $cashAccount->id,
+            'transaction_date' => $closingDate,
+            'transaction_type' => 'credit',
+            'reference_number' => 'CASH-DUP-001',
+            'description' => 'Cash receipt',
+            'amount' => 100,
+            'running_balance' => 1100,
+            'transaction_status' => 'cleared',
+            'reconciliation_status' => 'unreconciled',
+            'created_by' => $company->id,
+        ]);
+
+        $this->actingAs($company)->post(route('account.reports.cash-closings.close'), [
+            'bank_account_id' => $cashAccount->id,
+            'closing_date' => $closingDate,
+            'counted_balance_mzn' => 1100,
+        ])->assertOk();
+
+        $duplicateResponse = $this->actingAs($company)->post(route('account.reports.cash-closings.close'), [
+            'bank_account_id' => $cashAccount->id,
+            'closing_date' => $closingDate,
+            'counted_balance_mzn' => 1100,
+        ]);
+
+        $duplicateResponse->assertStatus(422);
+        $duplicateResponse->assertJsonPath('message', 'There is already a closed cash closing for this account and date.');
+    }
+
     public function test_cash_closing_endpoint_rejects_non_cash_account(): void
     {
         $company = $this->makeCompany();

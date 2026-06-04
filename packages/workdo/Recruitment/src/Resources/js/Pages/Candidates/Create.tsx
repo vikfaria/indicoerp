@@ -89,6 +89,7 @@ export default function Create({ onSuccess }: CreateCandidateProps) {
         professional_license_type: '',
         professional_license_number: '',
         professional_license_expiry_date: '',
+        professional_license_document_path: '',
         minor_work_authorization_path: '',
         legal_exception_notes: '',
         country: '',
@@ -508,6 +509,17 @@ export default function Create({ onSuccess }: CreateCandidateProps) {
                                 placeholder={t('Select expiry date')}
                             />
                             <InputError message={errors.professional_license_expiry_date} />
+                        </div>
+
+                        <div className="col-span-2">
+                            <MediaPicker
+                                label={t('Professional License Document')}
+                                value={data.professional_license_document_path}
+                                onChange={(value) => setData('professional_license_document_path', value as string)}
+                                placeholder={t('Select professional license document')}
+                                id="professional_license_document_path"
+                            />
+                            <InputError message={errors.professional_license_document_path} />
                         </div>
                     </div>
                 )}

@@ -63,6 +63,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::delete('/{vendorPayment}', [VendorPaymentController::class, 'destroy'])->name('destroy');
         Route::get('/vendors/{vendorId}/outstanding', [VendorPaymentController::class, 'getOutstandingInvoices'])->name('vendors.outstanding');
         Route::post('/{vendorPayment}/update-status', [VendorPaymentController::class, 'updateStatus'])->name('update-status');
+        Route::post('/{vendorPayment}/apply-advance', [VendorPaymentController::class, 'applyAdvance'])->name('apply-advance');
     });
 
     Route::prefix('account/bank-transactions')->name('account.bank-transactions.')->group(function () {
@@ -189,6 +190,8 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::post('/mozambique-gifim-compliance-report/communicate', [ReportsController::class, 'markMozambiqueGifimCommunication'])->name('mozambique-gifim-compliance-report.communicate');
         Route::get('/mozambique-electronic-money-compliance-report', [ReportsController::class, 'mozambiqueElectronicMoneyComplianceReport'])->name('mozambique-electronic-money-compliance-report');
         Route::get('/mozambique-electronic-money-compliance-report/export', [ReportsController::class, 'exportMozambiqueElectronicMoneyComplianceReport'])->name('mozambique-electronic-money-compliance-report.export');
+        Route::get('/mozambique-cost-center-analysis', [ReportsController::class, 'mozambiqueCostCenterAnalysis'])->name('mozambique-cost-center-analysis');
+        Route::get('/mozambique-cost-center-analysis/export', [ReportsController::class, 'exportMozambiqueCostCenterAnalysis'])->name('mozambique-cost-center-analysis.export');
         Route::get('/mozambique-fiscal-exports-history', [ReportsController::class, 'mozambiqueFiscalExportsHistory'])->name('mozambique-fiscal-exports-history');
         Route::get('/mozambique-fiscal-exports-history/{history}/download', [ReportsController::class, 'downloadMozambiqueFiscalExport'])->name('mozambique-fiscal-exports-history.download');
         Route::post('/mozambique-fiscal-exports-history/{history}/submit', [ReportsController::class, 'confirmMozambiqueFiscalExportSubmission'])->name('mozambique-fiscal-exports-history.submit');

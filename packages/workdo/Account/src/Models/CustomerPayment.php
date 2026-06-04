@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\User;
+use Workdo\Hrm\Models\Branch;
 
 class CustomerPayment extends Model
 {
@@ -14,6 +15,7 @@ class CustomerPayment extends Model
         'payment_date',
         'customer_id',
         'bank_account_id',
+        'branch_id',
         'payment_method',
         'mobile_money_provider',
         'mobile_money_number',
@@ -82,6 +84,11 @@ class CustomerPayment extends Model
     public function bankAccount(): BelongsTo
     {
         return $this->belongsTo(BankAccount::class, 'bank_account_id');
+    }
+
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'branch_id');
     }
 
     public function allocations(): HasMany

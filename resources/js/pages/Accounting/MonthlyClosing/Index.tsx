@@ -6,26 +6,57 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, Circle, Clock, Lock, Play, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Lock, Play, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
-interface CheckItem { id: number; check_name: string; status: string; completed_at: string | null; }
-interface Period { id: number; period_number: number; period_name: string; status: string; }
+interface CheckItem { id: number; check_name: string; status: string; completed_at: string | null; notes?: string | null; }
+interface Period {
+    id: number;
+    period_number: number;
+    period_name: string;
+    status: string;
+    closed_at?: string | null;
+    reopened_at?: string | null;
+    reopen_reason?: string | null;
+}
 
 export default function MonthlyClosingIndex() {
     const { t } = useTranslation();
-    const { periods, checklists, currentYear, currentMonth } = usePage<{ periods: Period[]; checklists: CheckItem[]; currentYear: string; currentMonth: number; }>().props;
+    const { periods, currentPeriod, checklists, currentYear, currentMonth } = usePage<{
+        periods: Period[];
+        currentPeriod: Period | null;
+        checklists: CheckItem[];
+        currentYear: string;
+        currentMonth: number;
+    }>().props;
     const [month, setMonth] = useState(currentMonth);
 
     const completedCount = checklists.filter(c => c.status !== 'pending').length;
     const totalCount = checklists.length;
     const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-    const currentPeriod = periods.find(p => p.period_number === month);
+    const currentStatus = currentPeriod?.status ?? 'open';
+    const isClosed = currentStatus === 'closed';
+    const isClosing = currentStatus === 'closing';
+    const isOpen = currentStatus === 'open';
+    const shouldShowChecklist = isClosing;
 
     const handlePeriodChange = (m: number) => { setMonth(m); router.get(route('sce.monthly-closing.index'), { year: currentYear, month: m }, { preserveState: true, replace: true }); };
     const startClosing = () => router.post(route('sce.monthly-closing.start'), { year: currentYear, month });
     const completeCheck = (id: number) => router.post(route('sce.monthly-closing.complete-check', id));
     const finalize = () => router.post(route('sce.monthly-closing.finalize'), { year: currentYear, month });
+    const reopenClosing = () => {
+        const reason = window.prompt(t('Reason for reopening (minimum 10 characters)')) || '';
+
+        if (!reason.trim()) {
+            return;
+        }
+
+        router.post(route('sce.monthly-closing.reopen'), {
+            year: currentYear,
+            month,
+            reopen_reason: reason,
+        });
+    };
 
     const months = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new Date(2000, i).toLocaleString('pt', { month: 'long' }) }));
 
@@ -39,7 +70,7 @@ export default function MonthlyClosingIndex() {
                     <SelectContent>{months.map(m => <SelectItem key={m.value} value={String(m.value)}>{m.label.charAt(0).toUpperCase() + m.label.slice(1)}</SelectItem>)}</SelectContent>
                 </Select>
                 <span className="text-lg font-semibold">{currentYear}</span>
-                {currentPeriod && <Badge className={currentPeriod.status === 'closed' ? 'bg-gray-100 text-gray-600' : currentPeriod.status === 'closing' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}>{currentPeriod.status.toUpperCase()}</Badge>}
+                {currentPeriod && <Badge className={isClosed ? 'bg-gray-100 text-gray-600' : isClosing ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}>{currentStatus.toUpperCase()}</Badge>}
             </div>
 
             <Card className="mb-6">
@@ -56,11 +87,45 @@ export default function MonthlyClosingIndex() {
                 </CardContent>
             </Card>
 
-            {checklists.length === 0 ? (
+            {isClosed ? (
+                <Card className="mb-6 border-gray-200 bg-gray-50/70">
+                    <CardContent className="p-6 space-y-4">
+                        <div className="flex items-start gap-4">
+                            <div className="rounded-full bg-gray-200 p-2">
+                                <Lock className="h-5 w-5 text-gray-700" />
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold">{t('Período fechado')}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    {currentPeriod?.closed_at ? `${t('Fechado em')}: ${new Date(currentPeriod.closed_at).toLocaleString('pt')}` : t('Este período foi concluído e está bloqueado para novos lançamentos.')}
+                                </p>
+                                {currentPeriod?.reopen_reason && (
+                                    <p className="text-sm text-muted-foreground">{t('Última reabertura')}: {currentPeriod.reopen_reason}</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            <Button onClick={reopenClosing} variant="outline" className="gap-2">
+                                <RotateCcw className="h-4 w-4" />
+                                {t('Reabrir Período')}
+                            </Button>
+                            <Button onClick={() => router.get(route('sce.monthly-closing.index'), { year: currentYear, month }, { preserveState: true, replace: true })} variant="ghost">
+                                {t('Recarregar')}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            ) : (checklists.length === 0 || isOpen || !shouldShowChecklist) ? (
                 <Card><CardContent className="p-12 text-center">
                     <AlertTriangle className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">{t('Sem checklist para este período')}</h3>
-                    <p className="text-muted-foreground mb-4">{t('Inicie o processo de fecho.')}</p>
+                    <h3 className="text-lg font-semibold mb-2">
+                        {checklists.length > 0 && isOpen ? t('Fecho reaberto') : t('Sem checklist para este período')}
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                        {checklists.length > 0 && isOpen
+                            ? t('O período foi reaberto. Inicie novamente o processo de fecho.')
+                            : t('Inicie o processo de fecho.')}
+                    </p>
                     <Button onClick={startClosing}><Play className="h-4 w-4 mr-2" /> {t('Iniciar Fecho')}</Button>
                 </CardContent></Card>
             ) : (
@@ -92,7 +157,7 @@ export default function MonthlyClosingIndex() {
                         ))}
                     </div>
 
-                    {progress === 100 && (
+                    {progress === 100 && isClosing && (
                         <div className="mt-6 text-center">
                             <Button size="lg" className="bg-gradient-to-r from-green-600 to-green-700 shadow-lg" onClick={finalize}>
                                 <Lock className="h-5 w-5 mr-2" /> {t('Fechar Período')}

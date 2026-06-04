@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\CompanyFiscalProfile;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -18,6 +20,15 @@ class FinancialStatementsService
      */
     public function generateBalanceSheet(int $companyId, string $asOfDate): array
     {
+        $fiscalStartDate = $this->getFiscalYearStartDate($companyId, $asOfDate);
+        $resultadoLiquido = $this->getClassBalance($companyId, 8, $asOfDate, 'credit');
+        $resultadoLiquidoOrigem = 'class_8';
+
+        if (abs($resultadoLiquido) < 0.01) {
+            $resultadoLiquido = $this->calculateNetIncomeForPeriod($companyId, $fiscalStartDate, $asOfDate);
+            $resultadoLiquidoOrigem = 'dre';
+        }
+
         return [
             'title' => 'Balanço',
             'date' => $asOfDate,
@@ -39,7 +50,8 @@ class FinancialStatementsService
                 'capital_social' => $this->getAccountBalance($companyId, '51', $asOfDate, 'credit'),
                 'reservas' => $this->getAccountBalance($companyId, '55', $asOfDate, 'credit'),
                 'resultados_transitados' => $this->getAccountBalance($companyId, '56', $asOfDate, 'credit'),
-                'resultado_liquido' => $this->getClassBalance($companyId, 8, $asOfDate, 'credit'),
+                'resultado_liquido' => $resultadoLiquido,
+                'resultado_liquido_origem' => $resultadoLiquidoOrigem,
             ],
             'passivo' => [
                 'passivo_nao_corrente' => [
@@ -125,6 +137,127 @@ class FinancialStatementsService
     }
 
     /**
+     * Generate the Statement of Changes in Equity (Demonstração de Alterações no Capital Próprio).
+     */
+    public function generateStatementOfChangesInEquity(int $companyId, string $startDate, string $endDate): array
+    {
+        $openingDate = Carbon::parse($startDate)->subDay()->toDateString();
+        $netIncome = $this->calculateNetIncomeForPeriod($companyId, $startDate, $endDate);
+
+        $components = [
+            'capital_social' => [
+                'label' => 'Capital Social',
+                'opening' => $this->getAccountBalance($companyId, '51', $openingDate, 'credit'),
+                'closing' => $this->getAccountBalance($companyId, '51', $endDate, 'credit'),
+            ],
+            'acoes_proprias' => [
+                'label' => 'Acções Próprias',
+                'opening' => $this->getAccountBalance($companyId, '52', $openingDate, 'credit'),
+                'closing' => $this->getAccountBalance($companyId, '52', $endDate, 'credit'),
+            ],
+            'reservas' => [
+                'label' => 'Reservas',
+                'opening' => $this->getAccountBalance($companyId, '55', $openingDate, 'credit'),
+                'closing' => $this->getAccountBalance($companyId, '55', $endDate, 'credit'),
+            ],
+            'resultados_transitados' => [
+                'label' => 'Resultados Transitados',
+                'opening' => $this->getAccountBalance($companyId, '56', $openingDate, 'credit'),
+                'closing' => $this->getAccountBalance($companyId, '56', $endDate, 'credit'),
+            ],
+            'resultado_liquido_exercicio' => [
+                'label' => 'Resultado Líquido do Exercício',
+                'opening' => 0.0,
+                'closing' => $netIncome,
+            ],
+        ];
+
+        foreach ($components as &$component) {
+            $component['opening'] = round((float) ($component['opening'] ?? 0), 2);
+            $component['closing'] = round((float) ($component['closing'] ?? 0), 2);
+            $component['movement'] = round($component['closing'] - $component['opening'], 2);
+        }
+        unset($component);
+
+        $openingTotal = round(array_sum(array_map(static fn (array $component): float => (float) $component['opening'], $components)), 2);
+        $movementTotal = round(array_sum(array_map(static fn (array $component): float => (float) $component['movement'], $components)), 2);
+        $closingTotal = round(array_sum(array_map(static fn (array $component): float => (float) $component['closing'], $components)), 2);
+        $reconciliationDifference = round($closingTotal - ($openingTotal + $movementTotal), 2);
+
+        $movementNotes = [];
+        foreach ($components as $key => $component) {
+            if ($key === 'resultado_liquido_exercicio' || abs($component['movement']) < 0.01) {
+                continue;
+            }
+
+            $movementNotes[] = [
+                'label' => $component['label'],
+                'value' => $component['movement'],
+            ];
+        }
+
+        $notes = [
+            [
+                'title' => 'Resumo do período',
+                'items' => [
+                    [
+                        'label' => 'Resultado líquido apurado na DRE',
+                        'value' => round($netIncome, 2),
+                    ],
+                    [
+                        'label' => 'Período analisado',
+                        'value' => "{$startDate} → {$endDate}",
+                    ],
+                    [
+                        'label' => 'Moeda de apresentação',
+                        'value' => 'MZN',
+                    ],
+                ],
+            ],
+            [
+                'title' => 'Movimentos relevantes',
+                'items' => $movementNotes,
+            ],
+            [
+                'title' => 'Reconciliação',
+                'items' => [
+                    [
+                        'label' => 'Capital próprio inicial',
+                        'value' => $openingTotal,
+                    ],
+                    [
+                        'label' => 'Movimento total do período',
+                        'value' => $movementTotal,
+                    ],
+                    [
+                        'label' => 'Capital próprio final',
+                        'value' => $closingTotal,
+                    ],
+                    [
+                        'label' => 'Diferença de reconciliação',
+                        'value' => $reconciliationDifference,
+                    ],
+                ],
+            ],
+        ];
+
+        return [
+            'title' => 'Demonstração de Alterações no Capital Próprio',
+            'period' => ['start' => $startDate, 'end' => $endDate],
+            'components' => $components,
+            'totals' => [
+                'opening' => $openingTotal,
+                'movement' => $movementTotal,
+                'closing' => $closingTotal,
+                'difference' => $reconciliationDifference,
+                'is_balanced' => abs($reconciliationDifference) < 0.01,
+                'net_income' => round($netIncome, 2),
+            ],
+            'notes' => $notes,
+        ];
+    }
+
+    /**
      * Get account balance as of a date.
      */
     private function getAccountBalance(int $companyId, string $accountPrefix, string $asOfDate, string $normalSide): float
@@ -206,5 +339,47 @@ class FinancialStatementsService
             ->first();
 
         return (float) ($result->total ?? 0);
+    }
+
+    private function calculateNetIncomeForPeriod(int $companyId, string $startDate, string $endDate): float
+    {
+        $incomeStatement = $this->generateIncomeStatementByNature($companyId, $startDate, $endDate);
+
+        $totalRendimentos = array_sum(array_map(
+            static fn ($value): float => (float) $value,
+            $incomeStatement['rendimentos'] ?? []
+        ));
+
+        $totalGastos = array_sum(array_map(
+            static fn ($value): float => (float) $value,
+            $incomeStatement['gastos'] ?? []
+        ));
+
+        $impostoRendimento = (float) ($incomeStatement['imposto_rendimento'] ?? 0);
+
+        return round($totalRendimentos - $totalGastos - $impostoRendimento, 2);
+    }
+
+    private function getFiscalYearStartDate(int $companyId, string $referenceDate): string
+    {
+        $profile = CompanyFiscalProfile::query()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->first();
+
+        $startMonth = (int) ($profile?->fiscal_year_start_month ?: 1);
+        $startMonth = max(1, min(12, $startMonth));
+        $reference = Carbon::parse($referenceDate);
+
+        if ($startMonth === 1) {
+            return $reference->copy()->startOfYear()->toDateString();
+        }
+
+        $year = (int) $reference->format('Y');
+        if ((int) $reference->format('n') < $startMonth) {
+            $year -= 1;
+        }
+
+        return Carbon::create($year, $startMonth, 1)->toDateString();
     }
 }

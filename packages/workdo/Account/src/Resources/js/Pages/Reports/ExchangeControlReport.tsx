@@ -33,6 +33,9 @@ interface ExchangeOperation {
     is_export_receipt: boolean;
     repatriation_status: string;
     repatriated_amount_mzn: number;
+    export_reference?: string;
+    intermediary_bank?: string;
+    fx_compliance_reference?: string;
     is_international: boolean;
     domestic_fx_violation: boolean;
     missing_fx_documentation: boolean;
@@ -185,9 +188,9 @@ export default function ExchangeControlReport() {
             payment_id: row.payment_id,
             repatriation_status: (row.repatriation_status as RepatriationFormState['repatriation_status']) || 'pending',
             repatriated_amount_mzn: row.repatriated_amount_mzn > 0 ? String(row.repatriated_amount_mzn) : '',
-            fx_compliance_reference: row.reference,
-            export_reference: row.reference,
-            intermediary_bank: '',
+            fx_compliance_reference: row.fx_compliance_reference || row.reference,
+            export_reference: row.export_reference || row.reference,
+            intermediary_bank: row.intermediary_bank || '',
             receipt_origin_country: row.counterparty_country || '',
         });
     };

@@ -2,6 +2,7 @@
 
 namespace Workdo\DoubleEntry\Services;
 
+use App\Models\AccountingPeriod;
 use Workdo\DoubleEntry\Models\BalanceSheet;
 use Workdo\DoubleEntry\Models\BalanceSheetItem;
 use Workdo\Account\Models\ChartOfAccount;
@@ -354,6 +355,15 @@ class BalanceSheetService
                 ChartOfAccount::where('id', $account->id)
                     ->update(['opening_balance' => $account->current_balance]);
             }
+
+            AccountingPeriod::query()
+                ->where('company_id', creatorId())
+                ->where('fiscal_year', $financialYear)
+                ->update([
+                    'status' => 'closed',
+                    'closed_by' => Auth::id(),
+                    'closed_at' => now(),
+                ]);
         });
     }
 

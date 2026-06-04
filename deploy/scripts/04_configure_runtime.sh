@@ -4,6 +4,9 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-indicoerp.com}"
 APP_DIR="${APP_DIR:-/var/www/hrm-saas}"
 PHP_FPM_SOCK="${PHP_FPM_SOCK:-/run/php/php8.3-fpm.sock}"
+QUEUE_SERVICE_NAME="${QUEUE_SERVICE_NAME:-hrm-queue.service}"
+SCHEDULER_SERVICE_NAME="${SCHEDULER_SERVICE_NAME:-hrm-scheduler.service}"
+RUN_CERTBOT="${RUN_CERTBOT:-1}"
 NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}.conf"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARDENING_SNIPPET_SOURCE="${SCRIPT_DIR}/../nginx/indicoerp-hardening-snippet.conf"
@@ -45,11 +48,13 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl reload nginx
 
-# SSL
-certbot --nginx -d "$DOMAIN" -d "www.${DOMAIN}" --non-interactive --agree-tos -m "admin@${DOMAIN}" --redirect || true
+if [ "$RUN_CERTBOT" = "1" ]; then
+  # SSL
+  certbot --nginx -d "$DOMAIN" -d "www.${DOMAIN}" --non-interactive --agree-tos -m "admin@${DOMAIN}" --redirect || true
+fi
 
 # queue worker service
-cat > /etc/systemd/system/hrm-queue.service <<EOF
+cat > "/etc/systemd/system/${QUEUE_SERVICE_NAME}" <<EOF
 [Unit]
 Description=HRM Laravel Queue Worker
 After=network.target
@@ -67,7 +72,7 @@ WantedBy=multi-user.target
 EOF
 
 # scheduler service
-cat > /etc/systemd/system/hrm-scheduler.service <<EOF
+cat > "/etc/systemd/system/${SCHEDULER_SERVICE_NAME}" <<EOF
 [Unit]
 Description=HRM Laravel Scheduler Worker
 After=network.target
@@ -85,7 +90,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable hrm-queue hrm-scheduler
-systemctl restart hrm-queue hrm-scheduler
+systemctl enable "$QUEUE_SERVICE_NAME" "$SCHEDULER_SERVICE_NAME"
+systemctl restart "$QUEUE_SERVICE_NAME" "$SCHEDULER_SERVICE_NAME"
 
 echo "Runtime configurado para ${DOMAIN}."

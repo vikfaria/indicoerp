@@ -190,34 +190,46 @@ class SceSetupCommand extends Command
         });
 
         // Step 9: Generate fiscal calendar
-        $this->task("9. Gerar calendário fiscal {$year}", function () use ($companyId, $year) {
+        $this->task("9. Gerar calendário fiscal {$year} e " . ($year + 1), function () use ($companyId, $year) {
             if (!Schema::hasTable('fiscal_calendar_events')) {
                 $this->warn('   Tabela fiscal_calendar_events não existe. Execute as migrações primeiro.');
                 return false;
             }
 
             FiscalCalendarEvent::generateForYear($companyId, $year);
+            FiscalCalendarEvent::generateForYear($companyId, $year + 1);
+
             $count = FiscalCalendarEvent::where('company_id', $companyId)
-                ->whereYear('due_date', $year)
+                ->whereYear('due_date', '>=', $year)
+                ->whereYear('due_date', '<=', $year + 1)
                 ->count();
 
-            $this->line("   → {$count} eventos fiscais gerados");
+            $this->line("   → {$count} eventos fiscais gerados para {$year} e " . ($year + 1));
             return true;
         });
 
         // Step 10: Validate PGC structure
         $this->task("10. Validar estrutura PGC", function () use ($pgcImportService, $companyId) {
-            $issues = $pgcImportService->validateStructure($companyId);
+            $report = $pgcImportService->buildValidationReport($companyId);
 
-            if (empty($issues)) {
+            $this->line("   → {$report['company_pgc_count']}/{$report['catalog_count']} contas oficiais importadas");
+
+            if (!empty($report['warnings'])) {
+                $this->warn('   → ' . count($report['warnings']) . ' avisos de reconciliação PGC:');
+                foreach ($report['warnings'] as $warning) {
+                    $this->line("     ⚠ {$warning}");
+                }
+            }
+
+            if (empty($report['errors'])) {
                 $this->line("   → Estrutura PGC válida ✓");
             } else {
-                $this->warn("   → " . count($issues) . " problemas encontrados:");
-                foreach ($issues as $issue) {
+                $this->warn("   → " . count($report['errors']) . " problemas encontrados:");
+                foreach ($report['errors'] as $issue) {
                     $this->line("     ⚠ {$issue}");
                 }
             }
-            return empty($issues);
+            return $report['valid'];
         });
 
         // Step 11: Seed payroll legal defaults

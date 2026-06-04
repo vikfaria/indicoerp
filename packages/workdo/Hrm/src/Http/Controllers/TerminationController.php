@@ -3,6 +3,7 @@
 namespace Workdo\Hrm\Http\Controllers;
 
 use App\Services\MozambiqueTerminationSettlementService;
+use App\Services\MozambiqueProbationCessationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Workdo\Hrm\Models\Termination;
@@ -22,7 +23,8 @@ use Workdo\Hrm\Events\UpdateTerminationStatus;
 class TerminationController extends Controller
 {
     public function __construct(
-        private readonly MozambiqueTerminationSettlementService $settlementService
+        private readonly MozambiqueTerminationSettlementService $settlementService,
+        private readonly MozambiqueProbationCessationService $probationCessationService
     ) {}
 
     public function index()
@@ -144,6 +146,7 @@ class TerminationController extends Controller
             $termination->save();
             if ((string) $termination->status === 'approved') {
                 $this->syncForeignWorkerCessationFromTermination($termination);
+                $this->syncProbationCessationFromTermination($termination);
             }
 
             UpdateTermination::dispatch($request, $termination);
@@ -207,6 +210,7 @@ class TerminationController extends Controller
             $termination->save();
             if ($validated['status'] === 'approved') {
                 $this->syncForeignWorkerCessationFromTermination($termination);
+                $this->syncProbationCessationFromTermination($termination);
             }
             UpdateTerminationStatus::dispatch($request, $termination);
 
@@ -327,5 +331,26 @@ class TerminationController extends Controller
         }
 
         $profile->save();
+    }
+
+    private function syncProbationCessationFromTermination(Termination $termination): void
+    {
+        $employee = $this->resolveScopedEmployee((int) $termination->employee_id);
+        if (!$employee) {
+            return;
+        }
+
+        $this->probationCessationService->close(
+            $employee,
+            $termination->termination_date ?? now(),
+            (string) ($termination->reason ?? ''),
+            $termination->offboarding_notes ? sprintf(
+                'Termination #%d approved with offboarding note: %s',
+                (int) $termination->id,
+                (string) $termination->offboarding_notes
+            ) : sprintf('Termination #%d approved.', (int) $termination->id),
+            'termination',
+            optional($termination->terminationType)->termination_type
+        );
     }
 }

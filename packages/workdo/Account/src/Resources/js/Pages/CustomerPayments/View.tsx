@@ -61,6 +61,11 @@ export default function View({ payment }: CustomerPaymentViewProps) {
                                 <p className="mt-1 text-gray-500">
                                     {payment.bank_account?.account_name || '-'}
                                     {payment.bank_account?.account_number && ` (${payment.bank_account.account_number})`}
+                                    {(payment.branch?.branch_name || payment.bank_account?.branch?.branch_name || payment.bank_account?.branch_name) && (
+                                        <span className="block text-xs text-muted-foreground">
+                                            {payment.branch?.branch_name || payment.bank_account?.branch?.branch_name || payment.bank_account?.branch_name}
+                                        </span>
+                                    )}
                                 </p>
                             </div>
                             <div>

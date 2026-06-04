@@ -157,7 +157,7 @@ export default function CashClosing() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">{t('Closing Date')}</label>
-                        <DatePicker value={closingDate} onChange={setClosingDate} placeholder={t('Select closing date')} />
+                        <DatePicker value={closingDate} onChange={setClosingDate} placeholder={t('Select closing date')} maxDate={new Date()} />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">{t('Counted Balance')}</label>
