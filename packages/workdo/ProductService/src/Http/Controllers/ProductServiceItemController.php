@@ -3,9 +3,11 @@
 namespace Workdo\ProductService\Http\Controllers;
 
 use App\Models\Warehouse;
+use App\Services\InventoryCostingService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Workdo\ProductService\Events\CreateProductServiceItem;
 use Workdo\ProductService\Events\DestroyProductServiceItem;
@@ -80,49 +82,71 @@ class ProductServiceItemController extends Controller
     {
         if(Auth::user()->can('create-product-service-item')){
             $validated = $request->validated();
-            $item = new ProductServiceItem();
-            $item->name = $validated['name'];
-            $item->sku = $validated['sku'];
-            $item->tax_ids = (!empty($validated['tax_ids'])) ? array_map('intval', $validated['tax_ids']) : null;
-            $item->category_id = $validated['category_id'] === 'none' ? null : $validated['category_id'];
-            $item->description = $validated['description'] ?? null;
-            $item->long_description = $validated['long_description'] ?? null;
-            $item->sale_price = $validated['sale_price'];
-            $item->purchase_price = $validated['purchase_price'];
-            $item->unit = $validated['unit'] === 'none' ? null : $validated['unit'];
-            $item->type = $validated['type'];
-            $item->creator_id = Auth::id();
-            $item->created_by = creatorId();
+            return DB::transaction(function () use ($request, $validated) {
+                $item = new ProductServiceItem();
+                $item->name = $validated['name'];
+                $item->sku = $validated['sku'];
+                $item->tax_ids = (!empty($validated['tax_ids'])) ? array_map('intval', $validated['tax_ids']) : null;
+                $item->category_id = $validated['category_id'] === 'none' ? null : $validated['category_id'];
+                $item->description = $validated['description'] ?? null;
+                $item->long_description = $validated['long_description'] ?? null;
+                $item->sale_price = $validated['sale_price'];
+                $item->purchase_price = $validated['purchase_price'];
+                $item->unit = $validated['unit'] === 'none' ? null : $validated['unit'];
+                $item->type = $validated['type'];
+                $item->creator_id = Auth::id();
+                $item->created_by = creatorId();
 
-            // Handle image path from media library
-            if (!empty($validated['image'])) {
-                $item->image = basename($validated['image']);
-            }
+                // Handle image path from media library
+                if (!empty($validated['image'])) {
+                    $item->image = basename($validated['image']);
+                }
 
-            // Handle multiple images
-            if (!empty($validated['images'])) {
-                $imageNames = array_map('basename', $validated['images']);
-                $item->images = json_encode($imageNames);
-            }
+                // Handle multiple images
+                if (!empty($validated['images'])) {
+                    $imageNames = array_map('basename', $validated['images']);
+                    $item->images = json_encode($imageNames);
+                }
 
-            $item->save();
+                $item->save();
 
-            // Create warehouse stock entry if warehouse and quantity are provided
-            if (isset($validated['warehouse_id']) && $validated['warehouse_id'] !== 'none' && isset($validated['quantity'])) {
-                WarehouseStock::create([
-                    'product_id' => $item->id,
-                    'warehouse_id' => $validated['warehouse_id'],
-                    'quantity' => $validated['quantity'] ?? 0,
-                ]);
-            }
+                // Create the initial warehouse stock entry and FIFO layer for sellable items.
+                if (isset($validated['warehouse_id']) && $validated['warehouse_id'] !== 'none' && isset($validated['quantity'])) {
+                    $quantity = (float) $validated['quantity'];
+                    $warehouseId = (int) $validated['warehouse_id'];
 
-            // Dispatch event for packages to handle their fields
-            CreateProductServiceItem::dispatch($request, $item);
+                    WarehouseStock::updateOrCreate(
+                        [
+                            'product_id' => $item->id,
+                            'warehouse_id' => $warehouseId,
+                        ],
+                        [
+                            'quantity' => $quantity,
+                        ]
+                    );
 
-            event(new \App\Events\CustomFieldSaved($item, $request->custom_fields ?? [], 'created'));
+                    if ($quantity > 0) {
+                        app(InventoryCostingService::class)->recordPurchase(
+                            creatorId(),
+                            $item->id,
+                            $quantity,
+                            max(0, (float) ($item->purchase_price ?? 0)),
+                            now()->toDateString(),
+                            'opening_stock',
+                            $item->id,
+                            (string) $warehouseId,
+                            false
+                        );
+                    }
+                }
 
+                // Dispatch event for packages to handle their fields
+                CreateProductServiceItem::dispatch($request, $item);
 
-            return redirect()->route('product-service.items.index')->with('success', __('The item has been created successfully.'));
+                event(new \App\Events\CustomFieldSaved($item, $request->custom_fields ?? [], 'created'));
+
+                return redirect()->route('product-service.items.index')->with('success', __('The item has been created successfully.'));
+            });
         }
         return redirect()->route('product-service.items.index')->with('error', __('Permission denied'));
     }
@@ -190,53 +214,93 @@ class ProductServiceItemController extends Controller
         if(Auth::user()->can('edit-product-service-item')){
             $validated = $request->validated();
 
-            $item->name = $validated['name'];
-            $item->sku = $validated['sku'];
-            $item->tax_ids = (!empty($validated['tax_ids'])) ? array_map('intval', $validated['tax_ids']) : null;
-            $item->category_id = $validated['category_id'] === 'none' ? null : $validated['category_id'];
-            $item->description = $validated['description'];
-            $item->long_description = $validated['long_description'] ?? null;
-            $item->sale_price = $validated['sale_price'];
-            $item->purchase_price = $validated['purchase_price'];
-            $item->unit = $validated['unit'] === 'none' ? null : $validated['unit'];
-            $item->type = $validated['type'];
+            return DB::transaction(function () use ($request, $validated, $item) {
+                $item->name = $validated['name'];
+                $item->sku = $validated['sku'];
+                $item->tax_ids = (!empty($validated['tax_ids'])) ? array_map('intval', $validated['tax_ids']) : null;
+                $item->category_id = $validated['category_id'] === 'none' ? null : $validated['category_id'];
+                $item->description = $validated['description'];
+                $item->long_description = $validated['long_description'] ?? null;
+                $item->sale_price = $validated['sale_price'];
+                $item->purchase_price = $validated['purchase_price'];
+                $item->unit = $validated['unit'] === 'none' ? null : $validated['unit'];
+                $item->type = $validated['type'];
 
-            // Handle image path from media library
-            if (isset($validated['image'])) {
-                $item->image = !empty($validated['image']) ? basename($validated['image']) : null;
-            }
-
-            // Handle multiple images
-            if (isset($validated['images'])) {
-                if (!empty($validated['images'])) {
-                    $imageNames = array_map('basename', $validated['images']);
-                    $item->images = json_encode($imageNames);
-                } else {
-                    $item->images = null;
+                // Handle image path from media library
+                if (isset($validated['image'])) {
+                    $item->image = !empty($validated['image']) ? basename($validated['image']) : null;
                 }
-            }
 
-            $item->save();
+                // Handle multiple images
+                if (isset($validated['images'])) {
+                    if (!empty($validated['images'])) {
+                        $imageNames = array_map('basename', $validated['images']);
+                        $item->images = json_encode($imageNames);
+                    } else {
+                        $item->images = null;
+                    }
+                }
 
-            // Update warehouse stock if warehouse is selected
-            if ($item->warehouse_id && isset($validated['quantity'])) {
-                WarehouseStock::updateOrCreate(
-                    [
-                        'product_id' => $item->id,
-                        'warehouse_id' => $item->warehouse_id,
-                    ],
-                    [
-                        'quantity' => $validated['quantity'],
-                    ]
-                );
-            }
+                $item->save();
 
-            // Dispatch event for packages to handle their fields
-            UpdateProductServiceItem::dispatch($request, $item);
+                // Keep the item quantity aligned with FIFO layers for the selected warehouse.
+                $warehouseId = isset($validated['warehouse_id']) && $validated['warehouse_id'] !== 'none'
+                    ? (int) $validated['warehouse_id']
+                    : (int) WarehouseStock::where('product_id', $item->id)->value('warehouse_id');
 
-            event(new \App\Events\CustomFieldSaved($item, $request->custom_fields ?? [], 'updated'));
+                if ($warehouseId > 0 && isset($validated['quantity'])) {
+                    $targetQuantity = (float) $validated['quantity'];
 
-            return redirect()->route('product-service.items.index')->with('success', __('The item details are updated successfully.'));
+                    $existingStock = WarehouseStock::where('product_id', $item->id)
+                        ->where('warehouse_id', $warehouseId)
+                        ->first();
+
+                    $currentQuantity = (float) ($existingStock->quantity ?? 0);
+                    $delta = round($targetQuantity - $currentQuantity, 4);
+
+                    if ($delta > 0) {
+                        app(InventoryCostingService::class)->recordPurchase(
+                            creatorId(),
+                            $item->id,
+                            $delta,
+                            max(0, (float) ($item->purchase_price ?? 0)),
+                            now()->toDateString(),
+                            'stock_adjustment',
+                            $item->id,
+                            (string) $warehouseId,
+                            false
+                        );
+                    } elseif ($delta < 0) {
+                        app(InventoryCostingService::class)->recordSale(
+                            creatorId(),
+                            $item->id,
+                            abs($delta),
+                            now()->toDateString(),
+                            'stock_adjustment',
+                            $item->id,
+                            (string) $warehouseId,
+                            false
+                        );
+                    }
+
+                    WarehouseStock::updateOrCreate(
+                        [
+                            'product_id' => $item->id,
+                            'warehouse_id' => $warehouseId,
+                        ],
+                        [
+                            'quantity' => $targetQuantity,
+                        ]
+                    );
+                }
+
+                // Dispatch event for packages to handle their fields
+                UpdateProductServiceItem::dispatch($request, $item);
+
+                event(new \App\Events\CustomFieldSaved($item, $request->custom_fields ?? [], 'updated'));
+
+                return redirect()->route('product-service.items.index')->with('success', __('The item details are updated successfully.'));
+            });
         }
         return redirect()->route('product-service.items.index')->with('error', __('Permission denied'));
     }
@@ -339,21 +403,41 @@ class ProductServiceItemController extends Controller
                 'quantity' => 'required|numeric|min:0'
             ]);
 
-            $existingStock = WarehouseStock::where('product_id', $request->product_id)
-                ->where('warehouse_id', $request->warehouse_id)
-                ->first();
+            return DB::transaction(function () use ($request) {
+                $existingStock = WarehouseStock::where('product_id', $request->product_id)
+                    ->where('warehouse_id', $request->warehouse_id)
+                    ->first();
 
-            if ($existingStock) {
-                $existingStock->increment('quantity', $request->quantity);
-            } else {
-                WarehouseStock::create([
-                    'product_id' => $request->product_id,
-                    'warehouse_id' => $request->warehouse_id,
-                    'quantity' => $request->quantity,
-                ]);
-            }
+                $product = ProductServiceItem::where('id', $request->product_id)->firstOrFail();
+                $quantity = (float) $request->quantity;
+                $warehouseId = (int) $request->warehouse_id;
 
-            return back()->with('success', __('Stock entry created successfully.'));
+                if ($existingStock) {
+                    $existingStock->increment('quantity', $quantity);
+                } else {
+                    WarehouseStock::create([
+                        'product_id' => $request->product_id,
+                        'warehouse_id' => $request->warehouse_id,
+                        'quantity' => $quantity,
+                    ]);
+                }
+
+                if ($quantity > 0) {
+                    app(InventoryCostingService::class)->recordPurchase(
+                        creatorId(),
+                        $product->id,
+                        $quantity,
+                        max(0, (float) ($product->purchase_price ?? 0)),
+                        now()->toDateString(),
+                        'manual_stock_adjustment',
+                        $product->id,
+                        (string) $warehouseId,
+                        false
+                    );
+                }
+
+                return back()->with('success', __('Stock entry created successfully.'));
+            });
         }
         return back()->with('error', __('Permission denied'));
     }

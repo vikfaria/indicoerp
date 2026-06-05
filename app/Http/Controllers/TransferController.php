@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transfer;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Services\InventoryCostingService;
 use Workdo\ProductService\Models\ProductServiceItem;
 use Workdo\ProductService\Models\WarehouseStock;
 use App\Http\Requests\StoreTransferRequest;
 use App\Events\CreateTransfer;
 use App\Events\DestroyTransfer;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class TransferController extends Controller
@@ -84,47 +88,60 @@ class TransferController extends Controller
         return back();
     }
 
-    public function store(StoreTransferRequest $request)
+    public function store(StoreTransferRequest $request, InventoryCostingService $inventoryCostingService)
     {
         if(Auth::user()->can('create-transfers')){
             $validated = $request->validated();
 
-            $transfer = new Transfer();
-            $transfer->from_warehouse = $validated['from_warehouse'];
-            $transfer->to_warehouse = $validated['to_warehouse'];
-            $transfer->product_id = $validated['product_id'];
-            $transfer->quantity = $validated['quantity'];
-            $transfer->date = $validated['date'];
-            $transfer->creator_id = Auth::id();
-            $transfer->created_by = creatorId();
-            $transfer->save();
+            return DB::transaction(function () use ($request, $validated, $inventoryCostingService) {
+                $transfer = new Transfer();
+                $transfer->from_warehouse = $validated['from_warehouse'];
+                $transfer->to_warehouse = $validated['to_warehouse'];
+                $transfer->product_id = $validated['product_id'];
+                $transfer->quantity = $validated['quantity'];
+                $transfer->date = $validated['date'];
+                $transfer->creator_id = Auth::id();
+                $transfer->created_by = creatorId();
+                $transfer->save();
 
-            // Update warehouse stocks
-            // Decrease from source warehouse
-            $fromStock = WarehouseStock::where('product_id', $validated['product_id'])
-                ->where('warehouse_id', $validated['from_warehouse'])
-                ->first();
+                $inventoryCostingService->recordTransfer(
+                    creatorId(),
+                    (int) $validated['product_id'],
+                    (float) $validated['quantity'],
+                    $validated['date'],
+                    (string) $validated['from_warehouse'],
+                    (string) $validated['to_warehouse'],
+                    'stock_transfer',
+                    $transfer->id
+                );
 
-            if ($fromStock) {
-                $fromStock->quantity = max(0, $fromStock->quantity - $validated['quantity']);
-                $fromStock->save();
-            }
+                // Update warehouse stocks
+                // Decrease from source warehouse
+                $fromStock = WarehouseStock::where('product_id', $validated['product_id'])
+                    ->where('warehouse_id', $validated['from_warehouse'])
+                    ->first();
 
-            // Increase in destination warehouse
-            $toStock = WarehouseStock::firstOrCreate(
-                [
-                    'product_id' => $validated['product_id'],
-                    'warehouse_id' => $validated['to_warehouse'],
-                ],
-                ['quantity' => 0]
-            );
-            $toStock->quantity += $validated['quantity'];
-            $toStock->save();
+                if ($fromStock) {
+                    $fromStock->quantity = max(0, $fromStock->quantity - $validated['quantity']);
+                    $fromStock->save();
+                }
 
-            // Dispatch event for packages to handle their fields
-            CreateTransfer::dispatch($request, $transfer);
+                // Increase in destination warehouse
+                $toStock = WarehouseStock::firstOrCreate(
+                    [
+                        'product_id' => $validated['product_id'],
+                        'warehouse_id' => $validated['to_warehouse'],
+                    ],
+                    ['quantity' => 0]
+                );
+                $toStock->quantity += $validated['quantity'];
+                $toStock->save();
 
-            return back()->with('success', __('The transfer has been created successfully.'));
+                // Dispatch event for packages to handle their fields
+                CreateTransfer::dispatch($request, $transfer);
+
+                return back()->with('success', __('The transfer has been created successfully.'));
+            });
         }
         else{
             return back()->with('error', __('Permission denied'));
@@ -147,39 +164,88 @@ class TransferController extends Controller
         return back()->with('error', __('Permission denied'));
     }
 
-    public function destroy(Transfer $transfer)
+    public function destroy(Transfer $transfer, InventoryCostingService $inventoryCostingService)
     {
         if(Auth::user()->can('delete-transfers')){
             if (!$this->checkTransferAccess($transfer)) {
                 return redirect()->route('transfers.index')->with('error', __('Permission denied'));
             }
 
-            // Add back to source warehouse
-            $fromStock = WarehouseStock::firstOrCreate(
-                [
-                    'product_id' => $transfer->product_id,
-                    'warehouse_id' => $transfer->from_warehouse,
-                ],
-                ['quantity' => 0]
-            );
-            $fromStock->quantity += $transfer->quantity;
-            $fromStock->save();
+            return DB::transaction(function () use ($transfer, $inventoryCostingService) {
+                $outboundMovement = StockMovement::query()
+                    ->where('company_id', $transfer->created_by)
+                    ->where('product_id', $transfer->product_id)
+                    ->where('reference_type', 'stock_transfer_out')
+                    ->where('reference_id', $transfer->id)
+                    ->where('warehouse_code', (string) $transfer->from_warehouse)
+                    ->first();
 
-            // Remove from destination warehouse
-            $toStock = WarehouseStock::where('product_id', $transfer->product_id)
-                ->where('warehouse_id', $transfer->to_warehouse)
-                ->first();
+                $inboundMovement = StockMovement::query()
+                    ->where('company_id', $transfer->created_by)
+                    ->where('product_id', $transfer->product_id)
+                    ->where('reference_type', 'stock_transfer_in')
+                    ->where('reference_id', $transfer->id)
+                    ->where('warehouse_code', (string) $transfer->to_warehouse)
+                    ->first();
 
-            if ($toStock) {
-                $toStock->quantity = max(0, $toStock->quantity - $transfer->quantity);
-                $toStock->save();
-            }
+                if ($outboundMovement && $inboundMovement) {
+                    $layer = $inboundMovement->costLayers()->first();
 
-            DestroyTransfer::dispatch($transfer);
+                    if (!$layer) {
+                        throw ValidationException::withMessages([
+                            'transfer' => __('Unable to delete transfer because its FIFO layer is missing.'),
+                        ]);
+                    }
 
-            $transfer->delete();
+                    if ((float) $layer->remaining_quantity < (float) $layer->original_quantity) {
+                        throw ValidationException::withMessages([
+                            'transfer' => __('Unable to delete transfer after destination stock has already been consumed. Reverse the later sales first.'),
+                        ]);
+                    }
 
-            return back()->with('success', __('The transfer has been deleted.'));
+                    $inventoryCostingService->recordPurchase(
+                        creatorId(),
+                        (int) $transfer->product_id,
+                        (float) $transfer->quantity,
+                        (float) $layer->unit_cost,
+                        now()->toDateString(),
+                        'stock_transfer_reversal',
+                        $transfer->id,
+                        (string) $transfer->from_warehouse,
+                        false
+                    );
+
+                    $inboundMovement->delete();
+                    $outboundMovement->delete();
+                }
+
+                // Add back to source warehouse
+                $fromStock = WarehouseStock::firstOrCreate(
+                    [
+                        'product_id' => $transfer->product_id,
+                        'warehouse_id' => $transfer->from_warehouse,
+                    ],
+                    ['quantity' => 0]
+                );
+                $fromStock->quantity += $transfer->quantity;
+                $fromStock->save();
+
+                // Remove from destination warehouse
+                $toStock = WarehouseStock::where('product_id', $transfer->product_id)
+                    ->where('warehouse_id', $transfer->to_warehouse)
+                    ->first();
+
+                if ($toStock) {
+                    $toStock->quantity = max(0, $toStock->quantity - $transfer->quantity);
+                    $toStock->save();
+                }
+
+                DestroyTransfer::dispatch($transfer);
+
+                $transfer->delete();
+
+                return back()->with('success', __('The transfer has been deleted.'));
+            });
         }
         else{
             return back()->with('error', __('Permission denied'));

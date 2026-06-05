@@ -3,8 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\BuildsTenantScopedRules;
+use App\Models\StockCostLayer;
 use Illuminate\Foundation\Http\FormRequest;
-use Workdo\ProductService\Models\WarehouseStock;
 
 class StoreTransferRequest extends FormRequest
 {
@@ -26,22 +26,17 @@ class StoreTransferRequest extends FormRequest
                 'integer',
                 'min:1',
                 function ($attribute, $value, $fail) {
-                    $warehouseStock = WarehouseStock::where('warehouse_id', $this->from_warehouse)
+                    $availableQty = StockCostLayer::query()
+                        ->where('company_id', creatorId())
                         ->where('product_id', $this->product_id)
-                        ->whereHas('warehouse', function ($query) {
-                            $query->where('created_by', creatorId())
-                                ->where('is_active', true);
+                        ->available()
+                        ->whereHas('movement', function ($query) {
+                            $query->where('warehouse_code', (string) $this->from_warehouse);
                         })
-                        ->whereHas('product', function ($query) {
-                            $query->where('created_by', creatorId())
-                                ->where('is_active', true)
-                                ->where('type', 'product');
-                        })
-                        ->first();
+                        ->sum('remaining_quantity');
 
-                    if (!$warehouseStock || $value > $warehouseStock->quantity) {
-                        $availableQty = $warehouseStock ? $warehouseStock->quantity : 0;
-                        $fail("Quantity cannot exceed available stock ({$availableQty}).");
+                    if ($availableQty <= 0 || $value > $availableQty) {
+                        $fail("Quantity cannot exceed available FIFO stock ({$availableQty}).");
                     }
                 }
             ],

@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use Workdo\Account\Models\ChartOfAccount;
 use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\JournalEntryItem;
+use Workdo\ProductService\Models\ProductServiceItem;
 
 /**
  * FIFO inventory costing service.
@@ -139,6 +140,125 @@ class InventoryCostingService
 
             return $movement;
         });
+    }
+
+    /**
+     * Record a stock transfer by consuming FIFO layers in the source warehouse
+     * and recreating the moved quantity in the destination warehouse using the
+     * weighted unit cost from the outbound movement.
+     */
+    public function recordTransfer(
+        int $companyId,
+        int $productId,
+        float $quantity,
+        string $date,
+        string $fromWarehouseCode,
+        string $toWarehouseCode,
+        ?string $referenceType = null,
+        ?int $referenceId = null
+    ): array {
+        return DB::transaction(function () use ($companyId, $productId, $quantity, $date, $fromWarehouseCode, $toWarehouseCode, $referenceType, $referenceId) {
+            $outboundMovement = $this->recordSale(
+                $companyId,
+                $productId,
+                $quantity,
+                $date,
+                $referenceType ? "{$referenceType}_out" : 'stock_transfer_out',
+                $referenceId,
+                $fromWarehouseCode,
+                false
+            );
+
+            $inboundMovement = $this->recordPurchase(
+                $companyId,
+                $productId,
+                $quantity,
+                (float) $outboundMovement->unit_cost,
+                $date,
+                $referenceType ? "{$referenceType}_in" : 'stock_transfer_in',
+                $referenceId,
+                $toWarehouseCode,
+                false
+            );
+
+            return [
+                'outbound' => $outboundMovement,
+                'inbound' => $inboundMovement,
+            ];
+        });
+    }
+
+    /**
+     * Backfill a missing FIFO layer for a visible warehouse stock balance.
+     */
+    public function backfillMissingWarehouseStockLayers(
+        int $companyId,
+        int $productId,
+        int $warehouseId,
+        float $targetQuantity,
+        ?string $referenceType = 'fifo_backfill',
+        ?int $referenceId = null,
+        bool $createJournal = false
+    ): ?StockMovement {
+        $warehouseCode = (string) $warehouseId;
+        $availableQuantity = $this->getAvailableFifoQuantity($companyId, $productId, $warehouseCode);
+        $missingQuantity = round($targetQuantity - $availableQuantity, 4);
+
+        if ($missingQuantity <= 0) {
+            return null;
+        }
+
+        $unitCost = $this->resolveBackfillUnitCost($companyId, $productId, $warehouseCode);
+
+        return $this->recordPurchase(
+            $companyId,
+            $productId,
+            $missingQuantity,
+            $unitCost,
+            now()->toDateString(),
+            $referenceType,
+            $referenceId,
+            $warehouseCode,
+            $createJournal
+        );
+    }
+
+    public function getAvailableFifoQuantity(int $companyId, int $productId, ?string $warehouseCode = null): float
+    {
+        $query = StockCostLayer::where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->available();
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $query->whereHas('movement', function ($movementQuery) use ($warehouseCode) {
+                $movementQuery->where('warehouse_code', $warehouseCode);
+            });
+        }
+
+        return (float) $query->sum('remaining_quantity');
+    }
+
+    public function resolveBackfillUnitCost(int $companyId, int $productId, ?string $warehouseCode = null): float
+    {
+        $query = StockCostLayer::where('company_id', $companyId)
+            ->where('product_id', $productId)
+            ->available();
+
+        if ($warehouseCode !== null && $warehouseCode !== '') {
+            $query->whereHas('movement', function ($movementQuery) use ($warehouseCode) {
+                $movementQuery->where('warehouse_code', $warehouseCode);
+            });
+        }
+
+        $aggregate = (clone $query)
+            ->selectRaw('COALESCE(SUM(remaining_quantity), 0) as total_qty, COALESCE(SUM(remaining_quantity * unit_cost), 0) as total_value')
+            ->first();
+
+        if ($aggregate && (float) $aggregate->total_qty > 0) {
+            return round((float) $aggregate->total_value / (float) $aggregate->total_qty, 4);
+        }
+
+        return (float) (ProductServiceItem::where('id', $productId)->value('purchase_price') ?? 0);
     }
 
     /**

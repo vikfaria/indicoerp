@@ -6,6 +6,7 @@ use App\Http\Middleware\PlanModuleCheck;
 use App\Models\Transfer;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\InventoryCostingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -74,6 +75,17 @@ class TransferTenantIsolationTest extends TestCase
             'product_id' => $localProduct->id,
             'quantity' => 10,
         ]);
+        app(InventoryCostingService::class)->recordPurchase(
+            $companyA->id,
+            $localProduct->id,
+            10,
+            15.00,
+            now()->toDateString(),
+            'manual_stock_adjustment',
+            $localProduct->id,
+            (string) $localFromWarehouse->id,
+            false
+        );
 
         $foreignFromWarehouse = $this->makeWarehouse($companyB, 'Foreign From');
         $foreignToWarehouse = $this->makeWarehouse($companyB, 'Foreign To');
