@@ -88,7 +88,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::get('/', [SystemSetupController::class, 'index'])->name('index');
     });
 
-    Route::prefix('hrm/branches')->name('hrm.branches.')->group(function () {
+    Route::middleware('plan.limit:branches')->prefix('hrm/branches')->name('hrm.branches.')->group(function () {
         Route::get('/', [BranchController::class, 'index'])->name('index');
         Route::post('/', [BranchController::class, 'store'])->name('store');
         Route::get('/{branch}/edit', [BranchController::class, 'edit'])->name('edit');
@@ -120,7 +120,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])->group(fun
         Route::delete('/{employeedocumenttype}', [EmployeeDocumentTypeController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('hrm/employees')->name('hrm.employees.')->group(function () {
+    Route::middleware('plan.limit:employees')->prefix('hrm/employees')->name('hrm.employees.')->group(function () {
         Route::get('/', [EmployeeController::class, 'index'])->name('index');
         Route::get('/create', [EmployeeController::class, 'create'])->name('create');
         Route::post('/', [EmployeeController::class, 'store'])->name('store');

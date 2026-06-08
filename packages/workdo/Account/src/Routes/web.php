@@ -28,15 +28,19 @@ use Workdo\Account\Models\AccountType;
 Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group(function () {
     Route::get('/dashboard/account', [DashboardController::class, 'index'])->name('account.index');
     Route::resource('account/vendors', VendorController::class, ['as' => 'account']);
-    Route::resource('account/customers', CustomerController::class, ['as' => 'account']);
+    Route::middleware('feature:billing.customer.manage')->group(function () {
+        Route::resource('account/customers', CustomerController::class, ['as' => 'account']);
+    });
 
-    Route::prefix('account/bank-accounts')->name('account.bank-accounts.')->group(function () {
-        Route::get('/', [BankAccountController::class, 'index'])->name('index');
-        Route::post('/', [BankAccountController::class, 'store'])->name('store');
-        Route::get('/{bankaccount}/edit', [BankAccountController::class, 'edit'])->name('edit');
-        Route::put('/{bankaccount}', [BankAccountController::class, 'update'])->name('update');
-        Route::delete('/{bankaccount}', [BankAccountController::class, 'destroy'])->name('destroy');
-        Route::get('/api/list', [BankAccountController::class, 'bankAccounts'])->name('api.list');
+    Route::middleware('feature:treasury.bank_accounts.manage')->prefix('account/bank-accounts')->name('account.bank-accounts.')->group(function () {
+        Route::middleware('plan.limit:bank_accounts')->group(function () {
+            Route::get('/', [BankAccountController::class, 'index'])->name('index');
+            Route::post('/', [BankAccountController::class, 'store'])->name('store');
+            Route::get('/{bankaccount}/edit', [BankAccountController::class, 'edit'])->name('edit');
+            Route::put('/{bankaccount}', [BankAccountController::class, 'update'])->name('update');
+            Route::delete('/{bankaccount}', [BankAccountController::class, 'destroy'])->name('destroy');
+            Route::get('/api/list', [BankAccountController::class, 'bankAccounts'])->name('api.list');
+        });
     });
 
     Route::prefix('account/account-types')->name('account.account-types.')->group(function () {
@@ -46,7 +50,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::delete('/{accounttype}', [AccountTypeController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('account/chart-of-accounts')->name('account.chart-of-accounts.')->group(function () {
+    Route::middleware('feature:accounting.chart_of_accounts.manage')->prefix('account/chart-of-accounts')->name('account.chart-of-accounts.')->group(function () {
         Route::get('/', [ChartOfAccountController::class, 'index'])->name('index');
         Route::post('/', [ChartOfAccountController::class, 'store'])->name('store');
         Route::get('/{chartofaccount}', [ChartOfAccountController::class, 'show'])->name('show');
@@ -55,7 +59,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::delete('/{chartofaccount}', [ChartOfAccountController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('account/vendor-payments')->name('account.vendor-payments.')->group(function () {
+    Route::middleware('plan.limit:documents_per_month')->prefix('account/vendor-payments')->name('account.vendor-payments.')->group(function () {
         Route::get('/', [VendorPaymentController::class, 'index'])->name('index');
         Route::post('/store', [VendorPaymentController::class, 'store'])->name('store');
         Route::post('/{vendorPayment}/approve', [VendorPaymentController::class, 'approve'])->name('approve');
@@ -66,7 +70,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::post('/{vendorPayment}/apply-advance', [VendorPaymentController::class, 'applyAdvance'])->name('apply-advance');
     });
 
-    Route::prefix('account/bank-transactions')->name('account.bank-transactions.')->group(function () {
+    Route::middleware('feature:treasury.bank_transactions.manage')->prefix('account/bank-transactions')->name('account.bank-transactions.')->group(function () {
         Route::get('/', [BankTransactionController::class, 'index'])->name('index');
         Route::get('/template', [BankTransactionController::class, 'downloadTemplate'])->name('template');
         Route::post('/import-csv', [BankTransactionController::class, 'importCsv'])->name('import-csv');
@@ -74,7 +78,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::post('/{id}/mark-reconciled', [BankTransactionController::class, 'markReconciled'])->name('mark-reconciled');
     });
 
-    Route::prefix('account/bank-transfers')->name('account.bank-transfers.')->group(function () {
+    Route::middleware('feature:treasury.bank_transfers.manage')->prefix('account/bank-transfers')->name('account.bank-transfers.')->group(function () {
         Route::get('/', [BankTransferController::class, 'index'])->name('index');
         Route::post('/', [BankTransferController::class, 'store'])->name('store');
         Route::put('/{banktransfer}', [BankTransferController::class, 'update'])->name('update');
@@ -102,7 +106,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::get('/{creditNote}', [CreditNoteController::class, 'show'])->name('show');
     });
 
-    Route::prefix('account/customer-payments')->name('account.customer-payments.')->group(function () {
+    Route::middleware('plan.limit:documents_per_month')->prefix('account/customer-payments')->name('account.customer-payments.')->group(function () {
         Route::get('/', [CustomerPaymentController::class, 'index'])->name('index');
         Route::post('/', [CustomerPaymentController::class, 'store'])->name('store');
         Route::patch('/{customerPayment}/approve', [CustomerPaymentController::class, 'approve'])->name('approve');

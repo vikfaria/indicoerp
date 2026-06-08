@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Classes\Module;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Models\CompanyFiscalProfile;
+use App\Models\AddOn;
 use App\Models\User;
+use App\Models\UserActiveModule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -16,16 +20,21 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $companySequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
+        Cache::flush();
+        app(Module::class)->moduleCacheForget();
+        $this->enableModule('Account');
         $this->withoutMiddleware(PlanModuleCheck::class);
     }
 
     public function test_bank_account_store_blocks_electronic_money_exemption_for_small_enterprise(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['create-bank-accounts']);
+        $this->grantPermissions($company, ['create-bank-accounts', 'manage-bank-accounts']);
         $this->makeFiscalProfile($company, 'small');
         $branch = $this->makeBranch($company);
         $chartAccountId = $this->makeChartAccount($company);
@@ -50,7 +59,7 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
     public function test_bank_account_store_allows_electronic_money_exemption_for_medium_enterprise(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['create-bank-accounts']);
+        $this->grantPermissions($company, ['create-bank-accounts', 'manage-bank-accounts']);
         $this->makeFiscalProfile($company, 'medium');
         $branch = $this->makeBranch($company);
         $chartAccountId = $this->makeChartAccount($company);
@@ -76,7 +85,7 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
     public function test_bank_account_store_blocks_electronic_money_exemption_for_inactive_fiscal_profile(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['create-bank-accounts']);
+        $this->grantPermissions($company, ['create-bank-accounts', 'manage-bank-accounts']);
         $this->makeFiscalProfile($company, 'medium', false);
         $branch = $this->makeBranch($company);
         $chartAccountId = $this->makeChartAccount($company);
@@ -101,7 +110,7 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
     public function test_bank_account_update_blocks_electronic_money_exemption_for_small_enterprise(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['edit-bank-accounts']);
+        $this->grantPermissions($company, ['edit-bank-accounts', 'manage-bank-accounts']);
         $this->makeFiscalProfile($company, 'small');
         $branch = $this->makeBranch($company);
         $chartAccountId = $this->makeChartAccount($company);
@@ -189,7 +198,11 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
 
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $company = User::forceCreate([
+            'id' => 93000 + (++$this->companySequence),
+            'name' => 'Empresa ' . (93000 + $this->companySequence),
+            'email' => 'company' . (93000 + $this->companySequence) . '@example.com',
+            'password' => 'password',
             'type' => 'company',
             'created_by' => null,
             'creator_id' => null,
@@ -197,6 +210,13 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+
+        UserActiveModule::updateOrCreate(
+            ['user_id' => $company->id, 'module' => 'Account'],
+            ['module' => 'Account']
+        );
+
+        return $company;
     }
 
     private function makeFiscalProfile(User $company, string $classification, bool $isActive = true): CompanyFiscalProfile
@@ -312,5 +332,23 @@ class BankAccountElectronicMoneyExemptionTest extends TestCase
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $user->refresh();
+    }
+
+    private function enableModule(string $module): void
+    {
+        AddOn::updateOrCreate(
+            ['module' => $module],
+            [
+                'name' => $module,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'is_enable' => true,
+                'for_admin' => false,
+                'package_name' => $module,
+                'priority' => 10,
+            ]
+        );
+
+        app(Module::class)->moduleCacheForget($module);
     }
 }

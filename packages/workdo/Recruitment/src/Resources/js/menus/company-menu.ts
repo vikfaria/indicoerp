@@ -13,68 +13,69 @@ export const recruitmentCompanyMenu = (t: (key: string) => string) => [
         order: 35,
     },
     {
-        title: t('Recruitment'),
+        title: t('Recrutamento'),
         icon: Users,
         permission: 'manage-recruitment',
-        order: 453,
+        parent: 'hrm',
+        order: 1000,
         children: [
             {
-                title: t('Job Locations'),
+                title: t('Locais de trabalho'),
                 href: route('recruitment.job-locations.index'),
                 permission: 'manage-job-locations',
             },
             {
-                title: t('Custom Questions'),
+                title: t('Perguntas personalizadas'),
                 href: route('recruitment.custom-questions.index'),
                 permission: 'manage-custom-questions',
             },
             {
-                title: t('Job Postings'),
+                title: t('Vagas publicadas'),
                 href: route('recruitment.job-postings.index'),
                 permission: 'manage-job-postings',
             },
             {
-                title: t('Candidates'),
+                title: t('Candidatos'),
                 href: route('recruitment.candidates.index'),
                 permission: 'manage-candidates',
             },
             {
-                title: t('Interview Rounds'),
+                title: t('Rondas de entrevista'),
                 href: route('recruitment.interview-rounds.index'),
                 permission: 'manage-interview-rounds',
             },
             {
-                title: t('Interviews'),
+                title: t('Entrevistas'),
                 href: route('recruitment.interviews.index'),
                 permission: 'manage-interviews',
             },
             {
-                title: t('Interview Feedback'),
+                title: t('Feedback de entrevista'),
                 href: route('recruitment.interview-feedbacks.index'),
                 permission: 'manage-interview-feedbacks',
             },
             {
-                title: t('Candidate Assessments'),
+                title: t('Avaliações de candidatos'),
                 href: route('recruitment.candidate-assessments.index'),
                 permission: 'manage-candidate-assessments',
             },
             {
-                title: t('Offers'),
+                title: t('Ofertas'),
                 href: route('recruitment.offers.index'),
                 permission: 'manage-offers',
             },
             {
-                title: t('Checklist Items'),
+                title: t('Itens de checklist'),
                 href: route('recruitment.checklist-items.index'),
                 permission: 'manage-checklist-items',
             },
             {
-                title: t('Candidate Onboarding'),
+                title: t('Onboarding de candidatos'),
                 href: route('recruitment.candidate-onboardings.index'),
                 permission: 'manage-candidate-onboardings',
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('recruitment.job-types.index'),
                 permission: 'manage-recruitment-system-setup',
                 activePaths: [

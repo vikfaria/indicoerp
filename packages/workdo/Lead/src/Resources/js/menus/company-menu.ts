@@ -16,7 +16,8 @@ export const leadCompanyMenu = (t: (key: string) => string) => [
         title: t('CRM'),
         icon: Contact,
         permission: 'manage-leads',
-        order: 500,
+        parent: 'crm-support',
+        order: 10,
         children: [                       
             {
                 title: t('Leads'),
@@ -24,12 +25,12 @@ export const leadCompanyMenu = (t: (key: string) => string) => [
                 permission: 'manage-leads',
             },
             {
-                title: t('Deals'),
+                title: t('Negócios'),
                 href: route('lead.deals.index'),
                 permission: 'manage-deals',
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('lead.pipelines.index'),
                 permission: 'manage-pipelines',
                 activePaths: [
@@ -40,17 +41,17 @@ export const leadCompanyMenu = (t: (key: string) => string) => [
                 ],
             },
             {
-                title: t('Reports'),
+                title: t('Relatórios'),
                 href: route('lead.reports.index'),
                 permission: 'view-reports',
                 children: [                       
                     {
-                        title: t('Lead Reports'),
+                        title: t('Relatórios de leads'),
                         href: route('lead.reports.leads'),
                         permission: 'view-reports',
                     },   
                     {
-                        title: t('Deal Reports'),
+                        title: t('Relatórios de negócios'),
                         href: route('lead.reports.deals'),
                         permission: 'view-reports',
                     },  

@@ -19,36 +19,36 @@ export const posCompanyMenu = (t: (key: string) => string) => [
         order: 475,
         children: [
             {
-                title: t('Add POS'),
+                title: t('Nova venda'),
                 href: route('pos.create'),
                 permission: 'create-pos',
             },
             {
-                title: t('POS Orders'),
+                title: t('Vendas POS'),
                 href: route('pos.orders'),
                 permission: 'manage-pos-orders',
             },
             {
-                title: t('Print Barcode'),
+                title: t('Imprimir código de barras'),
                 href: route('pos.barcode'),
                 permission: 'manage-pos-barcodes',
             },
             {
-                title: t('Reports'),
+                title: t('Relatórios'),
                 permission: 'manage-pos-reports',
                 children: [
                     {
-                        title: t('Sales Report'),
+                        title: t('Relatório de vendas'),
                         href: route('pos.reports.sales'),
                         permission: 'view-pos-reports',
                     },
                     {
-                        title: t('Product Report'),
+                        title: t('Relatório de produtos'),
                         href: route('pos.reports.products'),
                         permission: 'view-pos-reports',
                     },
                     {
-                        title: t('Customer Report'),
+                        title: t('Relatório de clientes'),
                         href: route('pos.reports.customers'),
                         permission: 'view-pos-reports',
                     }

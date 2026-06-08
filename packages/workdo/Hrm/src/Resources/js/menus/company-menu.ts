@@ -6,138 +6,139 @@ declare global {
 
 export const hrmCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('HRM Dashboard'),
+        title: t('Painel RH'),
         href: route('hrm.index'),
         permission: 'manage-hrm-dashboard',
         parent: 'dashboard',
         order: 30,
     },
     {
-        title: t('HRM'),
+        title: t('Recursos Humanos'),
         icon: UserCog,
         permission: 'manage-hrm',
+        name: 'hrm',
         order: 450,
         children: [
             {
-                title: t('Employees'),
+                title: t('Colaboradores'),
                 href: route('hrm.employees.index'),
                 permission: 'manage-employees',
             },
             {
-                title: t('Payslip'),
+                title: t('Folha de pagamento'),
                 permission: 'manage-payrolls',
                 children: [
                     {
-                        title: t('Set Salary'),
+                        title: t('Definir salário'),
                         href: route('hrm.set-salary.index'),
                         permission: 'manage-set-salary',
                     },
                     {
-                        title: t('Payroll'),
+                        title: t('Processamento salarial'),
                         href: route('hrm.payrolls.index'),
                         permission: 'manage-payrolls',
                     },
                 ],
             },
             {
-                title: t('Attedance'),
+                title: t('Assiduidade'),
                 permission: 'manage-attendances',
                 children: [
                     {
-                        title: t('Shifts'),
+                        title: t('Turnos'),
                         href: route('hrm.shifts.index'),
                         permission: 'manage-shifts',
                     },
                     {
-                        title: t('Attendances'),
+                        title: t('Registos de assiduidade'),
                         href: route('hrm.attendances.index'),
                         permission: 'manage-attendances',
                     },
                 ],
             },
             {
-                title: t('Leave Management'),
+                title: t('Férias e ausências'),
                 permission: 'manage-leave-applications',
                 children: [
                     {
-                        title: t('Leave Types'),
+                        title: t('Tipos de férias'),
                         href: route('hrm.leave-types.index'),
                         permission: 'manage-leave-types',
                     },
                     {
-                        title: t('Leave Applications'),
+                        title: t('Pedidos de férias'),
                         href: route('hrm.leave-applications.index'),
                         permission: 'manage-leave-applications',
                     },
                     {
-                        title: t('Leave Balance'),
+                        title: t('Saldo de férias'),
                         href: route('hrm.leave-balance.index'),
                         permission: 'manage-leave-balance',
                     },
                 ],
             },
             {
-                title: t('Holidays'),
+                title: t('Feriados'),
                 href: route('hrm.holidays.index'),
                 permission: 'manage-holidays',
             },
             {
-                title: t('Awards'),
+                title: t('Prémios'),
                 href: route('hrm.awards.index'),
                 permission: 'manage-awards',
             },
             {
-                title: t('Promotions'),
+                title: t('Promoções'),
                 href: route('hrm.promotions.index'),
                 permission: 'manage-promotions',
             },
             {
-                title: t('Resignations'),
+                title: t('Rescisões'),
                 href: route('hrm.resignations.index'),
                 permission: 'manage-resignations',
             },
             {
-                title: t('Terminations'),
+                title: t('Desligamentos'),
                 href: route('hrm.terminations.index'),
                 permission: 'manage-terminations',
             },
             {
-                title: t('Warnings'),
+                title: t('Advertências'),
                 href: route('hrm.warnings.index'),
                 permission: 'manage-warnings',
             },
             {
-                title: t('Complaints'),
+                title: t('Reclamações'),
                 href: route('hrm.complaints.index'),
                 permission: 'manage-complaints',
             },
             {
-                title: t('Transfers'),
+                title: t('Transferências'),
                 href: route('hrm.employee-transfers.index'),
                 permission: 'manage-employee-transfers',
             },
             {
-                title: t('Documents'),
+                title: t('Documentos'),
                 href: route('hrm.documents.index'),
                 permission: 'manage-hrm-documents',
             },
             {
-                title: t('Acknowledgments'),
+                title: t('Ciência de documentos'),
                 href: route('hrm.acknowledgments.index'),
                 permission: 'manage-acknowledgments',
             },
             {
-                title: t('Announcements'),
+                title: t('Anúncios'),
                 href: route('hrm.announcements.index'),
                 permission: 'manage-announcements',
             },
             {
-                title: t('Events'),
+                title: t('Eventos'),
                 href: route('hrm.events.index'),
                 permission: 'manage-events',
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('hrm.branches.index'),
                 permission: 'manage-hrm',
                 activePaths: [

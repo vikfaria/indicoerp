@@ -6,33 +6,34 @@ declare global {
 
 export const goalCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Goal'),
+        title: t('Objectivos'),
         icon: Target,
         permission: 'manage-goal',
-        order: 415,
+        parent: 'hrm',
+        order: 1030,
         children: [
             {
-                title: t('Goals'),
+                title: t('Lista de objectivos'),
                 href: route('goal.goals.index'),
                 permission: 'manage-goals',
             },
             {
-                title: t('Milestones'),
+                title: t('Marcos'),
                 href: route('goal.milestones.index'),
                 permission: 'manage-goal-milestones',
             },
             {
-                title: t('Contributions'),
+                title: t('Contribuições'),
                 href: route('goal.contributions.index'),
                 permission: 'manage-goal-contributions',
             },
             {
-                title: t('Tracking'),
+                title: t('Acompanhamento'),
                 href: route('goal.tracking.index'),
                 permission: 'manage-goal-tracking',
             },
             {
-                title: t('Category'),
+                title: t('Categorias'),
                 href: route('goal.categories.index'),
                 permission: 'manage-categories',
             },

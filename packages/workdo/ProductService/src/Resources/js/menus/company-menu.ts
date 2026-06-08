@@ -6,20 +6,20 @@ declare global {
 
 export const productserviceCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Product & Service'),
+        title: t('Produtos e Serviços'),
         icon: Layers,
         permission: 'manage-product-service-item',
-        parent: 'settings',
-        order: 100,
+        parent: 'inventory',
+        order: 10,
         children: [
             {
-                title: t('Items'),
+                title: t('Artigos'),
                 href: route('product-service.items.index'),
                 permission: 'manage-product-service-item',
-                    activePaths: [route('product-service.stock.index')],
+                activePaths: [route('product-service.stock.index')],
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('product-service.item-categories.index'),
                 permission: 'manage-product-service-item',
                 activePaths: [route('product-service.taxes.index'), route('product-service.units.index')],

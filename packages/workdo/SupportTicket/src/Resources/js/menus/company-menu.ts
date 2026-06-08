@@ -13,18 +13,19 @@ export const supportticketCompanyMenu = (t: (key: string) => string) => [
         order: 140,
     },
     {
-        title: t('Support Ticket'),
+        title: t('Suporte'),
         icon: Headphones,
         permission: 'manage-support-tickets',
-        order: 700,
+        parent: 'crm-support',
+        order: 20,
         children: [
             {
-                title: t('Tickets'),
+                title: t('Pedidos de suporte'),
                 href: route('support-tickets.index'),
                 permission: 'manage-support-tickets',
             },
             {
-                title: t('Knowledge Base'),
+                title: t('Base de conhecimento'),
                 href: route('support-ticket-knowledge.index'),
                 permission: 'manage-knowledge-base',
             },
@@ -34,12 +35,12 @@ export const supportticketCompanyMenu = (t: (key: string) => string) => [
                 permission: 'manage-faq',
             },
             {
-                title: t('Contact'),
+                title: t('Contactos'),
                 href: route('support-ticket-contact.index'),
                 permission: 'manage-contact',
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('ticket-category.index'),
                 permission: 'manage-ticket-categories',
                 activePaths: [

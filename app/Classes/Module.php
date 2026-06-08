@@ -3,6 +3,7 @@
 namespace App\Classes;
 
 use App\Models\AddOn;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 
@@ -212,6 +213,7 @@ class Module
     public function moduleCacheForget($module = null)
     {
         try {
+            app(AssistantActivationCacheService::class)->touchModuleVersion();
             Cache::forget(self::CACHE_ENABLED_KEY);
             Cache::forget(self::CACHE_ENABLED_ADMIN_KEY);
             Cache::forget(self::CACHE_DIRECTORIES_KEY);

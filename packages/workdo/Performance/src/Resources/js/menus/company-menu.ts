@@ -7,34 +7,34 @@ declare global {
 export const performanceCompanyMenu = (t: (key: string) => string) => [
    
     {
-        title: t('Performance'),
+        title: t('Desempenho'),
         icon: TrendingUp,
         permission: 'manage-performance',
-        parent: '',
-        order: 451,
+        parent: 'hrm',
+        order: 1010,
         children: [
             {
-                title: t('Performance Indicators'),
+                title: t('Indicadores de desempenho'),
                 href: route('performance.indicators.index'),
                 permission: 'manage-performance-indicators',
             },
             {
-                title: t('Employee Goals'),
+                title: t('Objectivos dos colaboradores'),
                 href: route('performance.employee-goals.index'),
                 permission: 'manage-employee-goals',
             },
             {
-                title: t('Review Cycles'),
+                title: t('Ciclos de avaliação'),
                 href: route('performance.review-cycles.index'),
                 permission: 'manage-review-cycles',
             },
             {
-                title: t('Employee Reviews'),
+                title: t('Avaliações dos colaboradores'),
                 href: route('performance.employee-reviews.index'),
                 permission: 'manage-employee-reviews',
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('performance.indicator-categories.index'),
                 permission: 'manage-performance-system-setup',
                 activePaths: [route('performance.goal-types.index')],

@@ -1,8 +1,8 @@
-import { lazy } from 'react';
+import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { usePage } from '@inertiajs/react';
 
 // Core settings components
-const coreComponents = {
+const coreComponents: Record<string, LazyExoticComponent<ComponentType<any>>> = {
   'brand-settings': lazy(() => import('@/pages/settings/components/brand-settings')),
   'company-settings': lazy(() => import('@/pages/settings/components/company-settings')),
   'system-settings': lazy(() => import('@/pages/settings/components/system-settings')),
@@ -14,6 +14,7 @@ const coreComponents = {
   'email-notification-settings': lazy(() => import('@/pages/settings/components/email-notification-settings')),
   'cookie-settings': lazy(() => import('@/pages/settings/components/cookie-settings')),
   'bank-transfer-settings': lazy(() => import('@/pages/settings/components/bank-transfer-settings')),
+  'company-overrides-settings': lazy(() => import('@/pages/settings/components/company-overrides-settings')),
   'cache-settings': lazy(() => import('@/pages/settings/components/cache-settings')),
 };
 
@@ -21,7 +22,7 @@ const coreComponents = {
 const getPackageComponents = (activatedPackages: string[]) => {
   try {
     const modules = import.meta.glob('../../../packages/workdo/*/src/Resources/js/settings/components/*.tsx');
-    const packageComponents: Record<string, any> = {};
+    const packageComponents: Record<string, LazyExoticComponent<ComponentType<any>>> = {};
 
     activatedPackages.forEach(packageName => {
       Object.entries(modules).forEach(([path, moduleLoader]) => {
@@ -42,7 +43,7 @@ const getPackageComponents = (activatedPackages: string[]) => {
 };
 
 // Combined components registry
-export const getSettingsComponent = (componentName: string) => {
+export const getSettingsComponent = (componentName: string): ComponentType<any> | null => {
   const { auth } = usePage().props as any;
   const activatedPackages = auth?.user?.activatedPackages || [];
   const allComponents = { ...coreComponents, ...getPackageComponents(activatedPackages) };

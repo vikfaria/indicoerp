@@ -6,23 +6,24 @@ declare global {
 
 export const trainingCompanyMenu = (t: (key: string) => string) => [    
     {
-        title: t('Training'),
+        title: t('Formação'),
         icon: GraduationCap,
         permission: 'manage-training',
-        order: 452,
+        parent: 'hrm',
+        order: 1020,
         children: [
             {
-                title: t('Training Types'),
+                title: t('Tipos de formação'),
                 href: route('training.training-types.index'),
                 permission: 'manage-training-types',
             },
             {
-                title: t('Trainers'),
+                title: t('Formadores'),
                 href: route('training.trainers.index'),
                 permission: 'manage-trainers',
             },
             {
-                title: t('Training List'),
+                title: t('Lista de formações'),
                 href: route('training.trainings.index'),
                 permission: 'manage-trainings',
                 activePaths: [

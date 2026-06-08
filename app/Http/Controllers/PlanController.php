@@ -12,6 +12,8 @@ use App\Http\Requests\UpdateModulePriceRequest;
 use App\Http\Requests\ApplyCouponRequest;
 use App\Models\User;
 use App\Models\UserActiveModule;
+use App\Services\AuditTrailService;
+use App\Services\AssistantActivation\MyPlanOverviewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -112,6 +114,23 @@ class PlanController extends Controller
         }
     }
 
+    public function myPlan(MyPlanOverviewService $myPlanOverviewService)
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            return redirect()->route('login');
+        }
+
+        if ($user->isSuperAdminUser()) {
+            return redirect()->route('plans.index');
+        }
+
+        return Inertia::render('plans/my-plan', [
+            'myPlan' => $myPlanOverviewService->snapshot($user),
+        ]);
+    }
+
     public function create()
     {
         if (Auth::user()->can('create-plans')) {
@@ -179,6 +198,7 @@ class PlanController extends Controller
             $plan->trial_days = $validated['trial_days'] ?? 0;
             $plan->created_by = creatorId();
             $plan->save();
+            app(AuditTrailService::class)->record('created', $plan);
 
             return redirect()->route('plans.index')
                 ->with('success', __('The plan has been created successfully.'));
@@ -264,6 +284,7 @@ class PlanController extends Controller
             $plan->trial_days = $validated['trial_days'] ?? 0;
 
             $plan->save();
+            app(AuditTrailService::class)->record('updated', $plan);
 
             return redirect()->route('plans.index')->with('success', __('The plan details are updated successfully.'));
         } else {
@@ -276,6 +297,7 @@ class PlanController extends Controller
         if (Auth::user()->can('delete-plans')) {
 
             $plan->delete();
+            app(AuditTrailService::class)->record('deleted', $plan);
 
             return redirect()->route('plans.index')
                 ->with('success', __('The plan has been deleted.'));

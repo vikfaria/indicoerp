@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Classes\Module;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\PlanModuleCheck;
+use App\Models\AddOn;
 use App\Models\User;
+use App\Models\UserActiveModule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -17,10 +21,14 @@ class AccountReportsPermissionHardeningTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $companySequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
-
+        Cache::flush();
+        app(Module::class)->moduleCacheForget();
+        $this->enableModule('Account');
         $this->withoutMiddleware(PlanModuleCheck::class);
     }
 
@@ -93,10 +101,13 @@ class AccountReportsPermissionHardeningTest extends TestCase
         $response = $this->actingAs($company)->getJson(route('account.bank-accounts.api.list'));
 
         $response->assertStatus(403);
-        $response->assertJsonPath('message', 'Permission denied');
+        $response->assertJsonPath('feature_gate.key', 'treasury.bank_accounts.manage');
+        $response->assertJsonPath('feature_gate.state', 'locked');
+        $response->assertJsonPath('feature_gate.reasons.0', 'permission_missing');
+        $response->assertJsonPath('feature_gate.permissions.missing.0', 'manage-bank-accounts');
 
         $financeUser = $this->makeCompany();
-        $this->grantPermissions($financeUser, ['create-vendor-payments']);
+        $this->grantPermissions($financeUser, ['create-vendor-payments', 'manage-bank-accounts']);
         $this->makeBankAccount($financeUser);
 
         $allowedResponse = $this->actingAs($financeUser)->getJson(route('account.bank-accounts.api.list'));
@@ -117,12 +128,43 @@ class AccountReportsPermissionHardeningTest extends TestCase
 
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $company = User::forceCreate([
+            'id' => 95000 + (++$this->companySequence),
+            'name' => 'Empresa ' . (95000 + $this->companySequence),
+            'email' => 'company' . (95000 + $this->companySequence) . '@example.com',
+            'password' => 'password',
             'type' => 'company',
             'created_by' => null,
+            'creator_id' => null,
+            'email_verified_at' => now(),
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+
+        UserActiveModule::updateOrCreate(
+            ['user_id' => $company->id, 'module' => 'Account'],
+            ['module' => 'Account']
+        );
+
+        return $company;
+    }
+
+    private function enableModule(string $module): void
+    {
+        AddOn::updateOrCreate(
+            ['module' => $module],
+            [
+                'name' => $module,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'is_enable' => true,
+                'for_admin' => false,
+                'package_name' => $module,
+                'priority' => 10,
+            ]
+        );
+
+        app(Module::class)->moduleCacheForget($module);
     }
 
     private function makeBankAccount(User $company): BankAccount

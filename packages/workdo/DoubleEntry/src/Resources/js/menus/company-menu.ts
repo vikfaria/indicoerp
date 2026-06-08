@@ -6,10 +6,11 @@ declare global {
 
 export const doubleentryCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Double Entry'),
+        title: t('Entrada Dupla'),
         icon: BookOpen,
         permission: 'manage-double-entry',
-        order: 425,
+        parent: 'contabilidade',
+        order: 60,
         children: [
             {
                 title: t('Ledger Summary'),

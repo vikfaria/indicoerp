@@ -6,10 +6,11 @@ declare global {
 
 export const timesheetCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Timesheet'),
+        title: t('Ficha de horário'),
         icon: Clock,
         permission: 'manage-timesheet',
-        order: 1450,
+        parent: 'hrm',
+        order: 1040,
         href: route('timesheet.index'),
     },
 ];

@@ -25,6 +25,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'PlanModuleCheck' => \App\Http\Middleware\PlanModuleCheck::class,
+            'feature' => \App\Http\Middleware\FeatureGate::class,
+            'plan.limit' => \App\Http\Middleware\PlanLimitGate::class,
             'api.json' => \App\Http\Middleware\ApiForceJson::class
         ]);
 

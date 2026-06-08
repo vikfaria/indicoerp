@@ -62,6 +62,7 @@ export const allSettingsItems = (): SettingMenuItem[] => {
     const userPermissions = auth?.user?.permissions || [];
     const userRoles = auth?.user?.roles || [];
     const activatedPackages = auth?.user?.activatedPackages || [];
+    const isSuperAdmin = userRoles.includes('superadmin') || auth?.user?.type === 'superadmin';
 
     const settingsCacheKey = [
         i18n.language,
@@ -81,7 +82,7 @@ export const allSettingsItems = (): SettingMenuItem[] => {
 
     // Sort by order
     const sortedItems = allItems.sort((a, b) => (a.order || 999) - (b.order || 999));
-    const finalItems = filterByPermission(sortedItems, userPermissions);
+    const finalItems = isSuperAdmin ? sortedItems : filterByPermission(sortedItems, userPermissions);
     cachedSettingsKey = settingsCacheKey;
     cachedSettingsItems = finalItems;
 

@@ -113,6 +113,10 @@ class AuditTrailService
 
     private function resolveCompanyId(Model $model): ?int
     {
+        if (isset($model->company_id) && is_numeric($model->company_id)) {
+            return (int) $model->company_id;
+        }
+
         foreach (['created_by', 'creator_id'] as $attribute) {
             $value = $model->getAttribute($attribute);
 

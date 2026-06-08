@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Classes\Module;
 use App\Http\Middleware\PlanModuleCheck;
+use App\Models\AddOn;
 use App\Models\AuditTrail;
 use App\Models\User;
+use App\Models\UserActiveModule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -20,17 +24,21 @@ class AccountingCriticalAuditTrailTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $companySequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
-
+        Cache::flush();
+        app(Module::class)->moduleCacheForget();
+        $this->enableModule('Account');
         $this->withoutMiddleware(PlanModuleCheck::class);
     }
 
     public function test_bank_account_create_update_and_delete_routes_are_audited(): void
     {
         $company = $this->makeCompany();
-        $this->grantPermissions($company, ['create-bank-accounts', 'edit-bank-accounts', 'delete-bank-accounts']);
+        $this->grantPermissions($company, ['create-bank-accounts', 'edit-bank-accounts', 'delete-bank-accounts', 'manage-bank-accounts']);
 
         $branch = Branch::query()
             ->where('created_by', $company->id)
@@ -205,7 +213,11 @@ class AccountingCriticalAuditTrailTest extends TestCase
 
     private function makeCompany(): User
     {
-        $company = User::factory()->create([
+        $company = User::forceCreate([
+            'id' => 94000 + (++$this->companySequence),
+            'name' => 'Empresa ' . (94000 + $this->companySequence),
+            'email' => 'company' . (94000 + $this->companySequence) . '@example.com',
+            'password' => 'password',
             'type' => 'company',
             'created_by' => null,
             'creator_id' => null,
@@ -215,6 +227,10 @@ class AccountingCriticalAuditTrailTest extends TestCase
         ]);
 
         AccountUtility::defaultdata($company->id);
+        UserActiveModule::updateOrCreate(
+            ['user_id' => $company->id, 'module' => 'Account'],
+            ['module' => 'Account']
+        );
 
         Branch::query()->firstOrCreate(
             [
@@ -227,6 +243,24 @@ class AccountingCriticalAuditTrailTest extends TestCase
         );
 
         return $company;
+    }
+
+    private function enableModule(string $module): void
+    {
+        AddOn::updateOrCreate(
+            ['module' => $module],
+            [
+                'name' => $module,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'is_enable' => true,
+                'for_admin' => false,
+                'package_name' => $module,
+                'priority' => 10,
+            ]
+        );
+
+        app(Module::class)->moduleCacheForget($module);
     }
 
     private function makeCounterpartyUser(User $company, string $type, string $name): User

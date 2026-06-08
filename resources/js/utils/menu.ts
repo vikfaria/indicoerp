@@ -3,6 +3,8 @@ import { usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { getSuperAdminMenu } from './menus/superadmin-menu';
 import { getCompanyMenu } from './menus/company-menu';
+import { getConsultantMenu } from './menus/consultant-menu';
+import { decorateMenuItemsWithAssistantActivation } from './assistant-activation-menu';
 import * as LucideIcons from 'lucide-react';
 
 const packageMenuModules = import.meta.glob(
@@ -14,16 +16,23 @@ let cachedMenuKey: string | null = null;
 let cachedMenuItems: NavItem[] = [];
 
 // Get role-based core menu items
-const getCoreMenuItems = (userRoles: string[], t: (key: string) => string): NavItem[] => {
+const getCoreMenuItems = (userRoles: string[], userPermissions: string[], t: (key: string) => string): NavItem[] => {
     if (userRoles.includes('superadmin')) {
         return getSuperAdminMenu(t);
+    }
+    if (userPermissions.includes('view-company-onboarding-progress')) {
+        return getConsultantMenu(t);
     }
     return getCompanyMenu(t);
 };
 
 // Auto-load package menus based on activated packages
-const getPackageMenuItems = (userRoles: string[], activatedPackages: string[], t: (key: string) => string): NavItem[] => {
+const getPackageMenuItems = (userRoles: string[], userPermissions: string[], activatedPackages: string[], t: (key: string) => string): NavItem[] => {
     const menuItems: NavItem[] = [];
+    if (userPermissions.includes('view-company-onboarding-progress') && !userRoles.includes('superadmin')) {
+        return menuItems;
+    }
+
     const menuType = userRoles.includes('superadmin') ? 'superadmin-menu' : 'company-menu';
 
     // Ensure activatedPackages is an array before iterating
@@ -124,18 +133,21 @@ const filterByPermission = (items: NavItem[], userPermissions: string[]): NavIte
 
 // Main function to get filtered menu items
 export const allMenuItems = (): NavItem[] => {
-    const { auth } = usePage().props as any;
+    const pageProps = usePage().props as any;
+    const { auth, assistantActivation } = pageProps;
     const { t, i18n } = useTranslation();
     const userPermissions = auth?.user?.permissions || [];
     const userRoles = auth?.user?.roles || [];
     const activatedPackages = auth?.user?.activatedPackages || [];
     const customMenus = auth?.customMenus || [];
+    const assistantActivationMenu = assistantActivation?.menu ?? null;
 
     const menuCacheKey = [
         i18n.language,
         userRoles.join('|'),
         userPermissions.join('|'),
         activatedPackages.join('|'),
+        assistantActivationMenu?.meta?.signature ?? 'assistant-activation:none',
         customMenus
             .map((menu: any) => `${menu.id ?? menu.name ?? menu.title}:${menu.icon ?? ''}:${menu.parent ?? ''}:${menu.order ?? ''}:${menu.permission ?? ''}`)
             .join(';')
@@ -145,9 +157,9 @@ export const allMenuItems = (): NavItem[] => {
         return cachedMenuItems;
     }
 
-    const coreMenuItems = getCoreMenuItems(userRoles, t);
+    const coreMenuItems = getCoreMenuItems(userRoles, userPermissions, t);
 
-    const packageMenuItems = getPackageMenuItems(userRoles, activatedPackages, t);
+    const packageMenuItems = getPackageMenuItems(userRoles, userPermissions, activatedPackages, t);
     
     const customMenuItems = getCustomMenuItems(customMenus);
     
@@ -165,8 +177,9 @@ export const allMenuItems = (): NavItem[] => {
     const sortedMenuItems = finalGroupedMenuItems.sort((a, b) => (a.order || 999) - (b.order || 999));
 
     const finalMenuItems = filterByPermission(sortedMenuItems, userPermissions);
+    const decoratedMenuItems = decorateMenuItemsWithAssistantActivation(finalMenuItems, assistantActivationMenu);
     cachedMenuKey = menuCacheKey;
-    cachedMenuItems = finalMenuItems;
+    cachedMenuItems = decoratedMenuItems;
 
-    return finalMenuItems;
+    return decoratedMenuItems;
 };

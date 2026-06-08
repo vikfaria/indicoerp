@@ -13,26 +13,27 @@ export const projectCompanyMenu = (t: (key: string) => string) => [
         order: 20,
     },
     {
-        title: t('Project'),
+        title: t('Projetos'),
         icon: FolderKanban,
         permission: 'manage-project',
-        order: 300,
+        parent: 'operations',
+        order: 10,
         name : 'project',
         children: [
             {
-                title: t('Projects'),
+                title: t('Lista de projectos'),
                 href: route('project.index'),
                 permission: 'manage-project',
                 order: 5,
             },
             {
-                title: t('Projects Report'),
+                title: t('Relatório de projectos'),
                 href: route('project.report.index'),
                 permission: 'manage-project-report',
                 order: 10,
             },
             {
-                title: t('System Setup'),
+                title: t('Configuração'),
                 href: route('project.task-stages.index'),
                 permission: 'manage-task-stages',
                 order: 20,

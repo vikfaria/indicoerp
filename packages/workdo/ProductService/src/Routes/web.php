@@ -11,7 +11,7 @@ use Workdo\ProductService\Http\Controllers\WarehouseStockController;
 
 Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:ProductService'])->group(function () {
 
-    Route::prefix('product-service/items')->name('product-service.items.')->group(function () {
+    Route::middleware('feature:billing.product.manage')->prefix('product-service/items')->name('product-service.items.')->group(function () {
         Route::get('/', [ProductServiceItemController::class, 'index'])->name('index');
         Route::get('/create', [ProductServiceItemController::class, 'create'])->name('create');
         Route::post('/', [ProductServiceItemController::class, 'store'])->name('store');
@@ -21,7 +21,7 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:ProductService'])
         Route::delete('/{item}', [ProductServiceItemController::class, 'destroy'])->name('destroy');
     });
 
-    Route::prefix('product-service/stock')->name('product-service.stock.')->group(function () {
+    Route::middleware('feature:inventory.stock.manage')->prefix('product-service/stock')->name('product-service.stock.')->group(function () {
         Route::get('/', [ProductServiceItemController::class, 'stockIndex'])->name('index');
         Route::post('/', [ProductServiceItemController::class, 'stockStore'])->name('store');
     });

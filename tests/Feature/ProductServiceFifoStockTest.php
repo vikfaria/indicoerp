@@ -2,15 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Classes\Module;
 use App\Http\Middleware\PlanModuleCheck;
 use App\Services\InventoryCostingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 use App\Models\User;
+use App\Models\AddOn;
 use App\Models\Warehouse;
+use App\Models\UserActiveModule;
 use App\Models\StockCostLayer;
 use App\Models\StockMovement;
+use Illuminate\Support\Facades\Cache;
 use Workdo\ProductService\Models\ProductServiceItem;
 use Workdo\ProductService\Models\ProductServiceCategory;
 use Workdo\ProductService\Models\ProductServiceUnit;
@@ -20,9 +24,14 @@ class ProductServiceFifoStockTest extends TestCase
 {
     use RefreshDatabase;
 
+    private int $companySequence = 0;
+
     protected function setUp(): void
     {
         parent::setUp();
+        Cache::flush();
+        app(Module::class)->moduleCacheForget();
+        $this->enableModule('ProductService');
         $this->withoutMiddleware(PlanModuleCheck::class);
     }
 
@@ -32,7 +41,7 @@ class ProductServiceFifoStockTest extends TestCase
         $warehouse = $this->makeWarehouse($company, 'Recheio');
         $product = $this->makeProduct($company, 'Coca Cola', 100.00, 75.00);
 
-        $this->grantPermissions($company, ['create-stock']);
+        $this->grantPermissions($company, ['create-stock', 'manage-stock']);
 
         $this->actingAs($company)
             ->post(route('product-service.stock.store'), [
@@ -79,7 +88,7 @@ class ProductServiceFifoStockTest extends TestCase
             'creator_id' => $company->id,
         ]);
 
-        $this->grantPermissions($company, ['create-product-service-item']);
+        $this->grantPermissions($company, ['create-product-service-item', 'manage-product-service-item']);
 
         $this->actingAs($company)
             ->post(route('product-service.items.store'), [
@@ -124,7 +133,7 @@ class ProductServiceFifoStockTest extends TestCase
         $destinationWarehouse = $this->makeWarehouse($company, 'Loja');
         $product = $this->makeProduct($company, 'Água Mineral 1.5L', 50.00, 20.00);
 
-        $this->grantPermissions($company, ['create-stock', 'create-transfers']);
+        $this->grantPermissions($company, ['create-stock', 'create-transfers', 'manage-stock']);
 
         $this->actingAs($company)
             ->post(route('product-service.stock.store'), [
@@ -203,7 +212,11 @@ class ProductServiceFifoStockTest extends TestCase
 
     private function makeCompany(): User
     {
-        return User::factory()->create([
+        $company = User::forceCreate([
+            'id' => 92000 + (++$this->companySequence),
+            'name' => 'Empresa ' . (92000 + $this->companySequence),
+            'email' => 'company' . (92000 + $this->companySequence) . '@example.com',
+            'password' => 'password',
             'type' => 'company',
             'created_by' => null,
             'creator_id' => null,
@@ -211,6 +224,13 @@ class ProductServiceFifoStockTest extends TestCase
             'active_plan' => 1,
             'plan_expire_date' => now()->addMonth(),
         ]);
+
+        UserActiveModule::updateOrCreate(
+            ['user_id' => $company->id, 'module' => 'ProductService'],
+            ['module' => 'ProductService']
+        );
+
+        return $company;
     }
 
     private function makeWarehouse(User $company, string $name): Warehouse
@@ -259,5 +279,23 @@ class ProductServiceFifoStockTest extends TestCase
 
             $user->givePermissionTo($permission);
         }
+    }
+
+    private function enableModule(string $module): void
+    {
+        AddOn::updateOrCreate(
+            ['module' => $module],
+            [
+                'name' => $module,
+                'monthly_price' => 0,
+                'yearly_price' => 0,
+                'is_enable' => true,
+                'for_admin' => false,
+                'package_name' => $module,
+                'priority' => 10,
+            ]
+        );
+
+        app(Module::class)->moduleCacheForget($module);
     }
 }

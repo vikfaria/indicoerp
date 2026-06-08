@@ -6,28 +6,29 @@ declare global {
 
 export const budgetplannerCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Budget Planner'),
+        title: t('Planeamento Orçamental'),
         icon: DollarSign,
         permission: 'manage-budget-planner',
-        order: 420,
+        parent: 'operations',
+        order: 20,
         children: [
             {
-                title: t('Budget Periods'),
+                title: t('Períodos orçamentais'),
                 href: route('budget-planner.budget-periods.index'),
                 permission: 'manage-budget-periods',
             },
             {
-                title: t('Budget'),
+                title: t('Orçamento'),
                 href: route('budget-planner.budgets.index'),
                 permission: 'manage-budgets',
             },
             {
-                title: t('Budget Allocations'),
+                title: t('Alocações orçamentais'),
                 href: route('budget-planner.budget-allocations.index'),
                 permission: 'manage-budget-allocations',
             },
             {
-                title: t('Budget Monitoring'),
+                title: t('Monitorização orçamental'),
                 href: route('budget-planner.budget-monitorings.index'),
                 permission: 'manage-budget-monitoring',
             },

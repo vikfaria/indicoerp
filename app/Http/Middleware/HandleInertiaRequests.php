@@ -8,7 +8,10 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Cache;
+use App\Models\User;
 use App\Classes\Module;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
+use App\Services\AssistantActivation\OnboardingMenuStateService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -112,6 +115,10 @@ class HandleInertiaRequests extends Middleware
                 'flash' => [
                     'success' => $request->session()->get('success'),
                     'error' => $request->session()->get('error'),
+                    'subscription_gate' => $request->session()->get('subscription_gate'),
+                    'feature_gate' => $request->session()->get('feature_gate'),
+                    'module_gate' => $request->session()->get('module_gate'),
+                    'plan_limit' => $request->session()->get('plan_limit'),
                 ],
                 'packages' => [],
                 'adminAllSetting' => $adminSettings,
@@ -134,6 +141,7 @@ class HandleInertiaRequests extends Middleware
         app()->setLocale($locale);
 
         $activatedPackages = ActivatedModule($user->id);
+        $assistantActivation = $this->buildAssistantActivationState($user);
 
         return [
             ...parent::share($request),
@@ -152,6 +160,10 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
+                'subscription_gate' => $request->session()->get('subscription_gate'),
+                'feature_gate' => $request->session()->get('feature_gate'),
+                'module_gate' => $request->session()->get('module_gate'),
+                'plan_limit' => $request->session()->get('plan_limit'),
             ],
             'packages' => fn () => $user ? (new Module())->allModules() : [],
             'adminAllSetting' => fn () => $user ? getAdminAllSetting() : getAdminAllSetting(true),
@@ -162,6 +174,7 @@ class HandleInertiaRequests extends Middleware
             'mozambiqueCompliance' => $this->getMozambiqueComplianceSettings(),
             'defaultLanguages' => fn () => $this->getDefaultLanguages(),
             'is_demo' => config('app.is_demo', false),
+            'assistantActivation' => $assistantActivation,
         ];
     }
 
@@ -194,7 +207,7 @@ class HandleInertiaRequests extends Middleware
     private function getUserPermissions($user): array
     {
         if (method_exists($user, 'getAllPermissions')) {
-            $cacheKey = 'user:permissions:' . $user->id;
+            $cacheKey = 'user:permissions:' . $user->id . ':company_version:' . app(AssistantActivationCacheService::class)->currentCompanyVersion($this->resolveCacheCompanyId($user));
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
                 return $user->getAllPermissions()->pluck('name')->toArray();
             });
@@ -205,7 +218,7 @@ class HandleInertiaRequests extends Middleware
     private function getUserRoles($user): array
     {
         if (method_exists($user, 'getRoleNames')) {
-            $cacheKey = 'user:roles:' . $user->id;
+            $cacheKey = 'user:roles:' . $user->id . ':company_version:' . app(AssistantActivationCacheService::class)->currentCompanyVersion($this->resolveCacheCompanyId($user));
             return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
                 return $user->getRoleNames()->toArray();
             });
@@ -253,6 +266,37 @@ class HandleInertiaRequests extends Middleware
     {
         $defaultLanguage = admin_setting('defaultLanguage');
         return $defaultLanguage ?: 'en';
+    }
+
+    private function resolveCacheCompanyId($user): int
+    {
+        if (method_exists($user, 'isSuperAdminUser') && $user->isSuperAdminUser()) {
+            return (int) $user->id;
+        }
+
+        if (($user->type ?? null) === 'company') {
+            return (int) $user->id;
+        }
+
+        return (int) ($user->created_by ?: $user->id);
+    }
+
+    private function buildAssistantActivationState($user): array
+    {
+        if (! $user || (method_exists($user, 'isSuperAdminUser') && $user->isSuperAdminUser())) {
+            return [];
+        }
+
+        $companyId = $this->resolveCacheCompanyId($user);
+        $company = User::find($companyId);
+
+        if (! $company) {
+            return [];
+        }
+
+        return [
+            'menu' => app(OnboardingMenuStateService::class)->snapshot($company),
+        ];
     }
 
     private function isInstalled(): bool

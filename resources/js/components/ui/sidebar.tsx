@@ -542,6 +542,7 @@ const SidebarMenuButton = React.forwardRef<
   React.ComponentProps<"button"> & {
     asChild?: boolean
     isActive?: boolean
+    showTooltipWhenExpanded?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>
 >(
@@ -549,6 +550,7 @@ const SidebarMenuButton = React.forwardRef<
     {
       asChild = false,
       isActive = false,
+      showTooltipWhenExpanded = false,
       variant = "default",
       size = "default",
       tooltip,
@@ -587,7 +589,7 @@ const SidebarMenuButton = React.forwardRef<
         <TooltipContent
           side="right"
           align="center"
-          hidden={state !== "collapsed" || isMobile}
+          hidden={!showTooltipWhenExpanded && (state !== "collapsed" || isMobile)}
           {...tooltip}
         />
       </Tooltip>
@@ -715,11 +717,14 @@ const SidebarMenuSubButton = React.forwardRef<
     asChild?: boolean
     size?: "sm" | "md"
     isActive?: boolean
+    showTooltipWhenExpanded?: boolean
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>
   }
->(({ asChild = false, size = "md", isActive, className, ...props }, ref) => {
+>(({ asChild = false, size = "md", isActive, showTooltipWhenExpanded = false, tooltip, className, ...props }, ref) => {
   const Comp = asChild ? Slot : "a"
+  const { isMobile, state } = useSidebar()
 
-  return (
+  const button = (
     <Comp
       ref={ref}
       data-sidebar="menu-sub-button"
@@ -735,6 +740,28 @@ const SidebarMenuSubButton = React.forwardRef<
       )}
       {...props}
     />
+  )
+
+  if (!tooltip) {
+    return button
+  }
+
+  if (typeof tooltip === "string") {
+    tooltip = {
+      children: tooltip,
+    }
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="center"
+        hidden={!showTooltipWhenExpanded && (state !== "collapsed" || isMobile)}
+        {...tooltip}
+      />
+    </Tooltip>
   )
 })
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton"

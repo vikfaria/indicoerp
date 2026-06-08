@@ -6,10 +6,11 @@ declare global {
 
 export const formbuilderCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Form Builder'),
+        title: t('Formulários'),
         icon: FormInput,
         permission: 'manage-formbuilder',
-        order: 510,
+        parent: 'operations',
+        order: 60,
         href: route('formbuilder.forms.index'),
     },
 ];

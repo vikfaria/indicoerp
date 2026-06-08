@@ -15,6 +15,7 @@ import { usePage, Head, Link, router } from "@inertiajs/react";
 import { PageProps } from "@/types";
 import { BrandProvider, useBrand } from "@/contexts/brand-context";
 import CookieConsent from "@/components/cookie-consent";
+import BlockedContextBanner from "@/components/assistant-activation/blocked-context-banner";
 import { useFavicon } from "@/hooks/use-favicon";
 import { useTranslation } from 'react-i18next';
 import { Button } from "@/components/ui/button";
@@ -39,10 +40,11 @@ function AuthenticatedLayoutContent({
     className?: string;
 }>) {
     const { t } = useTranslation();
-    const { auth, companyAllSetting, adminAllSetting } = usePage<PageProps>().props as any;
+    const { auth, companyAllSetting, adminAllSetting, flash } = usePage<PageProps>().props as any;
     const { settings } = useBrand();
     useFavicon();
     useFlashMessages();
+    const blockedContext = flash?.subscription_gate ?? flash?.feature_gate ?? flash?.module_gate ?? flash?.plan_limit ?? null;
 
     return (
         <>
@@ -130,6 +132,11 @@ function AuthenticatedLayoutContent({
                 </header>
 
                 <main className="p-4 md:pt-0 h-full">
+                    {blockedContext && (
+                        <div className="mb-4">
+                            <BlockedContextBanner context={blockedContext} />
+                        </div>
+                    )}
                     {pageTitle && (
                         <div className="flex items-center mb-4 gap-3" dir={settings.layoutDirection}>
                             <h1 className="text-xl font-semibold flex-1">{pageTitle}</h1>

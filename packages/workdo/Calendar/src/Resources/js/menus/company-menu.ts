@@ -6,10 +6,11 @@ declare global {
 
 export const calendarCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Calendar'),
+        title: t('Calendário'),
         icon: Calendar,
         href: route('calendar.view.index'),
         permission: 'manage-calendar',
-        order: 925,
+        parent: 'operations',
+        order: 40,
     },
 ];

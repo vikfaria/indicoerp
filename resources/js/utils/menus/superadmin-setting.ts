@@ -1,4 +1,4 @@
-import { Palette, Building, Settings as SettingsIcon, Search, HardDrive, Mail, Cookie, Trash2, DollarSign, CreditCard, FileText, Radio } from 'lucide-react';
+import { Palette, Building, Settings as SettingsIcon, Search, HardDrive, Mail, Cookie, Trash2, DollarSign, CreditCard, FileText, Radio, ShieldCheck } from 'lucide-react';
 
 export interface SettingMenuItem {
   order: number;
@@ -97,5 +97,13 @@ export const getSuperAdminSettings = (t: (key: string) => string): SettingMenuIt
     icon: CreditCard,
     permission: 'manage-bank-transfer-settings',
     component: 'bank-transfer-settings'
+  },
+  {
+    order: 1010,
+    title: t('Company Overrides'),
+    href: '#company-overrides-settings',
+    icon: ShieldCheck,
+    permission: 'manage-company-overrides',
+    component: 'company-overrides-settings'
   }
 ];

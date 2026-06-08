@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -196,6 +197,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
             if ($templateRole && $templateRole->permissions()->count() > 0) {
                 $companyRole->syncPermissions($templateRole->permissions);
+                app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
             } else {
                 $fallbackPermissions = ModelsPermission::whereIn('name', [
                     'manage-dashboard',
@@ -208,6 +210,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
                 if ($fallbackPermissions->isNotEmpty()) {
                     $companyRole->syncPermissions($fallbackPermissions);
+                    app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
                 }
             }
         }
@@ -215,6 +218,8 @@ class User extends Authenticatable implements MustVerifyEmail
         if (!$this->roles()->where('roles.id', $companyRole->id)->exists()) {
             $this->syncRoles([$companyRole]);
         }
+
+        app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
 
         return $companyRole;
     }
@@ -395,5 +400,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
             $vendorRole->givePermissionTo($permissions);
         }
+
+        app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $userId);
     }
 }

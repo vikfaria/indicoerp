@@ -10,8 +10,18 @@ import { getSettingsComponent } from '@/utils/settings-components';
 
 export default function Settings() {
   const { t } = useTranslation();
-  const { auth, globalSettings = {}, emailProviders = {}, cacheSize = '0.00' } = usePage().props as any;
+  const {
+    auth,
+    globalSettings = {},
+    emailProviders = {},
+    cacheSize = '0.00',
+    tenantFeatureOverrides = [],
+    tenantFeatureOverrideCompanies = [],
+    tenantFeatureOverrideFeatureOptions = [],
+    tenantFeatureOverrideLimitOptions = [],
+  } = usePage().props as any;
   const [activeSection, setActiveSection] = useState('brand-settings');
+  const isSuperAdmin = auth?.user?.roles?.includes('superadmin') || auth?.user?.type === 'superadmin';
 
   const sidebarNavItems = allSettingsItems();
 
@@ -83,7 +93,7 @@ export default function Settings() {
             <div className="pr-4">
               {sidebarNavItems.map((item) => {
             const sectionId = item.href.replace('#', '');
-            const canManage = auth.user?.permissions?.includes(item.permission);
+            const canManage = isSuperAdmin || auth.user?.permissions?.includes(item.permission);
 
             if (!canManage) return null;
 
@@ -98,6 +108,10 @@ export default function Settings() {
                     auth={auth}
                     emailProviders={emailProviders}
                     cacheSize={cacheSize}
+                    tenantFeatureOverrides={tenantFeatureOverrides}
+                    tenantFeatureOverrideCompanies={tenantFeatureOverrideCompanies}
+                    tenantFeatureOverrideFeatureOptions={tenantFeatureOverrideFeatureOptions}
+                    tenantFeatureOverrideLimitOptions={tenantFeatureOverrideLimitOptions}
                   />
                 </Suspense>
               </section>

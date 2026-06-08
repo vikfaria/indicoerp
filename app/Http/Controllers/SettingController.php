@@ -3,8 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Models\TenantFeatureOverride;
+use App\Models\User;
 use App\Mail\TestMail;
 use App\Support\MozambiqueTaxNumber;
+use App\Services\AssistantActivation\FeatureCatalogService;
+use App\Services\AssistantActivation\PlanLimitResolver;
+use App\Services\AssistantActivation\TenantFeatureOverrideService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -19,10 +24,11 @@ class SettingController extends Controller
 {
     public function index()
     {
-        if(Auth::user()->can('manage-settings'))
+        if(Auth::user()->can('manage-settings') || Auth::user()->isSuperAdminUser())
         {
             $globalSettings = getCompanyAllSetting();
             $emailProviders = config('email-providers');
+            $tenantFeatureOverrideData = $this->buildTenantFeatureOverrideData();
 
             if(Auth::user()->hasRole('superadmin'))
             {
@@ -39,13 +45,106 @@ class SettingController extends Controller
                 'globalSettings' => $globalSettings,
                 'emailProviders' => $emailProviders,
                 'notifications' => $notifications,
-                'cacheSize' => $this->getCacheSize()
+                'cacheSize' => $this->getCacheSize(),
+                'tenantFeatureOverrides' => $tenantFeatureOverrideData['overrides'],
+                'tenantFeatureOverrideCompanies' => $tenantFeatureOverrideData['companies'],
+                'tenantFeatureOverrideFeatureOptions' => $tenantFeatureOverrideData['feature_options'],
+                'tenantFeatureOverrideLimitOptions' => $tenantFeatureOverrideData['limit_options'],
             ]);
         }
         else
         {
             return back()->with('error', __('Permission denied'));
         }
+    }
+
+    private function buildTenantFeatureOverrideData(): array
+    {
+        if (! $this->canManageTenantFeatureOverrides()) {
+            return [
+                'overrides' => [],
+                'companies' => [],
+                'feature_options' => [],
+                'limit_options' => [],
+            ];
+        }
+
+        $overrideService = app(TenantFeatureOverrideService::class);
+        $featureCatalog = app(FeatureCatalogService::class);
+        $limitResolver = app(PlanLimitResolver::class);
+
+        $overrides = $overrideService->listForCompany()->map(function (TenantFeatureOverride $override): array {
+            return [
+                'id' => $override->id,
+                'company_id' => $override->company_id,
+                'company_name' => $override->company?->name,
+                'company_email' => $override->company?->email,
+                'override_type' => $override->override_type,
+                'override_key' => $override->override_key,
+                'limit_value' => $override->limit_value,
+                'notes' => $override->notes,
+                'created_at' => $override->created_at?->toDateTimeString(),
+                'updated_at' => $override->updated_at?->toDateTimeString(),
+                'created_by_name' => $override->creator?->name,
+                'updated_by_name' => $override->updater?->name,
+            ];
+        })->values()->all();
+
+        $companies = User::query()
+            ->where('type', 'company')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email'])
+            ->map(fn (User $company): array => [
+                'id' => $company->id,
+                'name' => $company->name,
+                'email' => $company->email,
+            ])
+            ->values()
+            ->all();
+
+        $featureOptions = collect($featureCatalog->features())
+            ->map(fn (array $feature): array => [
+                'value' => (string) ($feature['key'] ?? ''),
+                'label' => trim(sprintf(
+                    '%s%s',
+                    (string) ($feature['label'] ?? ''),
+                    ($feature['domain'] ?? '') !== '' ? ' · ' . (string) $feature['domain'] : ''
+                )),
+                'domain' => (string) ($feature['domain'] ?? ''),
+                'summary' => (string) ($feature['notes'] ?? ''),
+            ])
+            ->filter(fn (array $feature) => $feature['value'] !== '')
+            ->values()
+            ->all();
+
+        $limitOptions = collect($limitResolver->dimensions())
+            ->map(fn (array $dimension): array => [
+                'value' => (string) ($dimension['key'] ?? ''),
+                'label' => trim(sprintf(
+                    '%s%s',
+                    (string) ($dimension['label'] ?? ''),
+                    ($dimension['unit'] ?? '') !== '' ? ' · ' . (string) $dimension['unit'] : ''
+                )),
+                'description' => (string) ($dimension['description'] ?? ''),
+                'unit' => (string) ($dimension['unit'] ?? ''),
+            ])
+            ->filter(fn (array $dimension) => $dimension['value'] !== '')
+            ->values()
+            ->all();
+
+        return [
+            'overrides' => $overrides,
+            'companies' => $companies,
+            'feature_options' => $featureOptions,
+            'limit_options' => $limitOptions,
+        ];
+    }
+
+    private function canManageTenantFeatureOverrides(): bool
+    {
+        $user = Auth::user();
+
+        return $user && ($user->isSuperAdminUser() || $user->can('manage-company-overrides'));
     }
 
     public function updateBrandSettings(Request $request)

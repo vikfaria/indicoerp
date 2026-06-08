@@ -10,16 +10,22 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
+use App\Services\AssistantActivation\OnboardingDashboardService;
 
 class HomeController extends Controller
 {
-    public function Dashboard(Request $request)
+    public function Dashboard(Request $request, OnboardingDashboardService $dashboardService)
     {
         if (Auth::user()->isSuperAdminUser()) {
             return $this->superAdminDashboard();
         }
 
-        return $this->regularDashboard();
+        if (Auth::user()->can('view-company-onboarding-progress')) {
+            return redirect()->route('assistant-activation.company-progress.index');
+        }
+
+        return $this->regularDashboard($dashboardService);
     }
 
     private function superAdminDashboard()
@@ -62,7 +68,7 @@ class HomeController extends Controller
         ]);
     }
 
-    private function regularDashboard()
+    private function regularDashboard(OnboardingDashboardService $dashboardService)
     {
         $user = Auth::user();
         if (!$user) {
@@ -73,7 +79,7 @@ class HomeController extends Controller
         sort($activatedModules);
 
         $permissions = method_exists($user, 'getAllPermissions')
-            ? Cache::remember('dashboard:user_permissions:' . $user->id, now()->addMinutes(10), function () use ($user) {
+            ? Cache::remember('dashboard:user_permissions:' . $user->id . ':company_version:' . app(AssistantActivationCacheService::class)->currentCompanyVersion($this->resolveCacheCompanyId($user)), now()->addMinutes(10), function () use ($user) {
                 return $user->getAllPermissions()->pluck('name')->sort()->values()->implode('|');
             })
             : '';
@@ -103,7 +109,11 @@ class HomeController extends Controller
             }
         }
 
-        return Inertia::render('dashboard');
+        $onboarding = $dashboardService->snapshot($user);
+
+        return Inertia::render('dashboard', [
+            'onboarding' => $onboarding,
+        ]);
     }
 
     /**
@@ -140,5 +150,18 @@ class HomeController extends Controller
 
             return $candidates;
         });
+    }
+
+    private function resolveCacheCompanyId($user): int
+    {
+        if (method_exists($user, 'isSuperAdminUser') && $user->isSuperAdminUser()) {
+            return (int) $user->id;
+        }
+
+        if (($user->type ?? null) === 'company') {
+            return (int) $user->id;
+        }
+
+        return (int) ($user->created_by ?: $user->id);
     }
 }

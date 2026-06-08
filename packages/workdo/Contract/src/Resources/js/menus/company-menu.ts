@@ -6,20 +6,21 @@ declare global {
 
 export const contractCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Contract'),
+        title: t('Contratos'),
         icon: FileSignature,
         permission: 'manage-contracts',
-        order: 725,
+        parent: 'operations',
+        order: 30,
         name: 'contract',
         children: [
             {
-                title: t('Contracts'),
+                title: t('Lista de contratos'),
                 href: route('contract.index'),
                 permission: 'manage-contracts',
                 order: 10,
             },
             {
-                title: t('Contract Types'),
+                title: t('Tipos de contrato'),
                 href: route('contract-types.index'),
                 permission: 'manage-contract-types',
                 order: 30,

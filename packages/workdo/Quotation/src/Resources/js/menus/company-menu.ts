@@ -6,7 +6,7 @@ declare global {
 
 export const quotationCompanyMenu = (t: (key: string) => string) => [
     {
-        title: t('Quotation'),
+        title: t('Orçamentos'),
         icon: FileCheck,
         permission: 'manage-quotations',
         href: route('quotations.index'),

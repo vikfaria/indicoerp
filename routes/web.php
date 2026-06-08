@@ -9,6 +9,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\SettingController;
+use App\Http\Controllers\TenantFeatureOverrideController;
 use App\Http\Controllers\TranslationController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\BankTransferPaymentController;
@@ -32,11 +33,13 @@ use App\Http\Controllers\SalesProposalController;
 use App\Http\Controllers\SalesReturnController;
 use App\Http\Controllers\AccountingJournalController;
 use App\Http\Controllers\FiscalProfileController;
+use App\Http\Controllers\OnboardingController;
 use App\Http\Controllers\TaxController;
 use App\Http\Controllers\FixedAssetController;
 use App\Http\Controllers\FinancialReportController;
 use App\Http\Controllers\PgcImportController;
 use App\Http\Controllers\FiscalDocumentSeriesController;
+use App\Http\Controllers\CompanyProgressController;
 use Inertia\Inertia;
 
 
@@ -46,6 +49,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     // })->name('dashboard');
 
     Route::get('dashboard', [HomeController::class, 'Dashboard'])->name('dashboard');
+    Route::get('assistant-activation/company-progress', [CompanyProgressController::class, 'index'])->name('assistant-activation.company-progress.index');
 
     // Profile management routes
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -53,12 +57,18 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     // Resource management routes
-    Route::resource('users', UserController::class);
+    Route::middleware('plan.limit:users')->group(function () {
+        Route::resource('users', UserController::class);
+    });
     Route::patch('users/{user}/change-password', [UserController::class, 'changePassword'])->name('users.change-password');
     Route::post('users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
     Route::post('users/leave-impersonation', [UserController::class, 'leaveImpersonation'])->name('users.leave-impersonation');
     Route::get('users/login/history', [UserController::class, 'loginHistory'])->name('users.login-history');
-    Route::resource('warehouses', WarehouseController::class);
+    Route::middleware('feature:inventory.warehouse.manage')->group(function () {
+        Route::middleware('plan.limit:warehouses')->group(function () {
+            Route::resource('warehouses', WarehouseController::class);
+        });
+    });
     Route::resource('transfers', TransferController::class)->except(['edit', 'update']);
 
 
@@ -66,14 +76,18 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::resource('roles', RoleController::class);
 
     // purchase invoices
-    Route::resource('purchase-invoices', PurchaseInvoiceController::class);
+    Route::middleware('plan.limit:documents_per_month')->group(function () {
+        Route::resource('purchase-invoices', PurchaseInvoiceController::class);
+    });
     Route::post('purchase-invoices/{purchaseInvoice}/post', [PurchaseInvoiceController::class, 'post'])->name('purchase-invoices.post');
     Route::post('purchase-invoices/{purchaseInvoice}/fiscal-status', [PurchaseInvoiceController::class, 'updateFiscalStatus'])->name('purchase-invoices.fiscal-status');
     Route::post('purchase-invoices/{purchaseInvoice}/cancel-fiscal', [PurchaseInvoiceController::class, 'cancelFiscal'])->name('purchase-invoices.cancel-fiscal');
     Route::get('purchase-invoices/{purchaseInvoice}/print', [PurchaseInvoiceController::class, 'print'])->name('purchase-invoices.print');
 
     // sales invoices
-    Route::resource('sales-invoices', SalesInvoiceController::class);
+    Route::middleware('plan.limit:documents_per_month')->group(function () {
+        Route::resource('sales-invoices', SalesInvoiceController::class);
+    });
     Route::post('sales-invoices/{salesInvoice}/post', [SalesInvoiceController::class, 'post'])->name('sales-invoices.post');
     Route::post('sales-invoices/{salesInvoice}/fiscal-status', [SalesInvoiceController::class, 'updateFiscalStatus'])->name('sales-invoices.fiscal-status');
     Route::post('sales-invoices/{salesInvoice}/cancel-fiscal', [SalesInvoiceController::class, 'cancelFiscal'])->name('sales-invoices.cancel-fiscal');
@@ -82,28 +96,32 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::get('sales-invoices/services/list', [SalesInvoiceController::class, 'getServices'])->name('sales-invoices.services');
 
     // purchase returns
-    Route::get('purchase-returns', [PurchaseReturnController::class, 'index'])->name('purchase-returns.index');
-    Route::get('purchase-returns/create', [PurchaseReturnController::class, 'create'])->name('purchase-returns.create');
-    Route::post('purchase-returns', [PurchaseReturnController::class, 'store'])->name('purchase-returns.store');
-    Route::get('purchase-returns/{return}', [PurchaseReturnController::class, 'show'])->name('purchase-returns.show');
-    Route::get('purchase-returns/{return}/print', [PurchaseReturnController::class, 'print'])->name('purchase-returns.print');
-    Route::delete('purchase-returns/{return}', [PurchaseReturnController::class, 'destroy'])->name('purchase-returns.destroy');
-    Route::post('purchase-returns/{return}/approve', [PurchaseReturnController::class, 'approve'])->name('purchase-returns.approve');
-    Route::post('purchase-returns/{return}/complete', [PurchaseReturnController::class, 'complete'])->name('purchase-returns.complete');
-    Route::post('purchase-returns/{return}/fiscal-status', [PurchaseReturnController::class, 'updateFiscalStatus'])->name('purchase-returns.fiscal-status');
-    Route::post('purchase-returns/{return}/cancel-fiscal', [PurchaseReturnController::class, 'cancelFiscal'])->name('purchase-returns.cancel-fiscal');
+    Route::middleware('plan.limit:documents_per_month')->group(function () {
+        Route::get('purchase-returns', [PurchaseReturnController::class, 'index'])->name('purchase-returns.index');
+        Route::get('purchase-returns/create', [PurchaseReturnController::class, 'create'])->name('purchase-returns.create');
+        Route::post('purchase-returns', [PurchaseReturnController::class, 'store'])->name('purchase-returns.store');
+        Route::get('purchase-returns/{return}', [PurchaseReturnController::class, 'show'])->name('purchase-returns.show');
+        Route::get('purchase-returns/{return}/print', [PurchaseReturnController::class, 'print'])->name('purchase-returns.print');
+        Route::delete('purchase-returns/{return}', [PurchaseReturnController::class, 'destroy'])->name('purchase-returns.destroy');
+        Route::post('purchase-returns/{return}/approve', [PurchaseReturnController::class, 'approve'])->name('purchase-returns.approve');
+        Route::post('purchase-returns/{return}/complete', [PurchaseReturnController::class, 'complete'])->name('purchase-returns.complete');
+        Route::post('purchase-returns/{return}/fiscal-status', [PurchaseReturnController::class, 'updateFiscalStatus'])->name('purchase-returns.fiscal-status');
+        Route::post('purchase-returns/{return}/cancel-fiscal', [PurchaseReturnController::class, 'cancelFiscal'])->name('purchase-returns.cancel-fiscal');
+    });
 
     // sales returns
-    Route::get('sales-returns', [SalesReturnController::class, 'index'])->name('sales-returns.index');
-    Route::get('sales-returns/create', [SalesReturnController::class, 'create'])->name('sales-returns.create');
-    Route::post('sales-returns', [SalesReturnController::class, 'store'])->name('sales-returns.store');
-    Route::get('sales-returns/{salesReturn}', [SalesReturnController::class, 'show'])->name('sales-returns.show');
-    Route::get('sales-returns/{salesReturn}/print', [SalesReturnController::class, 'print'])->name('sales-returns.print');
-    Route::delete('sales-returns/{salesReturn}', [SalesReturnController::class, 'destroy'])->name('sales-returns.destroy');
-    Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve'])->name('sales-returns.approve');
-    Route::post('sales-returns/{salesReturn}/complete', [SalesReturnController::class, 'complete'])->name('sales-returns.complete');
-    Route::post('sales-returns/{salesReturn}/fiscal-status', [SalesReturnController::class, 'updateFiscalStatus'])->name('sales-returns.fiscal-status');
-    Route::post('sales-returns/{salesReturn}/cancel-fiscal', [SalesReturnController::class, 'cancelFiscal'])->name('sales-returns.cancel-fiscal');
+    Route::middleware('plan.limit:documents_per_month')->group(function () {
+        Route::get('sales-returns', [SalesReturnController::class, 'index'])->name('sales-returns.index');
+        Route::get('sales-returns/create', [SalesReturnController::class, 'create'])->name('sales-returns.create');
+        Route::post('sales-returns', [SalesReturnController::class, 'store'])->name('sales-returns.store');
+        Route::get('sales-returns/{salesReturn}', [SalesReturnController::class, 'show'])->name('sales-returns.show');
+        Route::get('sales-returns/{salesReturn}/print', [SalesReturnController::class, 'print'])->name('sales-returns.print');
+        Route::delete('sales-returns/{salesReturn}', [SalesReturnController::class, 'destroy'])->name('sales-returns.destroy');
+        Route::post('sales-returns/{salesReturn}/approve', [SalesReturnController::class, 'approve'])->name('sales-returns.approve');
+        Route::post('sales-returns/{salesReturn}/complete', [SalesReturnController::class, 'complete'])->name('sales-returns.complete');
+        Route::post('sales-returns/{salesReturn}/fiscal-status', [SalesReturnController::class, 'updateFiscalStatus'])->name('sales-returns.fiscal-status');
+        Route::post('sales-returns/{salesReturn}/cancel-fiscal', [SalesReturnController::class, 'cancelFiscal'])->name('sales-returns.cancel-fiscal');
+    });
 
     // Helpdesk Routes
     Route::resource('helpdesk-categories', HelpdeskCategoryController::class);
@@ -113,6 +131,7 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::post('helpdesk-tickets/{ticket}/replies', [HelpdeskReplyController::class, 'store'])->name('helpdesk-replies.store');
     Route::delete('helpdesk-replies/{reply}', [HelpdeskReplyController::class, 'destroy'])->name('helpdesk-replies.destroy');
     Route::resource('plans', PlanController::class);
+    Route::get('my-plan', [PlanController::class, 'myPlan'])->name('plans.my-plan');
     Route::resource('coupons', CouponController::class);
     Route::resource('orders', OrderController::class)->only(['index', 'show']);
     Route::get('plans/{plan}/subscribe', [PlanController::class, 'subscribe'])->name('plans.subscribe');
@@ -146,6 +165,8 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::post('settings/email/test', [SettingController::class, 'testEmail'])->name('settings.email.test');
     Route::post('settings/pusher', [SettingController::class, 'updatePusherSettings'])->name('settings.pusher.update');
     Route::post('settings/bank-transfer', [SettingController::class, 'updateBankTransferSettings'])->name('settings.bank-transfer.update');
+    Route::post('settings/company-overrides', [TenantFeatureOverrideController::class, 'store'])->name('settings.company-overrides.store');
+    Route::delete('settings/company-overrides/{override}', [TenantFeatureOverrideController::class, 'destroy'])->name('settings.company-overrides.destroy');
     Route::post('email-notification-settings-save', [SettingController::class, 'mailNotificationStore'])->name('email.notification.setting.store');
 
     // Bank Transfer Payment routes
@@ -177,6 +198,8 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
     Route::get('notification-templates/{notificationTemplate}/edit', [NotificationTemplateController::class, 'edit'])->name('notification-templates.edit');
     Route::get('notification-templates/{notificationTemplate}/language/{lang}', [NotificationTemplateController::class, 'getLanguageContent'])->name('notification-templates.language-content');
     Route::put('notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'update'])->name('notification-templates.update');
+
+    Route::get('onboarding', [OnboardingController::class, 'show'])->name('onboarding.index');
 
      // Proposal Routes
     Route::resource('sales-proposals', SalesProposalController::class);
@@ -250,10 +273,12 @@ Route::middleware(['auth', 'verified', 'PlanModuleCheck'])->group(function () {
         Route::post('fiscal/pgc/validate', [PgcImportController::class, 'validate'])->name('fiscal.pgc.validate');
 
         // Document Series
-        Route::get('fiscal/series', [FiscalDocumentSeriesController::class, 'index'])->name('fiscal.series');
-        Route::post('fiscal/series', [FiscalDocumentSeriesController::class, 'store'])->name('fiscal.series.store');
-        Route::post('fiscal/series/{series}/toggle', [FiscalDocumentSeriesController::class, 'toggleActive'])->name('fiscal.series.toggle');
-        Route::post('fiscal/series/{series}/verify', [FiscalDocumentSeriesController::class, 'verifyChain'])->name('fiscal.series.verify');
+        Route::middleware('plan.limit:document_series')->group(function () {
+            Route::get('fiscal/series', [FiscalDocumentSeriesController::class, 'index'])->name('fiscal.series');
+            Route::post('fiscal/series', [FiscalDocumentSeriesController::class, 'store'])->name('fiscal.series.store');
+            Route::post('fiscal/series/{series}/toggle', [FiscalDocumentSeriesController::class, 'toggleActive'])->name('fiscal.series.toggle');
+            Route::post('fiscal/series/{series}/verify', [FiscalDocumentSeriesController::class, 'verifyChain'])->name('fiscal.series.verify');
+        });
 
         // VAT Map
         Route::get('tax/vat-map', [TaxController::class, 'vatMap'])->name('tax.vat-map');

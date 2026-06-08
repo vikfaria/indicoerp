@@ -117,6 +117,8 @@ class PermissionRoleSeeder extends Seeder
             ['name' => 'manage-email-notification-settings', 'module' => 'settings', 'label' => 'Manage Email Notification Settings'],
             ['name' => 'manage-pusher-settings', 'module' => 'settings', 'label' => 'Manage Pusher Settings'],
             ['name' => 'edit-pusher-settings', 'module' => 'settings', 'label' => 'Edit Pusher Settings'],
+            ['name' => 'manage-company-overrides', 'module' => 'settings', 'label' => 'Manage Company Overrides'],
+            ['name' => 'view-company-onboarding-progress', 'module' => 'assistant-activation', 'label' => 'View Company Onboarding Progress'],
 
             // Media management
             ['name' => 'manage-media', 'module' => 'media', 'label' => 'Manage Media'],
@@ -276,12 +278,14 @@ class PermissionRoleSeeder extends Seeder
                     'manage-helpdesk-categories', 'create-helpdesk-categories', 'edit-helpdesk-categories', 'delete-helpdesk-categories',
                     'manage-helpdesk-replies', 'create-helpdesk-replies', 'delete-helpdesk-replies',
                     'manage-settings', 'edit-settings', 'manage-brand-settings', 'edit-brand-settings', 'manage-system-settings', 'edit-system-settings', 'manage-currency-settings', 'edit-currency-settings', 'manage-cache-settings', 'clear-cache', 'manage-cookie-settings', 'edit-cookie-settings', 'manage-seo-settings', 'edit-seo-settings', 'manage-storage-settings', 'edit-storage-settings', 'manage-email-settings', 'edit-email-settings', 'test-email','manage-email-notification-settings','manage-pusher-settings', 'edit-pusher-settings','manage-notification-templates','edit-notification-templates','manage-bank-transfer-settings', 'edit-bank-transfer-settings',
+                    'manage-company-overrides',
                     'manage-languages', 'edit-languages', 'manage-media', 'manage-own-media', 'create-media', 'download-media', 'delete-media', 'manage-media-directories', 'manage-own-media-directories', 'manage-any-media-directories', 'create-media-directories', 'edit-media-directories', 'delete-media-directories',
                     'manage-email-templates', 'edit-email-templates',
                     'manage-plans', 'manage-any-plans', 'manage-own-plans', 'view-plans', 'create-plans', 'edit-plans', 'delete-plans',
                     'manage-coupons', 'manage-any-coupons', 'manage-own-coupons', 'view-coupons', 'create-coupons', 'edit-coupons', 'delete-coupons',
                     'manage-bank-transfer-requests', 'approve-bank-transfer-requests', 'reject-bank-transfer-requests','delete-bank-transfer-requests',
                     'manage-profile', 'edit-profile', 'change-password-profile',
+                    'view-company-onboarding-progress',
                     'manage-orders', 'view-orders'
                 ]
             ],
@@ -310,6 +314,12 @@ class PermissionRoleSeeder extends Seeder
                     'manage-sales-invoices', 'manage-any-sales-invoices', 'manage-own-sales-invoices', 'view-sales-invoices', 'create-sales-invoices', 'edit-sales-invoices', 'delete-sales-invoices', 'post-sales-invoices', 'print-sales-invoices',
                     'manage-sales-return-invoices','manage-any-sales-return-invoices','manage-own-sales-return-invoices','view-sales-return-invoices','create-sales-return-invoices','delete-sales-return-invoices','approve-sales-returns-invoices', 'complete-sales-returns-invoices',
                     'manage-sales-proposals','manage-any-sales-proposals','manage-own-sales-proposals','view-sales-proposals','create-sales-proposals','edit-sales-proposals','delete-sales-proposals','print-sales-proposals','sent-sales-proposals','accept-sales-proposals','convert-sales-proposals','reject-sales-proposals',
+                ]
+            ],
+            'consultant' => [
+                'label' => 'Consultant',
+                'permissions' => [
+                    'view-company-onboarding-progress',
                 ]
             ]
         ];

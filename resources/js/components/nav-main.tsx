@@ -2,8 +2,8 @@ import { Link, usePage } from '@inertiajs/react';
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, SidebarMenuSubButton } from '@/components/ui/sidebar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
-import { NavItem } from '@/types';
+import { ChevronDown, Lock } from 'lucide-react';
+import { MenuAssistantActivation, NavItem } from '@/types';
 import { useTranslation } from 'react-i18next';
 
 export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], searchQuery?: string }) {
@@ -74,6 +74,32 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
         });
     };
 
+    const buildBlockedTooltip = (title: string, activation: MenuAssistantActivation) => ({
+        children: (
+            <div className="space-y-1.5 max-w-xs">
+                <p className="text-sm font-medium leading-none">{title}</p>
+                <p className="text-xs text-muted-foreground">
+                    {activation.moduleLabels && activation.moduleLabels.length > 0
+                        ? t('Existem {{count}} pendências críticas em {{modules}}.', {
+                            count: activation.blockCount || 0,
+                            modules: activation.moduleLabels.join(', '),
+                        })
+                        : t('Esta secção tem pendências críticas de onboarding.')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                    {activation.ctaMessage ?? t('Abra o onboarding para resolver este bloqueio.')}
+                </p>
+                <Link
+                    href={activation.ctaHref ?? route('onboarding.index')}
+                    className="text-xs font-medium text-primary hover:underline"
+                >
+                    {activation.ctaLabel ?? t('Abrir onboarding')}
+                </Link>
+            </div>
+        ),
+        className: 'max-w-xs',
+    });
+
     return (
         <SidebarGroup>
             <SidebarMenu>
@@ -81,6 +107,8 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                   const itemTitle = translateTitle(item.title);
                   const itemPath = item.href ? new URL(item.href, window.location.origin).pathname : '';
                   const isActive = !!(itemPath && isUrlActive(itemPath));
+                  const itemActivation = item.assistantActivation?.status === 'blocked' ? item.assistantActivation : undefined;
+                  const itemIsBlocked = !!itemActivation;
 
                   // Check if any child is active for parent menus
                   const hasActiveChild = item.children ? isChildActive(item.children) : false;
@@ -92,8 +120,16 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                 <Collapsible asChild defaultOpen={shouldBeActive} className="group/collapsible group-data-[collapsible=icon]:hidden">
                                     <div>
                                         <CollapsibleTrigger asChild>
-                                            <SidebarMenuButton tooltip={itemTitle} isActive={shouldBeActive} data-current={false}>
+                                            <SidebarMenuButton
+                                                tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
+                                                showTooltipWhenExpanded={itemIsBlocked}
+                                                isActive={shouldBeActive}
+                                                data-current={false}
+                                                data-blocked={itemIsBlocked}
+                                                className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
+                                            >
                                                 {item.icon && <item.icon />}
+                                                {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                 <span>{itemTitle}</span>
                                                 <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                             </SidebarMenuButton>
@@ -105,6 +141,8 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                     const subItemActive = !!(subItem.href && isUrlActive(new URL(subItem.href, window.location.origin).pathname, subItem.activePaths));
                                                     const hasActiveSubChild = subItem.children ? isChildActive(subItem.children) : false;
                                                     const subItemShouldBeActive = subItemActive || hasActiveSubChild;
+                                                    const subItemActivation = subItem.assistantActivation?.status === 'blocked' ? subItem.assistantActivation : undefined;
+                                                    const subItemIsBlocked = !!subItemActivation;
                                                     
                                                     if (subItem.children && subItem.children.length > 0) {
                                                         return (
@@ -112,8 +150,16 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                 <Collapsible asChild defaultOpen={subItemShouldBeActive} className="group/subcollapsible">
                                                                     <div>
                                                                         <CollapsibleTrigger asChild>
-                                                                            <SidebarMenuSubButton isActive={subItemShouldBeActive} data-current={false}>
+                                                                            <SidebarMenuSubButton
+                                                                                tooltip={subItemActivation ? buildBlockedTooltip(subItemTitle, subItemActivation) : undefined}
+                                                                                showTooltipWhenExpanded={subItemIsBlocked}
+                                                                                isActive={subItemShouldBeActive}
+                                                                                data-current={false}
+                                                                                data-blocked={subItemIsBlocked}
+                                                                                className={subItemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
+                                                                            >
                                                                                 {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                                                                                {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                                                 <span>{subItemTitle}</span>
                                                                                 <ChevronDown className="ml-auto h-3 w-3 transition-transform group-data-[state=open]/subcollapsible:rotate-180" />
                                                                             </SidebarMenuSubButton>
@@ -123,16 +169,22 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                 {subItem.children.map((subSubItem) => {
                                                                                     const subSubItemTitle = translateTitle(subSubItem.title);
                                                                                     const isSubSubActive = !!(subSubItem.href && isUrlActive(new URL(subSubItem.href, window.location.origin).pathname, subSubItem.activePaths));
+                                                                                    const subSubItemActivation = subSubItem.assistantActivation?.status === 'blocked' ? subSubItem.assistantActivation : undefined;
+                                                                                    const subSubItemIsBlocked = !!subSubItemActivation;
                                                                                     return (
                                                                                     <SidebarMenuSubItem key={subSubItem.title}>
                                                                                         <SidebarMenuSubButton
+                                                                                            tooltip={subSubItemActivation ? buildBlockedTooltip(subSubItemTitle, subSubItemActivation) : undefined}
+                                                                                            showTooltipWhenExpanded={subSubItemIsBlocked}
                                                                                             asChild
                                                                                             isActive={isSubSubActive}
-                                                                                                data-current={isSubSubActive}
-                                                                                            className="text-sm"
+                                                                                            data-current={isSubSubActive}
+                                                                                            data-blocked={subSubItemIsBlocked}
+                                                                                            className={subSubItemIsBlocked ? 'text-sm data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : 'text-sm'}
                                                                                         >
                                                                                             <Link href={subSubItem.href!}>
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
+                                                                                                {subSubItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                                                                 <span>{subSubItemTitle}</span>
                                                                                             </Link>
                                                                                         </SidebarMenuSubButton>
@@ -147,19 +199,24 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                     }
                                                     
                                                     return (
-                                                        <SidebarMenuSubItem key={subItem.title}>
-                                                            <SidebarMenuSubButton
-                                                                asChild
-                                                                isActive={subItemActive}
-                                                                data-current={subItemActive}
-                                                            >
-                                                                <Link href={subItem.href!}>
-                                                                    {subItem.icon && <subItem.icon className="h-4 w-4" />}
-                                                                    <span>{subItemTitle}</span>
-                                                                </Link>
-                                                            </SidebarMenuSubButton>
-                                                        </SidebarMenuSubItem>
-                                                    );
+                                                            <SidebarMenuSubItem key={subItem.title}>
+                                                                <SidebarMenuSubButton
+                                                                    tooltip={subItemActivation ? buildBlockedTooltip(subItemTitle, subItemActivation) : undefined}
+                                                                    showTooltipWhenExpanded={subItemIsBlocked}
+                                                                    asChild
+                                                                    isActive={subItemActive}
+                                                                    data-current={subItemActive}
+                                                                    data-blocked={subItemIsBlocked}
+                                                                    className={subItemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
+                                                                >
+                                                                    <Link href={subItem.href!}>
+                                                                        {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                                                                        {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
+                                                                        <span>{subItemTitle}</span>
+                                                                    </Link>
+                                                                </SidebarMenuSubButton>
+                                                            </SidebarMenuSubItem>
+                                                        );
                                                 })}
                                             </SidebarMenuSub>
                                         </CollapsibleContent>
@@ -171,22 +228,29 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <SidebarMenuButton
-                                                tooltip={itemTitle}
+                                                tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
+                                                showTooltipWhenExpanded={itemIsBlocked}
                                                 isActive={shouldBeActive}
+                                                data-blocked={itemIsBlocked}
+                                                className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                                             >
                                                 {item.icon && <item.icon />}
+                                                {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                 <span>{itemTitle}</span>
                                             </SidebarMenuButton>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent side="right" align="start" className="w-48">
-                                            {item.children.map((subItem) => {
+                                        {item.children.map((subItem) => {
                                                 const subItemTitle = translateTitle(subItem.title);
+                                                const subItemActivation = subItem.assistantActivation?.status === 'blocked' ? subItem.assistantActivation : undefined;
+                                                const subItemIsBlocked = !!subItemActivation;
                                                 if (subItem.children && subItem.children.length > 0) {
                                                     return (
                                                         <DropdownMenu key={subItem.title}>
                                                             <DropdownMenuTrigger asChild>
-                                                                <DropdownMenuItem className="flex items-center gap-2 cursor-pointer">
+                                                                <DropdownMenuItem className={subItemIsBlocked ? 'flex items-center gap-2 cursor-pointer text-amber-700' : 'flex items-center gap-2 cursor-pointer'}>
                                                                     {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                                                                    {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                                     <span>{subItemTitle}</span>
                                                                     <ChevronDown className="ml-auto h-3 w-3" />
                                                                 </DropdownMenuItem>
@@ -194,14 +258,18 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                             <DropdownMenuContent side="right" align="start" className="w-44">
                                                                 {subItem.children.map((subSubItem) => {
                                                                     const subSubItemTitle = translateTitle(subSubItem.title);
+                                                                    const subSubItemActivation = subSubItem.assistantActivation?.status === 'blocked' ? subSubItem.assistantActivation : undefined;
+                                                                    const subSubItemIsBlocked = !!subSubItemActivation;
                                                                     return (
-                                                                    <DropdownMenuItem key={subSubItem.title} asChild>
-                                                                        <Link href={subSubItem.href!} className="flex items-center gap-2">
-                                                                            {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
-                                                                            <span className="text-sm">{subSubItemTitle}</span>
-                                                                        </Link>
-                                                                    </DropdownMenuItem>
-                                                                )})}
+                                                                        <DropdownMenuItem key={subSubItem.title} asChild>
+                                                                            <Link href={subSubItem.href!} className={subSubItemIsBlocked ? 'flex items-center gap-2 text-amber-700' : 'flex items-center gap-2'}>
+                                                                                {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
+                                                                                {subSubItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
+                                                                                <span className="text-sm">{subSubItemTitle}</span>
+                                                                            </Link>
+                                                                        </DropdownMenuItem>
+                                                                    );
+                                                                })}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     );
@@ -211,6 +279,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                     <DropdownMenuItem key={subItem.title} asChild>
                                                         <Link href={subItem.href!} className="flex items-center gap-2">
                                                             {subItem.icon && <subItem.icon className="h-4 w-4" />}
+                                                            {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                             <span>{subItemTitle}</span>
                                                         </Link>
                                                     </DropdownMenuItem>
@@ -229,10 +298,14 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                 asChild
                                 isActive={shouldBeActive}
                                 data-current={false}
-                                tooltip={itemTitle}
+                                data-blocked={itemIsBlocked}
+                                showTooltipWhenExpanded={itemIsBlocked}
+                                tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
+                                className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                             >
                                 <Link href={item.href!}>
                                     {item.icon && <item.icon />}
+                                    {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                     <span>{itemTitle}</span>
                                 </Link>
                             </SidebarMenuButton>

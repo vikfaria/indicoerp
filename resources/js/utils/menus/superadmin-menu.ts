@@ -10,6 +10,13 @@ export const getSuperAdminMenu = (t: (key: string) => string): NavItem[] => [
         order: 1,
     },
     {
+        title: t('Company Progress'),
+        href: route('assistant-activation.company-progress.index'),
+        icon: Building2,
+        permission: 'view-company-onboarding-progress',
+        order: 15,
+    },
+    {
         title: t('Users'),
         href: route('users.index'),
         icon: Users,

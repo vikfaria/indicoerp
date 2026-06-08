@@ -8,6 +8,7 @@ use App\Http\Requests\StoreRoleRequest;
 use App\Http\Requests\UpdateRoleRequest;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
 
 class RoleController extends Controller
 {
@@ -61,6 +62,7 @@ class RoleController extends Controller
             $role->created_by = creatorId();
             $role->save();
             $role->syncPermissions($request->permissions ?? []);
+            app(AssistantActivationCacheService::class)->touchCompanyVersion((int) creatorId());
             return redirect()->route('roles.index')->with('success', __('The role has been created successfully.'));
         }
         else{
@@ -99,6 +101,7 @@ class RoleController extends Controller
                 'label' => $request->label
             ]);
             $role->syncPermissions($request->permissions ?? []);
+            app(AssistantActivationCacheService::class)->touchCompanyVersion((int) creatorId());
             return redirect()->route('roles.index')->with('success', __('The role details are updated successfully.'));
         }
         else{
@@ -113,6 +116,7 @@ class RoleController extends Controller
                 return redirect()->route('roles.index')->with('error', __('This role is not editable'));
             }
             $role->delete();
+            app(AssistantActivationCacheService::class)->touchCompanyVersion((int) creatorId());
             return redirect()->route('roles.index')->with('success', __('The role has been deleted.'));
         }
         else{

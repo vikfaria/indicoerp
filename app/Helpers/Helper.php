@@ -13,6 +13,8 @@ use App\Models\AddOn;
 use Spatie\Permission\Models\Role;
 use App\Services\DynamicStorageService;
 use App\Services\StorageConfigService;
+use App\Services\AssistantActivation\AssistantActivationCacheService;
+use App\Services\AuditTrailService;
 
 if (!function_exists('creatorId')) {
     function creatorId()
@@ -246,7 +248,7 @@ if (!function_exists('ActivatedModule')) {
             return $runtimeCache[$cacheSuffix];
         }
 
-        $cacheKey = 'user:activated_modules:' . $cacheSuffix;
+        $cacheKey = 'user:activated_modules:' . $cacheSuffix . ':module_version:' . app(AssistantActivationCacheService::class)->currentModuleVersion();
 
         $modules = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
             $activated_module = User::$superadmin_activated_module;
@@ -420,12 +422,13 @@ if (!function_exists('assignPlan')) {
                 }
             }
 
-            Cache::forget('user:activated_modules:user:' . $user->id);
+            app(AssistantActivationCacheService::class)->touchUserCompanyVersion($user);
             
             // Set user limits from plan (don't modify the plan itself)
             $user->total_user = $plan->number_of_users;
             $user->storage_limit = $plan->storage_limit;
             $user->save();
+            app(AuditTrailService::class)->record('updated', $user);
 
             // User count management logic
             $users = User::where('created_by', $user->id)->where('is_disable', 0)->get();
