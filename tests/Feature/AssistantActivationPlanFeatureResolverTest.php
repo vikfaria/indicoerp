@@ -150,6 +150,13 @@ class AssistantActivationPlanFeatureResolverTest extends TestCase
         $this->assertSame('locked', $resolution['state']);
         $this->assertSame(['tax_profile'], $resolution['missing_config_keys']);
         $this->assertContains('config_missing:tax_profile', $resolution['reasons']);
+
+        $taxProfileCheck = collect($resolution['config_checks'])->firstWhere('key', 'tax_profile');
+        $this->assertNotNull($taxProfileCheck);
+        $this->assertSame(
+            ['vat_output_account_id', 'vat_input_account_id'],
+            $taxProfileCheck['details']['missing_items']
+        );
     }
 
     public function test_it_requires_payroll_contributions_for_hr_payroll_processing(): void

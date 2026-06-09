@@ -134,6 +134,31 @@ class AssistantActivationOnboardingReadinessServiceTest extends TestCase
         $this->assertSame('step_incomplete', $report['critical_blocks'][0]['type']);
     }
 
+    public function test_it_reports_missing_tax_mapping_fields_when_vat_accounts_are_not_configured(): void
+    {
+        $plan = $this->createPlan();
+        $company = $this->makeCompany($plan);
+
+        $this->prepareCompanySettings($company);
+        $this->prepareFiscalSetup($company);
+
+        MozTaxAccountMapping::query()
+            ->where('created_by', $company->id)
+            ->delete();
+
+        $report = app(OnboardingReadinessService::class)->calculateForCompany(
+            $company,
+            ['Account', 'ProductService', 'DoubleEntry', 'Hrm'],
+            'Professional Plan'
+        );
+
+        $checks = collect($report['critical_config_keys'])->keyBy('key');
+
+        $this->assertFalse($checks['tax_profile']['satisfied']);
+        $this->assertSame('missing_mapping', $checks['tax_profile']['reason']);
+        $this->assertSame(['vat_output_account_id', 'vat_input_account_id'], $checks['tax_profile']['details']['missing_items']);
+    }
+
     public function test_it_evaluates_inventory_and_pos_configuration_when_stock_layers_exist(): void
     {
         $plan = $this->createInventoryPlan();

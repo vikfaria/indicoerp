@@ -672,8 +672,6 @@ class PlanFeatureResolver
         $mapping = MozTaxAccountMapping::query()
             ->where('created_by', $companyId)
             ->where('is_active', true)
-            ->whereNotNull('vat_output_account_id')
-            ->whereNotNull('vat_input_account_id')
             ->where(function ($query) use ($today): void {
                 $query->whereNull('effective_from')
                     ->orWhereDate('effective_from', '<=', $today);
@@ -691,7 +689,29 @@ class PlanFeatureResolver
                 'label' => $label,
                 'satisfied' => false,
                 'reason' => 'missing_mapping',
-                'details' => null,
+                'details' => [
+                    'missing_items' => ['vat_output_account_id', 'vat_input_account_id'],
+                ],
+            ];
+        }
+
+        $missingItems = array_values(array_filter([
+            blank($mapping->vat_output_account_id) ? 'vat_output_account_id' : null,
+            blank($mapping->vat_input_account_id) ? 'vat_input_account_id' : null,
+        ]));
+
+        if ($missingItems !== []) {
+            return [
+                'key' => 'tax_profile',
+                'label' => $label,
+                'satisfied' => false,
+                'reason' => 'missing_mapping',
+                'details' => [
+                    'mapping_id' => $mapping->id,
+                    'missing_items' => $missingItems,
+                    'effective_from' => $mapping->effective_from?->toDateString(),
+                    'effective_to' => $mapping->effective_to?->toDateString(),
+                ],
             ];
         }
 

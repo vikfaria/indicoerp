@@ -2016,6 +2016,7 @@
     "Critical configuration record is missing.": "Falta o registo de configuração crítica.",
     "No valid active document series is available.": "Não existe uma série documental ativa válida.",
     "Tax mapping is missing or incomplete.": "O mapeamento fiscal está em falta ou incompleto.",
+    "Tax mapping is missing or incomplete. Missing fields: :fields.": "O mapeamento fiscal está em falta ou incompleto. Campos em falta: :fields.",
     "Fiscal calendar and export routes are unavailable.": "As rotas do calendário fiscal e de exportação não estão disponíveis.",
     "SAF-T XSD validation is enabled but the schema path is missing.": "A validação XSD SAF-T está ativa, mas falta o caminho do esquema.",
     "No customer masterdata exists.": "Não existem dados mestre de clientes.",
@@ -2042,6 +2043,13 @@
     "The fiscal profile license has expired.": "A licença do perfil fiscal expirou.",
     "A valid NUIT is required.": "É necessário um NUIT válido.",
     "Configuration is not ready.": "A configuração ainda não está pronta.",
+    "VAT output account": "Conta de IVA de saída",
+    "VAT input account": "Conta de IVA de entrada",
+    "Withholding payable account": "Conta a pagar de retenções",
+    "Withholding receivable account": "Conta a receber de retenções",
+    "IRPC expense account": "Conta de gasto de IRPC",
+    "Avisos": "Avisos",
+    "The active fiscal profile suggests :profile, but this page is validating :framework.": "O perfil fiscal ativo sugere :profile, mas esta página está a validar :framework.",
     "Required onboarding step is pending.": "O passo obrigatório de onboarding está pendente.",
     "Required onboarding step is only partially completed.": "O passo obrigatório de onboarding está apenas parcialmente concluído."
 }

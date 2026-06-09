@@ -13,13 +13,40 @@ interface Account {
     movement: boolean; balance: string; fs_line: string;
 }
 interface ClassGroup { class: number; name: string; count: number; accounts: Account[]; }
+interface ValidationReport {
+    framework: string;
+    profile_framework: string | null;
+    catalog_count: number;
+    company_pgc_count: number;
+    legacy_active_count: number;
+    missing_classes: number[];
+    missing_codes: string[];
+    extra_codes: string[];
+    class_coverage: Array<{
+        class: number;
+        label: string;
+        official_count: number;
+        company_count: number;
+    }>;
+    warnings: string[];
+    errors: string[];
+    valid: boolean;
+}
+
+interface PageProps extends Record<string, unknown> {
+    catalog: ClassGroup[];
+    totalCatalog: number;
+    importedCount: number;
+    validationReport: ValidationReport;
+    framework: string;
+}
 
 export default function PgcImportIndex() {
     const { t } = useTranslation();
-    const { catalog, totalCatalog, importedCount, issues, framework } = usePage<{
-        catalog: ClassGroup[]; totalCatalog: number; importedCount: number;
-        issues: string[]; framework: string;
-    }>().props;
+    const { catalog, totalCatalog, importedCount, validationReport, framework } = usePage<PageProps>().props;
+    const issues = validationReport?.errors ?? [];
+    const warnings = validationReport?.warnings ?? [];
+    const profileFramework = validationReport?.profile_framework ?? null;
 
     const [expanded, setExpanded] = useState<number[]>([]);
     const [search, setSearch] = useState('');
@@ -104,6 +131,23 @@ export default function PgcImportIndex() {
                 </Card>
             </div>
 
+            {warnings.length > 0 && issues.length === 0 && (
+                <Card className="mb-6 border-amber-200 bg-amber-50/30">
+                    <CardHeader className="py-3">
+                        <CardTitle className="text-sm text-amber-700 flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4" /> {t('Avisos')}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="divide-y divide-amber-100">
+                            {warnings.map((warning) => (
+                                <div key={warning} className="px-4 py-2 text-sm text-amber-700">⚠ {warning}</div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Validation issues */}
             {issues.length > 0 && (
                 <Card className="mb-6 border-red-200 bg-red-50/30">
@@ -118,6 +162,17 @@ export default function PgcImportIndex() {
                                 <div key={i} className="px-4 py-2 text-sm text-red-700">⚠ {issue}</div>
                             ))}
                         </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {profileFramework && profileFramework !== framework && (
+                <Card className="mb-6 border-amber-200 bg-amber-50/40">
+                    <CardContent className="p-4 text-sm text-amber-900">
+                        {t('The active fiscal profile suggests :profile, but this page is validating :framework.', {
+                            profile: profileFramework,
+                            framework,
+                        })}
                     </CardContent>
                 </Card>
             )}

@@ -152,12 +152,13 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                 isActive={shouldBeActive}
                                                 data-current={false}
                                                 data-blocked={itemIsBlocked}
+                                                title={itemTitle}
                                                 className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                                             >
                                                 {item.icon && <item.icon />}
                                                 {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                <span>{itemTitle}</span>
-                                                <ChevronDown className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                                                <span className="min-w-0 flex-1 truncate">{itemTitle}</span>
+                                                <ChevronDown className="ml-auto h-4 w-4 shrink-0 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                             </SidebarMenuButton>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
@@ -182,12 +183,13 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                 isActive={subItemShouldBeActive}
                                                                                 data-current={false}
                                                                                 data-blocked={subItemIsBlocked}
+                                                                                title={subItemTitle}
                                                                                 className={subItemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                                                                             >
                                                                                 {subItem.icon && <subItem.icon className="h-4 w-4" />}
                                                                                 {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                                                <span>{subItemTitle}</span>
-                                                                                <ChevronDown className="ml-auto h-3 w-3 transition-transform group-data-[state=open]/subcollapsible:rotate-180" />
+                                                                                <span className="min-w-0 flex-1 truncate">{subItemTitle}</span>
+                                                                                <ChevronDown className="ml-auto h-3 w-3 shrink-0 transition-transform group-data-[state=open]/subcollapsible:rotate-180" />
                                                                             </SidebarMenuSubButton>
                                                                         </CollapsibleTrigger>
                                                                         <CollapsibleContent>
@@ -206,12 +208,13 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                             isActive={isSubSubActive}
                                                                                             data-current={isSubSubActive}
                                                                                             data-blocked={subSubItemIsBlocked}
+                                                                                            title={subSubItemTitle}
                                                                                             className={subSubItemIsBlocked ? 'text-sm data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : 'text-sm'}
                                                                                         >
                                                                                             <Link href={subSubItem.href!}>
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
                                                                                                 {subSubItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                                                                <span>{subSubItemTitle}</span>
+                                                                                                <span className="min-w-0 flex-1 truncate">{subSubItemTitle}</span>
                                                                                             </Link>
                                                                                         </SidebarMenuSubButton>
                                                                                     </SidebarMenuSubItem>

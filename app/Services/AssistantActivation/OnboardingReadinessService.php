@@ -724,8 +724,6 @@ class OnboardingReadinessService
                 $query->where('created_by', $companyId)->orWhere('creator_id', $companyId);
             })
             ->where('is_active', true)
-            ->whereNotNull('vat_output_account_id')
-            ->whereNotNull('vat_input_account_id')
             ->where(function ($query) use ($today): void {
                 $query->whereNull('effective_from')->orWhereDate('effective_from', '<=', $today);
             })
@@ -741,7 +739,29 @@ class OnboardingReadinessService
                 'label' => $label,
                 'satisfied' => false,
                 'reason' => 'missing_mapping',
-                'details' => null,
+                'details' => [
+                    'missing_items' => ['vat_output_account_id', 'vat_input_account_id'],
+                ],
+            ];
+        }
+
+        $missingItems = array_values(array_filter([
+            blank($mapping->vat_output_account_id) ? 'vat_output_account_id' : null,
+            blank($mapping->vat_input_account_id) ? 'vat_input_account_id' : null,
+        ]));
+
+        if ($missingItems !== []) {
+            return [
+                'key' => 'tax_profile',
+                'label' => $label,
+                'satisfied' => false,
+                'reason' => 'missing_mapping',
+                'details' => [
+                    'mapping_id' => $mapping->id,
+                    'missing_items' => $missingItems,
+                    'effective_from' => $mapping->effective_from?->toDateString(),
+                    'effective_to' => $mapping->effective_to?->toDateString(),
+                ],
             ];
         }
 
@@ -1801,7 +1821,7 @@ class OnboardingReadinessService
             'missing_profile' => __('Critical configuration record is missing.'),
             'missing_series' => __('No valid active document series is available.'),
             'period_not_open' => __('No open accounting period exists for today.'),
-            'missing_mapping' => __('Tax mapping is missing or incomplete.'),
+            'missing_mapping' => $this->buildTaxMappingMessage($check),
             'missing_calendar_routes' => __('Fiscal calendar and export routes are unavailable.'),
             'missing_saft_xsd' => __('SAF-T XSD validation is enabled but the schema path is missing.'),
             'missing_customers' => __('No customer masterdata exists.'),
@@ -1829,6 +1849,33 @@ class OnboardingReadinessService
             'invalid_nuit', 'invalid_tax_number' => __('A valid NUIT is required.'),
             default => __('Configuration is not ready.'),
         };
+    }
+
+    private function buildTaxMappingMessage(array $check): string
+    {
+        $missingItems = array_values(array_filter(array_map(
+            static fn ($item): string => trim((string) $item),
+            (array) data_get($check, 'details.missing_items', [])
+        )));
+
+        if ($missingItems === []) {
+            return __('Tax mapping is missing or incomplete.');
+        }
+
+        $labels = array_map(function (string $item): string {
+            return match ($item) {
+                'vat_output_account_id' => __('VAT output account'),
+                'vat_input_account_id' => __('VAT input account'),
+                'withholding_payable_account_id' => __('Withholding payable account'),
+                'withholding_receivable_account_id' => __('Withholding receivable account'),
+                'irpc_expense_account_id' => __('IRPC expense account'),
+                default => $item,
+            };
+        }, $missingItems);
+
+        return __('Tax mapping is missing or incomplete. Missing fields: :fields.', [
+            'fields' => implode(', ', $labels),
+        ]);
     }
 
     private function buildStepBlockMessage(array $step, float $progressPercent): string
