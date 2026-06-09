@@ -70,7 +70,8 @@ function SubscriptionLayout({ plan, allModules, pricingPeriod, onSubscribe, bank
     }, true);
 
     const filteredModules = allModules.filter(module => {
-        const matchesSearch = module.alias.toLowerCase().includes(moduleSearch.toLowerCase()) ||
+        const translatedAlias = getPackageAlias(module.alias) ?? module.alias;
+        const matchesSearch = translatedAlias.toLowerCase().includes(moduleSearch.toLowerCase()) ||
             module.module.toLowerCase().includes(moduleSearch.toLowerCase());
 
         return matchesSearch && plan.modules?.includes(module.module);

@@ -68,6 +68,9 @@ class AssistantActivationMenuStateServiceTest extends TestCase
 
         $this->assertTrue($snapshot['modules']['billing']['blocked']);
         $this->assertSame(2, $snapshot['modules']['billing']['block_count']);
+        $this->assertCount(2, $snapshot['modules']['billing']['critical_items']);
+        $this->assertSame('billing.configure_document_series', $snapshot['modules']['billing']['critical_items'][0]['key']);
+        $this->assertSame('document_series', $snapshot['modules']['billing']['critical_items'][1]['key']);
         $this->assertTrue($snapshot['modules']['hr']['blocked']);
         $this->assertFalse($snapshot['modules']['accounting']['blocked']);
         $this->assertContains('billing', $snapshot['blocked_module_keys']);

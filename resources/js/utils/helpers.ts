@@ -1,4 +1,5 @@
 import { usePage } from '@inertiajs/react';
+import i18next from 'i18next';
 
 // Add window type declaration
 declare global {
@@ -451,7 +452,17 @@ const getPackageAlias = (packageName: string, pageProps?: any): string | undefin
       }
 
       const packageData = packages.find((pkg: any) => pkg.name === packageName);
-      return packageData?.alias || packageName;
+      const alias = packageData?.alias || packageName;
+
+      if (i18next.isInitialized) {
+        const translatedAlias = i18next.t(alias);
+
+        if (translatedAlias && translatedAlias !== alias) {
+          return translatedAlias;
+        }
+      }
+
+      return alias;
     } catch {
       return packageName;
     }

@@ -12,7 +12,7 @@ import { Check, Plus, Edit, Trash2, X, Package, MoreVertical, Clock } from 'luci
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { SearchInput } from '@/components/ui/search-input';
-import { formatDate, formatAdminCurrency, formatStorage } from '@/utils/helpers';
+import { formatDate, formatAdminCurrency, formatStorage, getPackageAlias } from '@/utils/helpers';
 
 interface Plan {
     id: number;
@@ -88,7 +88,12 @@ export default function PlansIndex({ plans, canCreate, activeModules, bankTransf
 
 
     // Use active modules from Features
-    const allModules = activeModules.sort((a, b) => a.alias.localeCompare(b.alias));
+    const allModules = [...activeModules].sort((a, b) => {
+        const labelA = getPackageAlias(a.alias) ?? a.alias;
+        const labelB = getPackageAlias(b.alias) ?? b.alias;
+
+        return labelA.localeCompare(labelB);
+    });
 
     const activePlans = isCompanyUser ? plans.filter(plan => plan.status) : plans;
 
@@ -329,7 +334,7 @@ export default function PlansIndex({ plans, canCreate, activeModules, bankTransf
                                             {allModules.map((module) => (
                                                 <div key={module.module} className="flex items-center justify-center py-0.5 h-6">
                                                     <span className="text-gray-700 dark:text-gray-300 capitalize text-center leading-none">
-                                                        {module.alias}
+                                                        {getPackageAlias(module.alias) ?? module.alias}
                                                     </span>
                                                 </div>
                                             ))}

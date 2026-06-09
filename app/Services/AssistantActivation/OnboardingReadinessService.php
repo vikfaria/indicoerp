@@ -790,7 +790,7 @@ class OnboardingReadinessService
 
         $checks['calendar_routes'] = [
             'key' => 'calendar_routes',
-            'label' => 'Fiscal calendar routes',
+            'label' => __('Fiscal calendar routes'),
             'satisfied' => $calendarRoutesReady,
             'reason' => $calendarRoutesReady ? 'ok' : 'missing_calendar_routes',
             'details' => [
@@ -803,7 +803,7 @@ class OnboardingReadinessService
 
         $checks['saft_xsd'] = [
             'key' => 'saft_xsd',
-            'label' => 'SAF-T XSD validation',
+            'label' => __('SAF-T XSD validation'),
             'satisfied' => $saftXsdReady,
             'reason' => $saftXsdReady ? 'ok' : 'missing_saft_xsd',
             'details' => [
@@ -1797,47 +1797,47 @@ class OnboardingReadinessService
     private function buildConfigBlockMessage(array $check): string
     {
         return match ($check['reason'] ?? 'unknown') {
-            'missing_fields' => 'Critical configuration is incomplete.',
-            'missing_profile' => 'Critical configuration record is missing.',
-            'missing_series' => 'No valid active document series is available.',
-            'period_not_open' => 'No open accounting period exists for today.',
-            'missing_mapping' => 'Tax mapping is missing or incomplete.',
-            'missing_calendar_routes' => 'Fiscal calendar and export routes are unavailable.',
-            'missing_saft_xsd' => 'SAF-T XSD validation is enabled but the schema path is missing.',
-            'missing_customers' => 'No customer masterdata exists.',
-            'missing_products' => 'No product or service masterdata exists.',
-            'missing_accounts' => 'No chart of accounts records exist.',
-            'missing_opening_balances' => 'No opening balances were found.',
-            'missing_closing_checklists' => 'Closing rules have not been generated.',
-            'missing_employees' => 'No employee masterdata exists.',
-            'missing_templates' => 'No contract templates exist.',
-            'missing_payrolls' => 'No payroll calendar entries exist.',
-            'missing_contributions' => 'No payroll contribution rules are configured.',
-            'missing_irps_table' => 'No active IRPS table exists.',
-            'missing_irps_brackets' => 'No IRPS brackets are configured.',
-            'missing_inss_rate' => 'No active INSS rate exists.',
-            'missing_warehouses' => 'No active warehouse exists.',
-            'missing_initial_stock' => 'No initial stock movements were found.',
-            'missing_fifo_layers' => 'No active FIFO layers were found.',
-            'missing_pos_registers' => 'No valid POS register or sale was found.',
-            'missing_leave_types' => 'No leave policy masterdata exists.',
-            'missing_bank_accounts' => 'No active bank or cash account exists.',
-            'missing_cash_accounts' => 'No active cash account exists.',
-            'missing_methods' => 'No supported payment methods are configured.',
-            'missing_reconciliation_activity' => 'No reconciliation activity was found.',
-            'license_expired' => 'The fiscal profile license has expired.',
-            'invalid_nuit', 'invalid_tax_number' => 'A valid NUIT is required.',
-            default => 'Configuration is not ready.',
+            'missing_fields' => __('Critical configuration is incomplete.'),
+            'missing_profile' => __('Critical configuration record is missing.'),
+            'missing_series' => __('No valid active document series is available.'),
+            'period_not_open' => __('No open accounting period exists for today.'),
+            'missing_mapping' => __('Tax mapping is missing or incomplete.'),
+            'missing_calendar_routes' => __('Fiscal calendar and export routes are unavailable.'),
+            'missing_saft_xsd' => __('SAF-T XSD validation is enabled but the schema path is missing.'),
+            'missing_customers' => __('No customer masterdata exists.'),
+            'missing_products' => __('No product or service masterdata exists.'),
+            'missing_accounts' => __('No chart of accounts records exist.'),
+            'missing_opening_balances' => __('No opening balances were found.'),
+            'missing_closing_checklists' => __('Closing rules have not been generated.'),
+            'missing_employees' => __('No employee masterdata exists.'),
+            'missing_templates' => __('No contract templates exist.'),
+            'missing_payrolls' => __('No payroll calendar entries exist.'),
+            'missing_contributions' => __('No payroll contribution rules are configured.'),
+            'missing_irps_table' => __('No active IRPS table exists.'),
+            'missing_irps_brackets' => __('No IRPS brackets are configured.'),
+            'missing_inss_rate' => __('No active INSS rate exists.'),
+            'missing_warehouses' => __('No active warehouse exists.'),
+            'missing_initial_stock' => __('No initial stock movements were found.'),
+            'missing_fifo_layers' => __('No active FIFO layers were found.'),
+            'missing_pos_registers' => __('No valid POS register or sale was found.'),
+            'missing_leave_types' => __('No leave policy masterdata exists.'),
+            'missing_bank_accounts' => __('No active bank or cash account exists.'),
+            'missing_cash_accounts' => __('No active cash account exists.'),
+            'missing_methods' => __('No supported payment methods are configured.'),
+            'missing_reconciliation_activity' => __('No reconciliation activity was found.'),
+            'license_expired' => __('The fiscal profile license has expired.'),
+            'invalid_nuit', 'invalid_tax_number' => __('A valid NUIT is required.'),
+            default => __('Configuration is not ready.'),
         };
     }
 
     private function buildStepBlockMessage(array $step, float $progressPercent): string
     {
         if ($progressPercent <= 0.0) {
-            return 'Required onboarding step is pending.';
+            return __('Required onboarding step is pending.');
         }
 
-        return 'Required onboarding step is only partially completed.';
+        return __('Required onboarding step is only partially completed.');
     }
 
     private function resolveReadinessState(

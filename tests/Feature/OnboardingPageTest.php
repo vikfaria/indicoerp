@@ -43,7 +43,7 @@ class OnboardingPageTest extends TestCase
                 ->where('plan.label', 'Professional Plan')
                 ->where('plan.modules_total', fn (mixed $value): bool => is_numeric($value))
                 ->where('overview.session_status', 'not_started')
-                ->where('overview.session_status_label', 'Sem sessão')
+                ->where('overview.session_status_label', fn (mixed $value): bool => in_array($value, ['Sem sessão', 'Not started'], true))
                 ->where('overview.is_new_company', true)
                 ->has('next_steps.0.action')
                 ->has('next_steps.0.block')

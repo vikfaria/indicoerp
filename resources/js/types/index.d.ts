@@ -5,6 +5,15 @@ export interface AssistantActivationMenuModuleState {
     label: string;
     blocked: boolean;
     block_count: number;
+    critical_items?: Array<{
+        type?: string;
+        code?: string;
+        key?: string;
+        label?: string;
+        message?: string;
+        module_key?: string;
+        module_label?: string;
+    }>;
     message?: string | null;
     cta_label?: string | null;
     cta_href?: string | null;
@@ -55,6 +64,15 @@ export interface MenuAssistantActivation {
     ctaAction?: string;
     ctaMessage?: string;
     ctaTone?: string;
+    criticalItems?: Array<{
+        type?: string;
+        code?: string;
+        key?: string;
+        label?: string;
+        message?: string;
+        moduleKey?: string;
+        moduleLabel?: string;
+    }>;
 }
 
 export interface User {

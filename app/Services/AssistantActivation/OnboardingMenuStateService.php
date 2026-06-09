@@ -96,6 +96,7 @@ class OnboardingMenuStateService
                 'label' => (string) $module['label'],
                 'blocked' => false,
                 'block_count' => 0,
+                'critical_items' => [],
                 'primary_block' => null,
                 'message' => null,
                 'cta_label' => 'Abrir onboarding',
@@ -114,6 +115,13 @@ class OnboardingMenuStateService
 
                 $moduleStates[$moduleKey]['blocked'] = true;
                 $moduleStates[$moduleKey]['block_count']++;
+                $moduleStates[$moduleKey]['critical_items'][] = array_merge(
+                    $this->presentCriticalBlock($block),
+                    [
+                        'module_key' => $moduleKey,
+                        'module_label' => (string) ($moduleStates[$moduleKey]['label'] ?? $moduleKey),
+                    ]
+                );
 
                 if ($moduleStates[$moduleKey]['primary_block'] === null) {
                     $moduleStates[$moduleKey]['primary_block'] = $this->presentCriticalBlock($block);

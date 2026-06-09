@@ -102,14 +102,14 @@ class OnboardingDashboardService
     private function resolveNextActionLabel(string $sessionStatus, bool $canComplete): string
     {
         if ($canComplete) {
-            return 'Open onboarding';
+            return __('Open onboarding');
         }
 
         return match ($sessionStatus) {
-            'active' => 'Continue onboarding',
-            'completed' => 'Review onboarding',
-            'abandoned' => 'Review onboarding',
-            default => 'Start onboarding',
+            'active' => __('Continue onboarding'),
+            'completed' => __('Review onboarding'),
+            'abandoned' => __('Review onboarding'),
+            default => __('Start onboarding'),
         };
     }
 
@@ -121,49 +121,48 @@ class OnboardingDashboardService
         $criticalBlocksTotal = count($criticalBlocks);
 
         if ($criticalBlocksTotal > 0) {
-            return sprintf(
-                '%d critical pending item(s) still need attention before go-live.',
-                $criticalBlocksTotal
-            );
+            return __('There are :count critical pending item(s) still need attention before go-live.', [
+                'count' => $criticalBlocksTotal,
+            ]);
         }
 
         if ($canComplete) {
-            return 'All mandatory checks are satisfied. Review the onboarding flow before completing it.';
+            return __('All mandatory checks are satisfied. Review the onboarding flow before completing it.');
         }
 
         if ($progressPercent > 0.0) {
-            return 'Continue the remaining setup steps to improve readiness.';
+            return __('Continue the remaining setup steps to improve readiness.');
         }
 
-        return 'Start the onboarding flow to configure the company before going live.';
+        return __('Start the onboarding flow to configure the company before going live.');
     }
 
     private function labelSessionStatus(string $status): string
     {
         return match ($status) {
-            'active' => 'In progress',
-            'completed' => 'Completed',
-            'abandoned' => 'Abandoned',
-            default => 'Not started',
+            'active' => __('In progress'),
+            'completed' => __('Completed'),
+            'abandoned' => __('Abandoned'),
+            default => __('Not started'),
         };
     }
 
     private function labelReadinessState(string $state): string
     {
         return match ($state) {
-            'ready' => 'Ready',
-            'warning' => 'Warning',
-            'blocked' => 'Blocked',
-            default => 'Critical',
+            'ready' => __('Ready'),
+            'warning' => __('Warning'),
+            'blocked' => __('Blocked'),
+            default => __('Critical'),
         };
     }
 
     private function labelCompletionState(string $state): string
     {
         return match ($state) {
-            'complete' => 'Completable',
-            'blocked' => 'Blocked',
-            default => 'Indefinite',
+            'complete' => __('Completable'),
+            'blocked' => __('Blocked'),
+            default => __('Indefinite'),
         };
     }
 }

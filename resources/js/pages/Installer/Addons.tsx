@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
+import { getPackageAlias } from '@/utils/helpers';
 
 interface Module {
     name: string;
@@ -110,7 +111,7 @@ export default function Addons({ modules }: Props) {
                                     }`}>
                                         <div className="flex items-center justify-between">
                                             <div>
-                                                <h4 className="font-medium">{module.alias}</h4>
+                                                <h4 className="font-medium">{getPackageAlias(module.alias) ?? module.alias}</h4>
                                                 <p className="text-sm text-gray-600">{module.description}</p>
                                             </div>
                                             <div>

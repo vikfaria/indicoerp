@@ -40,10 +40,11 @@ export function ModuleCard({
     pricingPeriod = 'monthly'
 }: ModuleCardProps) {
     const { t } = useTranslation();
+    const displayAlias = getPackageAlias(module.alias) ?? module.alias;
     const [isEditing, setIsEditing] = useState(false);
     const [prices, setPrices] = useState({ monthly: monthlyPrice, yearly: yearlyPrice });
-    const [moduleData, setModuleData] = useState({ 
-        name: module.alias, 
+    const [moduleData, setModuleData] = useState({
+        name: displayAlias,
         image: module.image 
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -82,7 +83,7 @@ export function ModuleCard({
                 <label htmlFor={module.module} className="flex items-center space-x-2 flex-1 cursor-pointer">
                     <img
                         src={module.image}
-                        alt={module.alias}
+                        alt={displayAlias}
                         className="h-5 w-5 object-contain rounded"
                         onError={(e) => {
                             const target = e.target as HTMLImageElement;
@@ -91,7 +92,7 @@ export function ModuleCard({
                         }}
                     />
                     <Package className="h-5 w-5 text-gray-400 hidden" />
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{module.alias}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{displayAlias}</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                         +{formatAdminCurrency(pricingPeriod === 'monthly' ? monthlyPrice : yearlyPrice)}/{pricingPeriod === 'monthly' ? 'mo' : 'yr'}
                     </span>
@@ -109,7 +110,7 @@ export function ModuleCard({
                             <div className="relative flex-shrink-0">
                                 <img
                                     src={getPackageFavicon(module.module)}
-                                    alt={module.alias}
+                                    alt={displayAlias}
                                     className="h-8 w-8 object-contain rounded"
                                     onError={(e) => {
                                         const target = e.target as HTMLImageElement;
@@ -165,7 +166,7 @@ export function ModuleCard({
             <Dialog open={isEditing} onOpenChange={setIsEditing}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <DialogTitle>{t('Edit Feature Price')} - {module.alias}</DialogTitle>
+                        <DialogTitle>{t('Edit Feature Price')} - {displayAlias}</DialogTitle>
                         <DialogDescription>
                             {t('Update module details including name, image, and pricing.')}
                         </DialogDescription>

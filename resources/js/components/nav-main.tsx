@@ -76,7 +76,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
 
     const buildBlockedTooltip = (title: string, activation: MenuAssistantActivation) => ({
         children: (
-            <div className="space-y-1.5 max-w-xs">
+            <div className="space-y-2 max-w-sm">
                 <p className="text-sm font-medium leading-none">{title}</p>
                 <p className="text-xs text-muted-foreground">
                     {activation.moduleLabels && activation.moduleLabels.length > 0
@@ -86,6 +86,32 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                         })
                         : t('Esta secção tem pendências críticas de onboarding.')}
                 </p>
+                {activation.criticalItems && activation.criticalItems.length > 0 && (
+                    <div className="space-y-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-900">
+                            {t('Pendências exactas')}
+                        </p>
+                        <div className="max-h-48 space-y-1 overflow-auto pr-1">
+                            {activation.criticalItems.slice(0, 3).map((item, index) => (
+                                <div key={`${item.moduleKey ?? 'module'}-${item.key ?? item.code ?? index}`} className="rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-amber-200/60">
+                                    <p className="text-xs font-medium text-slate-900">
+                                        {item.label ?? t('Pendência sem título')}
+                                    </p>
+                                    {item.message && (
+                                        <p className="mt-0.5 text-[11px] leading-snug text-slate-600">
+                                            {item.message}
+                                        </p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        {activation.criticalItems.length > 3 && (
+                            <p className="text-[11px] text-muted-foreground">
+                                {t('Mostrando as 3 primeiras pendências exactas.')}
+                            </p>
+                        )}
+                    </div>
+                )}
                 <p className="text-xs text-muted-foreground">
                     {activation.ctaMessage ?? t('Abra o onboarding para resolver este bloqueio.')}
                 </p>

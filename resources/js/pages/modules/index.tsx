@@ -36,7 +36,7 @@ export default function Index() {
 
     const filteredModules = modules.filter(module =>
         module.display !== false &&
-        (module.alias.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ((getPackageAlias(module.alias) ?? module.alias).toLowerCase().includes(searchTerm.toLowerCase()) ||
         module.description.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
@@ -119,8 +119,8 @@ export default function Index() {
                                             </div>
                                         </div>
 
-                                        <div className="mb-4">
-                                            <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">{module.alias}</h3>
+                                                <div className="mb-4">
+                                            <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">{getPackageAlias(module.alias) ?? module.alias}</h3>
                                             <p className="text-xs text-gray-500 line-clamp-2">{module.description}</p>
                                         </div>
 
@@ -180,7 +180,7 @@ export default function Index() {
                         <DialogTitle className="flex items-center gap-3">
                             <img
                                 src={selectedModule?.image}
-                                alt={selectedModule?.alias}
+                                alt={selectedModule ? (getPackageAlias(selectedModule.alias) ?? selectedModule.alias) : undefined}
                                 className="h-8 w-8 object-contain rounded"
                                 onError={(e) => {
                                     const target = e.target as HTMLImageElement;
@@ -189,7 +189,7 @@ export default function Index() {
                                 }}
                             />
                             <Package className="h-8 w-8 text-primary hidden" />
-                            {selectedModule?.alias}
+                            {selectedModule ? (getPackageAlias(selectedModule.alias) ?? selectedModule.alias) : null}
                         </DialogTitle>
                         <DialogDescription>
                             {selectedModule?.description}

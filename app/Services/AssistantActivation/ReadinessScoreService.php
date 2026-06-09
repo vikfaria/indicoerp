@@ -183,7 +183,7 @@ class ReadinessScoreService
     {
         return [
             'key' => (string) ($entry['key'] ?? ''),
-            'label' => (string) ($entry['label'] ?? ''),
+            'label' => __((string) ($entry['label'] ?? '')),
             'weight' => (float) ($entry['weight'] ?? 0),
             'description' => (string) ($entry['description'] ?? ''),
         ];

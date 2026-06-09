@@ -7,7 +7,8 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Building, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
+import { toast } from 'sonner';
 
 interface CompanySettings {
   company_name: string;
@@ -38,8 +39,16 @@ interface CompanySettingsProps {
 
 export default function CompanySettings({ userSettings, auth }: CompanySettingsProps) {
   const { t } = useTranslation();
+  const { flash } = usePage().props as any;
   const [isLoading, setIsLoading] = useState(false);
   const canEdit = auth?.user?.permissions?.includes('edit-company-settings');
+  const hasSavedSettings = Object.values(userSettings || {}).some((value) => {
+    if (value === null || value === undefined) {
+      return false;
+    }
+
+    return String(value).trim() !== '';
+  });
 
   const [settings, setSettings] = useState<CompanySettings>({
     company_name: userSettings?.company_name || '',
@@ -107,12 +116,25 @@ export default function CompanySettings({ userSettings, auth }: CompanySettingsP
       settings: settings
     }, {
       preserveScroll: true,
-      onSuccess: () => {
+      onSuccess: (page) => {
         setIsLoading(false);
+        const successMessage = (page.props.flash as any)?.success || flash?.success;
+        const errorMessage = (page.props.flash as any)?.error || flash?.error;
+
+        if (successMessage) {
+          toast.success(successMessage);
+        } else if (errorMessage) {
+          toast.error(errorMessage);
+        } else {
+          toast.success(t('Company settings saved successfully.'));
+        }
+
         router.reload({ only: ['globalSettings'] });
       },
-      onError: () => {
+      onError: (errors) => {
         setIsLoading(false);
+        const errorMessage = errors.error || Object.values(errors).join(', ') || t('Failed to save company settings');
+        toast.error(errorMessage);
       }
     });
   };
@@ -137,6 +159,11 @@ export default function CompanySettings({ userSettings, auth }: CompanySettingsP
         )}
       </CardHeader>
       <CardContent>
+        {!hasSavedSettings && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {t('No company settings have been saved yet. Fill in the fields below and click Save Changes.')}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
             <Label htmlFor="company_name">{t('Company Name')}</Label>

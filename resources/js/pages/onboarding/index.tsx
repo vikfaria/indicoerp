@@ -9,6 +9,7 @@ import OnboardingStarterState from "@/components/onboarding/onboarding-starter-s
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OnboardingStepCard from "@/components/onboarding/onboarding-step-card";
 import { BadgeCheck, Clock3, Layers3, ListChecks, RefreshCw, ShieldAlert, Sparkles, Target } from "lucide-react";
+import { translateAssistantActivationLabel, translateAssistantActivationLabels } from "@/utils/assistant-activation-labels";
 
 interface OnboardingPageProps {
     plan: {
@@ -226,9 +227,12 @@ function StateBadge({
     state?: string | null;
     label?: string | null;
 }) {
+    const translatedLabel = translateAssistantActivationLabel(label);
+    const translatedState = translateAssistantActivationLabel(state);
+
     return (
         <Badge variant="outline" className={toneClass(state)}>
-            {label ?? state ?? "n/a"}
+            {translatedLabel || translatedState || "n/a"}
         </Badge>
     );
 }
@@ -283,7 +287,7 @@ export default function Index({
                                         {t("Plan")}: {planLabel}
                                     </Badge>
                                     <Badge variant="outline" className={toneClass(overview.session_status)}>
-                                        {overview.session_status_label}
+                                        {translateAssistantActivationLabel(overview.session_status_label) || overview.session_status_label}
                                     </Badge>
                                 </div>
 
@@ -449,16 +453,16 @@ export default function Index({
                                                 >
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div className="space-y-1">
-                                                            <p className="font-medium text-rose-900">{block.label ?? t("Unnamed block")}</p>
-                                                            <p className="text-sm text-rose-700">{block.message ?? block.reason ?? t("No description provided.")}</p>
+                                                            <p className="font-medium text-rose-900">{translateAssistantActivationLabel(block.label) || t("Unnamed block")}</p>
+                                                            <p className="text-sm text-rose-700">{translateAssistantActivationLabel(block.message) || translateAssistantActivationLabel(block.reason) || t("No description provided.")}</p>
                                                         </div>
                                                         <Badge variant="outline" className="border-rose-200 bg-white text-rose-700">
-                                                            {block.type ?? t("Block")}
+                                                            {translateAssistantActivationLabel(block.type) || t("Block")}
                                                         </Badge>
                                                     </div>
                                                     {Array.isArray(block.owner_modules) && block.owner_modules.length > 0 && (
                                                         <p className="mt-3 text-xs text-rose-700">
-                                                            {t("Modules")}: {block.owner_modules.join(", ")}
+                                                            {t("Modules")}: {translateAssistantActivationLabels(block.owner_modules)}
                                                         </p>
                                                     )}
                                                 </div>

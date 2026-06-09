@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { getPackageAlias } from '@/utils/helpers';
 
 type BlockedContext = {
     label?: string | null;
@@ -245,6 +246,25 @@ function formatSubscriptionStateValue(value: string | null | undefined): string 
     }
 }
 
+function formatReasonCodeValue(reasonCode: string, t: (key: string) => string): string {
+    switch (reasonCode) {
+        case 'subscription_expired':
+            return t('Subscription expired');
+        case 'subscription_inactive':
+            return t('Subscription inactive');
+        case 'limit_exceeded':
+            return t('Limit exceeded');
+        case 'limit_near':
+            return t('Near limit');
+        case 'addon_required':
+            return t('Add-on required');
+        case 'module_unavailable':
+            return t('Module unavailable');
+        default:
+            return t('Internal block');
+    }
+}
+
 function buildLimitSummary(context: BlockedContext, t: (key: string) => string): NormalizedSuggestion['limitSummary'] {
     if (!hasLimitContext(context)) {
         return null;
@@ -323,7 +343,8 @@ function toneClass(reasonCode: string): string {
 }
 
 function formatAddonLabel(addon: Record<string, any>): string {
-    return String(addon?.label ?? addon?.reference ?? addon?.key ?? 'Add-on');
+    const rawLabel = String(addon?.label ?? addon?.reference ?? addon?.key ?? 'Add-on');
+    return getPackageAlias(rawLabel) ?? rawLabel;
 }
 
 function resolveButtonVariant(tone?: string | null): 'default' | 'secondary' | 'outline' | 'ghost' {
@@ -427,7 +448,7 @@ export default function BlockedContextBanner({ context, className }: BlockedCont
                             </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                                {data.reasonCode}
+                                {formatReasonCodeValue(data.reasonCode, t)}
                             </div>
 
                             {data.limitSummary && (

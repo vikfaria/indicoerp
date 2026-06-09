@@ -67,6 +67,21 @@ const MENU_ROUTE_MODULE_KEYS: Record<string, string[]> = {
 
 const unique = (values: string[]): string[] => Array.from(new Set(values.filter(Boolean)));
 
+const uniqueBy = <T,>(values: T[], keyResolver: (value: T) => string): T[] => {
+    const seen = new Set<string>();
+
+    return values.filter((value) => {
+        const key = keyResolver(value);
+
+        if (seen.has(key)) {
+            return false;
+        }
+
+        seen.add(key);
+        return true;
+    });
+};
+
 const resolveModuleKeysForPath = (pathname: string): string[] => MENU_ROUTE_MODULE_KEYS[pathname] ?? [];
 
 const resolveItemModuleKeys = (item: NavItem): string[] => {
@@ -97,6 +112,20 @@ const buildActivation = (
     const moduleLabels = unique(activeModuleStates.map((state) => state.label));
     const blockCount = activeModuleStates.reduce((total, state) => total + (state.block_count || 0), 0);
     const primaryState = activeModuleStates[0];
+    const criticalItems = uniqueBy(
+        activeModuleStates.flatMap((state) => (state.critical_items ?? []).map((item) => ({
+            ...item,
+            moduleKey: item.module_key ?? state.key,
+            moduleLabel: item.module_label ?? state.label,
+        }))),
+        (item) => [
+            item.moduleKey ?? '',
+            item.key ?? '',
+            item.code ?? '',
+            item.label ?? '',
+            item.message ?? '',
+        ].join('|')
+    );
 
     return {
         status: 'blocked',
@@ -111,6 +140,7 @@ const buildActivation = (
         ctaAction: primaryState?.cta_action ?? 'review',
         ctaMessage: primaryState?.cta_message ?? 'Abra o onboarding para resolver as pendências deste módulo.',
         ctaTone: primaryState?.cta_tone ?? 'secondary',
+        criticalItems,
     };
 };
 

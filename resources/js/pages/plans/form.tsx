@@ -93,7 +93,7 @@ function PlanForm({ plan, activeModules, isEdit = false, userSubscriptionInfo }:
     };
 
     const filteredModules = activeModules.filter(module =>
-        module.alias.toLowerCase().includes(moduleSearch.toLowerCase()) ||
+        (getPackageAlias(module.module) ?? module.alias).toLowerCase().includes(moduleSearch.toLowerCase()) ||
         module.module.toLowerCase().includes(moduleSearch.toLowerCase())
     );
 

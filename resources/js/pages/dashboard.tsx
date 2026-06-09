@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import OnboardingStarterState from "@/components/onboarding/onboarding-starter-state";
 import { cn } from "@/lib/utils";
+import { translateAssistantActivationLabel, translateAssistantActivationLabels } from "@/utils/assistant-activation-labels";
 
 interface DashboardOnboardingSnapshot {
     meta: Record<string, any>;
@@ -140,9 +141,13 @@ function StateBadge({
     state?: string | null;
     label?: string | null;
 }) {
+    const { t } = useTranslation();
+    const translatedLabel = translateAssistantActivationLabel(label);
+    const translatedState = translateAssistantActivationLabel(state);
+
     return (
         <Badge variant="outline" className={toneClass(state)}>
-            {label ?? state ?? "n/a"}
+            {translatedLabel || translatedState || t("n/a")}
         </Badge>
     );
 }
@@ -192,11 +197,14 @@ export default function Dashboard({ onboarding }: DashboardProps) {
     const moduleSnapshots = snapshot.module_snapshots ?? [];
     const hasCriticalBlocks = criticalBlocksTotal > 0;
     const starterItems = topBlocks.slice(0, 3).map((block, index) => ({
-        title: block.label ?? t("Pending item"),
-        description: block.message ?? block.reason ?? t("No description provided."),
+        title: translateAssistantActivationLabel(block.label) || t("Pending item"),
+        description: translateAssistantActivationLabel(block.message) || translateAssistantActivationLabel(block.reason) || t("No description provided."),
         href: undefined,
         key: `${block.key ?? block.type ?? "block"}-${index}`,
     }));
+    const sessionStatusLabel = translateAssistantActivationLabel(meta.session_status_label) || t("Not started");
+    const readinessStateLabel = translateAssistantActivationLabel(summary.readiness_state_label) || t("Critical");
+    const completionStateLabel = translateAssistantActivationLabel(summary.completion_state_label) || t("Blocked");
 
     const readinessMessage = hasCriticalBlocks
         ? t("There are {{count}} critical pending item(s) before go-live.", { count: criticalBlocksTotal })
@@ -233,7 +241,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                         {planLabel}
                                     </Badge>
                                     <Badge variant="outline" className={toneClass(sessionStatus)}>
-                                        {meta.session_status_label ?? t("Not started")}
+                                        {sessionStatusLabel}
                                     </Badge>
                                     <StateBadge state={readinessState} label={summary.readiness_state_label} />
                                     <StateBadge state={completionState} label={summary.completion_state_label} />
@@ -276,7 +284,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                             "Complete the first operational steps in sequence so fiscal, accounting and treasury data stay aligned from day one."
                                         )}
                                         primaryAction={{
-                                            label: snapshot.next_action?.label ?? t("Open onboarding"),
+                                            label: translateAssistantActivationLabel(snapshot.next_action?.label) || t("Open onboarding"),
                                             href: snapshot.next_action?.href ?? route("onboarding.index"),
                                         }}
                                         secondaryAction={{
@@ -302,7 +310,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                                     variant="outline"
                                                     className={toneClass(readinessState)}
                                                 >
-                                                    {summary.readiness_state_label ?? t("Critical")}
+                                                    {readinessStateLabel}
                                                 </Badge>
                                             </div>
                                         </div>
@@ -321,7 +329,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                 <div className="flex flex-wrap gap-3">
                                     <Button asChild className="gap-2">
                                         <Link href={route("onboarding.index")}>
-                                            {snapshot.next_action?.label ?? t("Open onboarding")}
+                                            {translateAssistantActivationLabel(snapshot.next_action?.label) || t("Open onboarding")}
                                             <ArrowRight className="h-4 w-4" />
                                         </Link>
                                     </Button>
@@ -345,7 +353,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                     icon={<BadgeCheck className="h-4 w-4" />}
                                     label={t("Readiness")}
                                     value={formatPercent(readinessPercent)}
-                                    note={summary.readiness_state_label ?? t("Pending")}
+                                    note={readinessStateLabel || t("Pending")}
                                 />
                                 <StatCard
                                     icon={<ShieldAlert className="h-4 w-4" />}
@@ -369,7 +377,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                     icon={<Sparkles className="h-4 w-4" />}
                                     label={t("Completion")}
                                     value={summary.can_complete ? t("Ready") : t("Pending")}
-                                    note={summary.completion_state_label ?? t("Blocked")}
+                                    note={completionStateLabel || t("Blocked")}
                                 />
                             </div>
                         </div>
@@ -394,34 +402,34 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                         key={`${block.type ?? block.key ?? block.label ?? "block"}-${index}`}
                                         className={cn("rounded-xl border p-4", blockToneClass(block.type))}
                                     >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="space-y-1">
-                                                <p className="font-medium">
-                                                    {block.label ?? t("Unnamed pending item")}
-                                                </p>
-                                                <p className="text-sm leading-6 opacity-80">
-                                                    {block.message ?? block.reason ?? t("No description provided.")}
-                                                </p>
-                                            </div>
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="space-y-1">
+                                                    <p className="font-medium">
+                                                    {translateAssistantActivationLabel(block.label) || t("Unnamed pending item")}
+                                                    </p>
+                                                    <p className="text-sm leading-6 opacity-80">
+                                                    {translateAssistantActivationLabel(block.message) || translateAssistantActivationLabel(block.reason) || t("No description provided.")}
+                                                    </p>
+                                                </div>
                                             <Badge variant="outline" className="border-white/60 bg-white/80">
-                                                {block.type ?? t("Block")}
+                                                {translateAssistantActivationLabel(block.type) || t("Block")}
                                             </Badge>
                                         </div>
 
                                         <div className="mt-3 flex flex-wrap gap-2">
                                             {block.module_label && (
                                                 <Badge variant="outline" className="border-white/60 bg-white/80">
-                                                    {block.module_label}
+                                                    {translateAssistantActivationLabel(block.module_label)}
                                                 </Badge>
                                             )}
                                             {Array.isArray(block.owner_modules) && block.owner_modules.length > 0 && (
                                                 <Badge variant="outline" className="border-white/60 bg-white/80">
-                                                    {block.owner_modules.join(", ")}
+                                                    {translateAssistantActivationLabels(block.owner_modules)}
                                                 </Badge>
                                             )}
                                             {block.reason && (
                                                 <Badge variant="outline" className="border-white/60 bg-white/80">
-                                                    {block.reason}
+                                                    {translateAssistantActivationLabel(block.reason)}
                                                 </Badge>
                                             )}
                                         </div>
@@ -453,9 +461,9 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                             key={module.key}
                                             className="rounded-xl border border-slate-200 bg-slate-50 p-4"
                                         >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="space-y-1">
-                                                    <p className="font-medium text-slate-900">{module.label}</p>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="space-y-1">
+                                                    <p className="font-medium text-slate-900">{translateAssistantActivationLabel(module.label) || module.label}</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         {module.available ? t("Available in the current plan") : t("Unavailable in the current plan")}
                                                     </p>
@@ -509,12 +517,12 @@ export default function Dashboard({ onboarding }: DashboardProps) {
 
                         <Card className="border-slate-200">
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-xl">
+                                    <CardTitle className="flex items-center gap-2 text-xl">
                                     <Clock3 className="h-5 w-5 text-amber-600" />
                                     {t("Next action")}
                                 </CardTitle>
                                 <CardDescription>
-                                    {snapshot.next_action?.message ?? t("Open the onboarding flow to continue.")}
+                                    {translateAssistantActivationLabel(snapshot.next_action?.message) || t("Open the onboarding flow to continue.")}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -524,7 +532,7 @@ export default function Dashboard({ onboarding }: DashboardProps) {
                                     className="w-full justify-between"
                                 >
                                     <Link href={snapshot.next_action?.href ?? route("onboarding.index")}>
-                                        {snapshot.next_action?.label ?? t("Open onboarding")}
+                                        {translateAssistantActivationLabel(snapshot.next_action?.label) || t("Open onboarding")}
                                         <ArrowRight className="h-4 w-4" />
                                     </Link>
                                 </Button>

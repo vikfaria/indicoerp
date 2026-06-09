@@ -178,29 +178,29 @@ class OnboardingController extends Controller
     private function labelSessionStatus(?string $status): string
     {
         return match ($status) {
-            'active' => 'Em curso',
-            'completed' => 'Concluída',
-            'abandoned' => 'Abandonada',
-            default => 'Sem sessão',
+            'active' => __('In progress'),
+            'completed' => __('Completed'),
+            'abandoned' => __('Abandoned'),
+            default => __('Not started'),
         };
     }
 
     private function labelReadinessState(string $state): string
     {
         return match ($state) {
-            'ready' => 'Pronta',
-            'warning' => 'Atenção',
-            'blocked' => 'Bloqueada',
-            default => 'Crítica',
+            'ready' => __('Ready'),
+            'warning' => __('Warning'),
+            'blocked' => __('Blocked'),
+            default => __('Critical'),
         };
     }
 
     private function labelCompletionState(string $state): string
     {
         return match ($state) {
-            'complete' => 'Concluível',
-            'blocked' => 'Bloqueada',
-            default => 'Indefinida',
+            'complete' => __('Completable'),
+            'blocked' => __('Blocked'),
+            default => __('Indefinite'),
         };
     }
 }

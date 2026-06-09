@@ -23,6 +23,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { translateAssistantActivationLabel } from '@/utils/assistant-activation-labels';
 
 interface CompanyProgressCard {
     id: number;
@@ -221,6 +222,10 @@ function StatCard({
     );
 }
 
+function translateBadgeLabel(value?: string | null): string {
+    return translateAssistantActivationLabel(value);
+}
+
 function ProgressBar({ value }: { value: number | string | null | undefined }) {
     const percent = clampPercent(value);
 
@@ -408,7 +413,7 @@ export default function CompanyProgress({ overview }: Props) {
                                         <div key={module.key} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
-                                                    <p className="text-sm font-semibold text-slate-900">{module.label ?? module.key}</p>
+                                                    <p className="text-sm font-semibold text-slate-900">{translateBadgeLabel(module.label) || module.key}</p>
                                                     <p className="mt-1 text-xs text-muted-foreground">
                                                         {t('{{count}} impacted company(ies)', { count: module.affected_companies_total ?? 0 })}
                                                     </p>
@@ -553,7 +558,7 @@ export default function CompanyProgress({ overview }: Props) {
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <p className="truncate text-sm font-semibold text-slate-900">{company.name}</p>
                                                     <Badge variant="outline" className={toneClass(company.session_status)}>
-                                                        {company.session_status_label ?? company.session_status ?? t('Unknown')}
+                                                        {translateBadgeLabel(company.session_status_label) || translateBadgeLabel(company.session_status) || t('Unknown')}
                                                     </Badge>
                                                     {company.is_new_company && (
                                                         <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
@@ -589,7 +594,7 @@ export default function CompanyProgress({ overview }: Props) {
                                             <ProgressBar value={company.progress_percent ?? 0} />
                                             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                                                 <span>{company.plan_label ?? t('No active plan')}</span>
-                                                <span>{company.next_action?.label ?? t('Review')}</span>
+                                                <span>{translateBadgeLabel(company.next_action?.label) || t('Review')}</span>
                                             </div>
                                         </div>
                                     </button>
@@ -639,7 +644,7 @@ export default function CompanyProgress({ overview }: Props) {
                                     <div className="space-y-5">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <Badge variant="outline" className={toneClass(selected.session_status)}>
-                                                {selected.session_status_label ?? selected.session_status ?? t('Unknown')}
+                                                {translateBadgeLabel(selected.session_status_label) || translateBadgeLabel(selected.session_status) || t('Unknown')}
                                             </Badge>
                                             <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
                                                 {selected.plan_label ?? t('No active plan')}
@@ -677,8 +682,8 @@ export default function CompanyProgress({ overview }: Props) {
                                                     </div>
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">{t('Recommended next action')}</p>
-                                                        <p className="mt-2 text-sm font-semibold text-slate-900">{selected.next_action.label ?? t('Review')}</p>
-                                                        <p className="mt-1 text-sm text-muted-foreground">{selected.next_action.message ?? t('No additional details.')}</p>
+                                                        <p className="mt-2 text-sm font-semibold text-slate-900">{translateBadgeLabel(selected.next_action.label) || t('Review')}</p>
+                                                        <p className="mt-1 text-sm text-muted-foreground">{translateBadgeLabel(selected.next_action.message) || t('No additional details.')}</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -698,11 +703,11 @@ export default function CompanyProgress({ overview }: Props) {
                                                             <div key={`${block.key ?? block.code ?? index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div>
-                                                                        <p className="text-sm font-medium text-slate-900">{block.label ?? t('Pending item')}</p>
-                                                                        <p className="mt-1 text-xs text-muted-foreground">{block.message ?? block.reason ?? t('No description provided.')}</p>
+                                                                        <p className="text-sm font-medium text-slate-900">{translateBadgeLabel(block.label) || t('Pending item')}</p>
+                                                                        <p className="mt-1 text-xs text-muted-foreground">{translateBadgeLabel(block.message) || translateBadgeLabel(block.reason) || t('No description provided.')}</p>
                                                                     </div>
                                                                     <Badge variant="outline" className={toneClass(block.state)}>
-                                                                        {block.state_label ?? block.code ?? block.type ?? t('Block')}
+                                                                        {translateBadgeLabel(block.state_label) || translateBadgeLabel(block.code) || translateBadgeLabel(block.type) || t('Block')}
                                                                     </Badge>
                                                                 </div>
                                                             </div>
@@ -724,7 +729,7 @@ export default function CompanyProgress({ overview }: Props) {
                                                             <div key={`${module.key ?? index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div>
-                                                                        <p className="text-sm font-medium text-slate-900">{module.label ?? t('Module')}</p>
+                                                                        <p className="text-sm font-medium text-slate-900">{translateBadgeLabel(module.label) || t('Module')}</p>
                                                                         <p className="mt-1 text-xs text-muted-foreground">
                                                                             {t('{{count}} available step(s)', { count: module.available_step_count ?? 0 })}
                                                                         </p>
