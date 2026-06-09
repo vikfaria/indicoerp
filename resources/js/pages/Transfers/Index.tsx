@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog } from "@/components/ui/dialog";
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
-import { Plus, Trash2, ArrowRightLeft } from "lucide-react";
+import { Plus, Trash2, ArrowRightLeft, Eye } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FilterButton } from '@/components/ui/filter-button';
 import { Pagination } from "@/components/ui/pagination";
@@ -140,6 +140,25 @@ export default function Index() {
             header: t('Actions'),
             render: (_: any, transfer: TransferType) => (
                 <div className="flex gap-1">
+                    {(auth.user?.permissions?.includes('view-transfers') || auth.user?.permissions?.includes('manage-transfers')) && (
+                        <TooltipProvider>
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => router.visit(route('transfers.show', transfer.id))}
+                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                                    >
+                                        <Eye className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Ver</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
                     <TooltipProvider>
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>

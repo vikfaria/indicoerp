@@ -17,6 +17,9 @@ export interface Transfer {
     };
     quantity: string;
     date: string;
+    carrier_name?: string | null;
+    vehicle_plate?: string | null;
+    driver_name?: string | null;
     created_at: string;
 }
 
@@ -37,6 +40,9 @@ export interface CreateTransferFormData {
     product_id: string;
     quantity: string;
     date: string;
+    carrier_name: string;
+    vehicle_plate: string;
+    driver_name: string;
 }
 
 export interface CreateTransferProps extends CreateProps {}

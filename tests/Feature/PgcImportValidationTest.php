@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Middleware\PlanModuleCheck;
+use App\Models\PgcAccountCatalog;
 use App\Services\PgcImportService;
 use Database\Seeders\PgcNirfSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,8 +44,8 @@ class PgcImportValidationTest extends TestCase
             $page->component('Fiscal/PgcImport/Index')
                 ->where('framework', 'pgc_nirf')
                 ->where('validationReport.valid', true)
-                ->where('validationReport.catalog_count', 165)
-                ->where('validationReport.company_pgc_count', 165)
+                ->where('validationReport.catalog_count', fn (int $value): bool => $value > 500)
+                ->where('validationReport.company_pgc_count', fn (int $value): bool => $value > 500)
                 ->where('validationReport.missing_classes', [])
                 ->where('validationReport.errors', [])
                 ->where('validationReport.legacy_active_count', fn (int $value): bool => $value > 0)
@@ -90,6 +91,15 @@ class PgcImportValidationTest extends TestCase
         $response->assertSessionHasNoErrors();
 
         $this->assertGreaterThan(0, PgcAccountMapping::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_pgc_catalog_includes_official_reference_extensions(): void
+    {
+        $this->seedOfficialCatalog();
+
+        $this->assertTrue(PgcAccountCatalog::query()->where('framework', 'pgc_nirf')->where('account_code', '311')->exists());
+        $this->assertTrue(PgcAccountCatalog::query()->where('framework', 'pgc_nirf')->where('account_code', '411')->exists());
+        $this->assertTrue(PgcAccountCatalog::query()->where('framework', 'pgc_nirf')->where('account_code', '711')->exists());
     }
 
     private function makeCompany(): User

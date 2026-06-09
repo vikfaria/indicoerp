@@ -2,7 +2,22 @@ import { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { saveElementAsPdf } from '@/utils/pdf';
-import { formatCurrency, formatDate, resolveDocumentIssuer, resolveSalesDocumentCounterparty } from '@/utils/helpers';
+import {
+    formatCurrency,
+    formatDate,
+    getCompanyTaxLabel,
+    resolveDocumentIssuer,
+    resolveSalesDocumentCounterparty,
+} from '@/utils/helpers';
+import {
+    ReportCard,
+    ReportHero,
+    ReportKeyValueGrid,
+    ReportPill,
+    ReportShell,
+    ReportSummaryCard,
+    ReportTable,
+} from '@/components/print/report-kit';
 
 interface CreditNote {
     id: number;
@@ -59,38 +74,62 @@ interface CreditNote {
 }
 
 interface PrintProps {
-    creditNote: CreditNote;
+    creditNote: CreditNote & Record<string, any>;
     [key: string]: any;
 }
+
+const toNumber = (value: unknown): number => Number(value ?? 0);
+
+const statusMeta: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+    draft: { label: 'Rascunho', tone: 'neutral' },
+    approved: { label: 'Aprovada', tone: 'info' },
+    posted: { label: 'Lançada', tone: 'success' },
+    applied: { label: 'Aplicada', tone: 'success' },
+    cancelled: { label: 'Cancelada', tone: 'danger' },
+};
+
+const formatReason = (reason?: string): string => {
+    if (!reason) {
+        return '-';
+    }
+
+    return reason
+        .split('_')
+        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+        .join(' ');
+};
 
 export default function Print() {
     const { t } = useTranslation();
     const { creditNote } = usePage<PrintProps>().props;
     const [isDownloading, setIsDownloading] = useState(false);
 
-    const issuer = resolveDocumentIssuer(creditNote as Record<string, any>);
-    const counterparty = resolveSalesDocumentCounterparty(creditNote as Record<string, any>);
-    const counterpartyTaxLabel = counterparty.tax_label || issuer.tax_label || t('Tax Number');
-    const issuerTaxLabel = issuer.tax_label || t('Tax Number');
+    const note = creditNote as PrintProps['creditNote'];
+    const issuer = resolveDocumentIssuer(note as Record<string, any>);
+    const counterparty = resolveSalesDocumentCounterparty(note as Record<string, any>);
+    const counterpartyTaxLabel = counterparty.tax_label || issuer.tax_label || getCompanyTaxLabel();
+    const issuerTaxLabel = issuer.tax_label || getCompanyTaxLabel();
+    const documentStatus = statusMeta[note.status || 'draft'] || statusMeta.draft;
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('download') === 'pdf') {
             downloadPDF();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.credit-note-container');
+        const printContent = document.querySelector('.document-print-container');
         if (printContent) {
             const opt = {
                 margin: 0.25,
-                filename: `credit-note-${creditNote.credit_note_number}.pdf`,
+                filename: `credit-note-${note.credit_note_number}.pdf`,
                 image: { type: 'jpeg' as const, quality: 0.98 },
                 html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const }
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
             };
 
             try {
@@ -104,232 +143,146 @@ export default function Print() {
         setIsDownloading(false);
     };
 
+    const itemRows = (note.items ?? []).map((item, index) => {
+        const taxes = item.taxes ?? [];
+        const taxLabel = taxes.length > 0
+            ? taxes.map((tax) => `${tax.tax_name} (${tax.tax_rate}%)`).join(', ')
+            : toNumber(item.tax_percentage) > 0
+                ? `${item.tax_percentage}%`
+                : '0%';
+
+        return (
+            <tr key={index} className="report-page-break-inside-avoid">
+                <td className="px-4 py-4 align-top">
+                    <div className="font-semibold text-slate-900">{item.product?.name || '-'}</div>
+                    {item.product?.sku && <div className="mt-1 text-xs text-slate-500">SKU: {item.product.sku}</div>}
+                    {item.product?.description && <div className="mt-1 text-xs leading-5 text-slate-500">{item.product.description}</div>}
+                </td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{item.quantity}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{formatCurrency(toNumber(item.unit_price))}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{toNumber(item.discount_amount) > 0 ? `-${formatCurrency(toNumber(item.discount_amount))}` : formatCurrency(0)}</td>
+                <td className="px-4 py-4 text-right align-top">
+                    <div className="tabular-nums">{taxLabel}</div>
+                </td>
+                <td className="px-4 py-4 text-right align-top font-semibold tabular-nums">{formatCurrency(toNumber(item.total_amount))}</td>
+            </tr>
+        );
+    });
+
     return (
-        <div className="min-h-screen bg-white">
-            <Head title={`${t('Credit Note')} #${creditNote.credit_note_number}`} />
+        <ReportShell>
+            <Head title={`Nota de crédito #${note.credit_note_number}`} />
 
             {isDownloading && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-lg">
-                        <div className="flex items-center space-x-3">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                            <p className="text-lg font-semibold text-gray-700">{t('Generating PDF...')}</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="rounded-2xl bg-white px-6 py-5 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-lg font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="credit-note-container bg-white max-w-4xl mx-auto p-12">
-                <div className="flex justify-between items-start mb-10">
-                    <div className="w-1/2">
-                        <h1 className="text-2xl font-bold mb-3">{issuer.company_name || 'YOUR COMPANY'}</h1>
-                        <div className="text-sm space-y-1">
-                            {issuer.company_address && <p>{issuer.company_address}</p>}
-                            {(issuer.company_city || issuer.company_state || issuer.company_zipcode) && (
-                                <p>
-                                    {issuer.company_city}{issuer.company_state ? `, ${issuer.company_state}` : ''} {issuer.company_zipcode}
-                                </p>
-                            )}
-                            {issuer.company_country && <p>{issuer.company_country}</p>}
-                            {issuer.company_telephone && <p>{t('Phone')}: {issuer.company_telephone}</p>}
-                            {issuer.company_email && <p>{t('Email')}: {issuer.company_email}</p>}
-                            {issuer.registration_number && <p>{t('Registration')}: {issuer.registration_number}</p>}
-                            {issuer.tax_number && <p>{issuerTaxLabel}: {issuer.tax_number}</p>}
-                        </div>
-                    </div>
-                    <div className="text-right w-1/2">
-                        <h2 className="text-2xl font-bold mb-2">{t('CREDIT NOTE')}</h2>
-                        <p className="text-lg font-semibold">#{creditNote.credit_note_number}</p>
-                        <div className="text-sm mt-2 space-y-1">
-                            <p>{t('Date')}: {formatDate(creditNote.credit_note_date)}</p>
-                            <p>{t('Status')}: {t(creditNote.status.charAt(0).toUpperCase() + creditNote.status.slice(1))}</p>
-                            <p>{t('Reason')}: {creditNote.reason}</p>
-                            {creditNote.invoice?.invoice_number && <p>{t('Invoice')}: {creditNote.invoice.invoice_number}</p>}
-                            {creditNote.sales_return?.return_number && <p>{t('Sales Return')}: {creditNote.sales_return.return_number}</p>}
-                        </div>
-                    </div>
+            <div className="document-print-container space-y-6">
+                <ReportHero
+                    title="Nota de Crédito"
+                    subtitle="Regularização da factura original"
+                    issuerTitle="Emitente"
+                    issuerLines={[
+                        issuer.company_name || 'Empresa',
+                        issuer.company_address,
+                        [issuer.company_city, issuer.company_state, issuer.company_zipcode].filter(Boolean).join(', '),
+                        issuer.company_country,
+                        issuer.company_telephone ? `Telefone: ${issuer.company_telephone}` : null,
+                        issuer.company_email ? `E-mail: ${issuer.company_email}` : null,
+                        issuer.tax_number ? `${issuerTaxLabel}: ${issuer.tax_number}` : null,
+                    ].filter(Boolean) as React.ReactNode[]}
+                    documentLabel="Documento"
+                    documentNumber={`#${note.credit_note_number}`}
+                    statusPills={[
+                        { label: 'Crédito', tone: 'info' },
+                        { label: documentStatus.label, tone: documentStatus.tone },
+                        { label: 'IVA regularizado', tone: 'success' },
+                    ]}
+                    meta={[
+                        { label: 'Data', value: formatDate(note.credit_note_date) },
+                        { label: 'Factura original', value: note.invoice?.invoice_number ? `#${note.invoice.invoice_number}` : '-' },
+                        { label: 'Devolução', value: note.sales_return?.return_number ? `#${note.sales_return.return_number}` : '-' },
+                        { label: 'Motivo', value: formatReason(note.reason) },
+                    ]}
+                    note={note.notes || 'A nota de crédito corrige valores previamente facturados.'}
+                />
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                    <ReportCard title="Cliente" subtitle="Destino do crédito">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Nome', value: counterparty.company_name || note.customer?.name || '-' },
+                                { label: counterpartyTaxLabel || 'NUIT', value: counterparty.tax_number || '-' },
+                                { label: 'E-mail', value: counterparty.email || note.customer?.email || '-' },
+                                { label: 'Estado', value: documentStatus.label },
+                            ]}
+                        />
+                    </ReportCard>
+
+                    <ReportCard title="Impacto financeiro" subtitle="Valores creditados e pendentes">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Total da nota', value: formatCurrency(toNumber(note.total_amount)) },
+                                { label: 'Valor aplicado', value: formatCurrency(toNumber(note.applied_amount)) },
+                                { label: 'Saldo remanescente', value: formatCurrency(toNumber(note.balance_amount)) },
+                                { label: 'Motivo', value: formatReason(note.reason) },
+                            ]}
+                        />
+                    </ReportCard>
                 </div>
 
-                <div className="mb-8">
-                    <h3 className="font-bold mb-3">{t('CUSTOMER')}</h3>
-                    <div className="text-sm space-y-1">
-                        <p className="font-semibold">{counterparty.company_name || creditNote.customer?.name}</p>
-                        {counterparty.company_name && creditNote.customer?.name && <p>{creditNote.customer.name}</p>}
-                        <p>{counterparty.email || creditNote.customer?.email || '-'}</p>
-                        {counterparty.tax_number && (
-                            <p>{counterpartyTaxLabel}: {counterparty.tax_number}</p>
-                        )}
-                    </div>
-                </div>
+                <ReportTable headers={['Descrição', 'Qtd', 'Preço líquido', 'Desconto', 'IVA', 'Total']}>
+                    {itemRows}
+                </ReportTable>
 
-                <div className="mb-8">
-                    <table className="w-full table-fixed">
-                        <thead>
-                            <tr className="border-b border-gray-300">
-                                <th className="text-left py-3 font-bold">{t('ITEM')}</th>
-                                <th className="text-right py-3 font-bold">{t('QTY')}</th>
-                                <th className="text-right py-3 font-bold">{t('PRICE')}</th>
-                                <th className="text-right py-3 font-bold">{t('DISCOUNT')}</th>
-                                <th className="text-right py-3 font-bold">{t('TAX')}</th>
-                                <th className="text-right py-3 font-bold">{t('TOTAL')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {creditNote.items?.map((item, index) => (
-                                <tr key={index} className="page-break-inside-avoid">
-                                    <td className="py-4">
-                                        <div className="font-semibold">{item.product?.name || '-'}</div>
-                                        {item.product?.sku && (
-                                            <div className="text-xs text-gray-500">{t('SKU')}: {item.product.sku}</div>
-                                        )}
-                                        {item.product?.description && (
-                                            <div className="text-xs text-gray-500">{item.product.description}</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4">{item.quantity}</td>
-                                    <td className="text-right py-4">{formatCurrency(parseFloat(item.unit_price.toString()))}</td>
-                                    <td className="text-right py-4">
-                                        {parseFloat(item.discount_percentage.toString()) > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.discount_percentage}%</div>
-                                                <div className="text-sm font-medium">-{formatCurrency(parseFloat(item.discount_amount.toString()))}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4">
-                                        {item.taxes && item.taxes.length > 0 ? (
-                                            <>
-                                                {item.taxes.map((tax, taxIndex) => (
-                                                    <div key={taxIndex} className="text-sm">{tax.tax_name} ({tax.tax_rate}%)</div>
-                                                ))}
-                                                <div className="text-sm font-medium">{formatCurrency(parseFloat(item.tax_amount.toString()))}</div>
-                                            </>
-                                        ) : parseFloat(item.tax_percentage.toString()) > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.tax_percentage}%</div>
-                                                <div className="text-sm font-medium">{formatCurrency(parseFloat(item.tax_amount.toString()))}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4 font-semibold">{formatCurrency(parseFloat(item.total_amount.toString()))}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="flex justify-end mb-8">
-                    <div className="w-80">
-                        <div className="border border-gray-400 p-4">
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <span>{t('Subtotal')}:</span>
-                                    <span>{formatCurrency(parseFloat(creditNote.subtotal.toString()))}</span>
-                                </div>
-                                {parseFloat(creditNote.discount_amount.toString()) > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Discount')}:</span>
-                                        <span>-{formatCurrency(parseFloat(creditNote.discount_amount.toString()))}</span>
-                                    </div>
-                                )}
-                                {parseFloat(creditNote.tax_amount.toString()) > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Tax')}:</span>
-                                        <span>{formatCurrency(parseFloat(creditNote.tax_amount.toString()))}</span>
-                                    </div>
-                                )}
-                                <div className="border-t border-gray-400 pt-2 mt-2">
-                                    <div className="flex justify-between font-bold text-lg">
-                                        <span>{t('TOTAL')}:</span>
-                                        <span>{formatCurrency(parseFloat(creditNote.total_amount.toString()))}</span>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span>{t('Applied Amount')}:</span>
-                                    <span>{formatCurrency(parseFloat(creditNote.applied_amount.toString()))}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span>{t('Balance Amount')}:</span>
-                                    <span className="font-semibold">{formatCurrency(parseFloat(creditNote.balance_amount.toString()))}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {creditNote.applications.length > 0 && (
-                    <div className="mb-8">
-                        <h3 className="font-bold mb-3">{t('Applications')}</h3>
-                        <table className="w-full border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-300">
-                                    <th className="text-left py-2 font-semibold">{t('Payment')}</th>
-                                    <th className="text-right py-2 font-semibold">{t('Applied Amount')}</th>
-                                    <th className="text-right py-2 font-semibold">{t('Date')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {creditNote.applications.map((application) => (
-                                    <tr key={application.id} className="border-b border-gray-200">
-                                        <td className="py-2">{application.payment?.payment_number || '-'}</td>
-                                        <td className="py-2 text-right">{formatCurrency(parseFloat(application.applied_amount.toString()))}</td>
-                                        <td className="py-2 text-right">{formatDate(application.application_date)}</td>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+                    <ReportCard title="Aplicações" subtitle="Liquidação da nota">
+                        {note.applications.length > 0 ? (
+                            <ReportTable headers={['Pagamento', 'Data', 'Valor aplicado']}>
+                                {note.applications.map((application) => (
+                                    <tr key={application.id} className="report-page-break-inside-avoid">
+                                        <td className="px-4 py-3 font-medium">{application.payment?.payment_number || '-'}</td>
+                                        <td className="px-4 py-3">{formatDate(application.application_date)}</td>
+                                        <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatCurrency(toNumber(application.applied_amount))}</td>
                                     </tr>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                            </ReportTable>
+                        ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                                Sem aplicações registadas.
+                            </div>
+                        )}
+                    </ReportCard>
 
-                {creditNote.notes && (
-                    <div className="border-t border-gray-400 pt-4 text-sm">
-                        <span className="font-semibold">{t('Notes')}: </span>
-                        <span>{creditNote.notes}</span>
-                    </div>
-                )}
+                    <ReportSummaryCard
+                        title="Resumo"
+                        subtitle="Totais da correcção"
+                        rows={[
+                            { label: 'Subtotal', value: formatCurrency(toNumber(note.subtotal)) },
+                            { label: 'Desconto', value: `-${formatCurrency(toNumber(note.discount_amount))}` },
+                            { label: 'IVA', value: formatCurrency(toNumber(note.tax_amount)) },
+                            { label: 'Total', value: formatCurrency(toNumber(note.total_amount)), emphasis: true },
+                            { label: 'Valor aplicado', value: formatCurrency(toNumber(note.applied_amount)) },
+                            { label: 'Saldo', value: formatCurrency(toNumber(note.balance_amount)) },
+                        ]}
+                    />
+                </div>
 
-                <div className="mt-8 pt-4 border-t text-center text-xs text-gray-600">
-                    <p>{t('Generated on')} {formatDate(new Date().toISOString())}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportPill tone="info">Crédito</ReportPill>
+                    <ReportPill tone={documentStatus.tone}>{documentStatus.label}</ReportPill>
+                    <ReportPill tone="success">IVA regularizado</ReportPill>
                 </div>
             </div>
-
-            <style>{`
-                body {
-                    -webkit-print-color-adjust: exact;
-                    color-adjust: exact;
-                    font-family: Arial, sans-serif;
-                }
-
-                @page {
-                    margin: 0.25in;
-                    size: A4;
-                }
-
-                .credit-note-container {
-                    max-width: 100%;
-                    margin: 0;
-                    box-shadow: none;
-                }
-
-                .page-break-inside-avoid {
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }
-
-                @media print {
-                    body {
-                        background: white;
-                    }
-
-                    .credit-note-container {
-                        box-shadow: none;
-                    }
-                }
-            `}</style>
-        </div>
+        </ReportShell>
     );
 }

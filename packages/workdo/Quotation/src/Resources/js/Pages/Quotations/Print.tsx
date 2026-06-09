@@ -1,38 +1,71 @@
 import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
+import {
+    formatCurrency,
+    formatDate,
+    getCompanyTaxLabel,
+    resolveDocumentIssuer,
+    resolveSalesDocumentCounterparty,
+} from '@/utils/helpers';
 import { saveElementAsPdf } from '@/utils/pdf';
-import { formatCurrency, formatDate, getCompanySetting } from '@/utils/helpers';
+import {
+    ReportCard,
+    ReportHero,
+    ReportKeyValueGrid,
+    ReportPill,
+    ReportShell,
+    ReportSummaryCard,
+    ReportTable,
+} from '@/components/print/report-kit';
 import { Quotation } from './types';
 
 interface PrintProps {
-    quotation: Quotation;
+    quotation: Quotation & Record<string, any>;
     [key: string]: any;
 }
+
+const toNumber = (value: unknown): number => Number(value ?? 0);
+
+const statusMeta: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+    draft: { label: 'Rascunho', tone: 'neutral' },
+    sent: { label: 'Enviada', tone: 'info' },
+    accepted: { label: 'Aceite', tone: 'success' },
+    rejected: { label: 'Rejeitada', tone: 'danger' },
+    expired: { label: 'Expirada', tone: 'warning' },
+};
 
 export default function Print() {
     const { t } = useTranslation();
     const { quotation } = usePage<PrintProps>().props;
     const [isDownloading, setIsDownloading] = useState(false);
 
+    const quotationData = quotation as PrintProps['quotation'];
+    const issuer = resolveDocumentIssuer(quotationData as Record<string, any>);
+    const customer = resolveSalesDocumentCounterparty(quotationData as Record<string, any>);
+    const companyTaxLabel = issuer.tax_label || getCompanyTaxLabel();
+    const companyTaxNumber = issuer.tax_number || null;
+    const documentStatus = statusMeta[quotationData.display_status || quotationData.status || 'draft'] || statusMeta.draft;
+
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('download') === 'pdf') {
             downloadPDF();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.quotation-container');
+        const printContent = document.querySelector('.document-print-container');
         if (printContent) {
             const opt = {
                 margin: 0.25,
-                filename: `quotation-${quotation.quotation_number}.pdf`,
+                filename: `quotation-${quotationData.quotation_number}.pdf`,
                 image: { type: 'jpeg' as const, quality: 0.98 },
                 html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const }
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
             };
 
             try {
@@ -46,206 +79,143 @@ export default function Print() {
         setIsDownloading(false);
     };
 
+    const itemRows = (quotationData.items ?? []).map((item, index) => {
+        const taxes = item.taxes ?? [];
+        const taxLabel = taxes.length > 0
+            ? taxes.map((tax) => `${tax.tax_name} (${tax.tax_rate}%)`).join(', ')
+            : item.tax_percentage > 0
+                ? `${item.tax_percentage}%`
+                : '0%';
+
+        return (
+            <tr key={index} className="report-page-break-inside-avoid">
+                <td className="px-4 py-4 align-top">
+                    <div className="font-semibold text-slate-900">{item.product?.name || '-'}</div>
+                    {item.product?.sku && <div className="mt-1 text-xs text-slate-500">SKU: {item.product.sku}</div>}
+                    {item.product?.description && <div className="mt-1 text-xs leading-5 text-slate-500">{item.product.description}</div>}
+                </td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{item.quantity}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{formatCurrency(item.unit_price)}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">
+                    {toNumber(item.discount_amount) > 0 ? `-${formatCurrency(item.discount_amount)}` : formatCurrency(0)}
+                </td>
+                <td className="px-4 py-4 text-right align-top">
+                    <div className="tabular-nums">{taxLabel}</div>
+                </td>
+                <td className="px-4 py-4 text-right align-top font-semibold tabular-nums">{formatCurrency(item.total_amount)}</td>
+            </tr>
+        );
+    });
+
     return (
-        <div className="min-h-screen bg-white">
-            <Head title={t('Quotation')} />
+        <ReportShell>
+            <Head title={`Cotação #${quotationData.quotation_number}`} />
 
             {isDownloading && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-lg">
-                        <div className="flex items-center space-x-3">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                            <p className="text-lg font-semibold text-gray-700">{t('Generating PDF...')}</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="rounded-2xl bg-white px-6 py-5 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-lg font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="quotation-container bg-white max-w-4xl mx-auto p-12">
-                <div className="flex justify-between items-start mb-12">
-                    <div className="w-1/2">
-                        <h1 className="text-2xl font-bold mb-4">{getCompanySetting('company_name') || 'YOUR COMPANY'}</h1>
-                        <div className="text-sm space-y-1">
-                            {getCompanySetting('company_address') && <p>{getCompanySetting('company_address')}</p>}
-                            {(getCompanySetting('company_city') || getCompanySetting('company_state') || getCompanySetting('company_zipcode')) && (
-                                <p>
-                                    {getCompanySetting('company_city')}{getCompanySetting('company_state') && `, ${getCompanySetting('company_state')}`} {getCompanySetting('company_zipcode')}
-                                </p>
-                            )}
-                            {getCompanySetting('company_country') && <p>{getCompanySetting('company_country')}</p>}
-                            {getCompanySetting('company_telephone') && <p>{t('Phone')}: {getCompanySetting('company_telephone')}</p>}
-                            {getCompanySetting('company_email') && <p>{t('Email')}: {getCompanySetting('company_email')}</p>}
-                            {getCompanySetting('registration_number') && <p>{t('Registration')}: {getCompanySetting('registration_number')}</p>}
-                        </div>
-                    </div>
-                    <div className="text-right w-1/2">
-                        <h2 className="text-2xl font-bold mb-2">{t('QUOTATION')}</h2>
-                        <p className="text-lg font-semibold">#{quotation.quotation_number}</p>
-                        <div className="text-sm mt-2 space-y-1">
-                            <p>{t('Date')}: {formatDate(quotation.quotation_date)}</p>
-                            <p>{t('Due Date')}: {formatDate(quotation.due_date)}</p>
-                        </div>
-                    </div>
+            <div className="document-print-container space-y-6">
+                <ReportHero
+                    title="Cotação / Orçamento"
+                    subtitle={quotationData.status === 'draft' ? 'Proforma' : 'Proposta comercial'}
+                    issuerTitle="Emitente"
+                    issuerLines={[
+                        issuer.company_name || 'Empresa',
+                        issuer.company_address,
+                        [issuer.company_city, issuer.company_state, issuer.company_zipcode].filter(Boolean).join(', '),
+                        issuer.company_country,
+                        issuer.company_telephone ? `Telefone: ${issuer.company_telephone}` : null,
+                        issuer.company_email ? `E-mail: ${issuer.company_email}` : null,
+                        companyTaxNumber ? `${companyTaxLabel}: ${companyTaxNumber}` : null,
+                    ].filter(Boolean) as React.ReactNode[]}
+                    documentLabel="Documento"
+                    documentNumber={`#${quotationData.quotation_number}`}
+                    statusPills={[
+                        { label: 'Comercial', tone: 'info' },
+                        { label: documentStatus.label, tone: documentStatus.tone },
+                        { label: quotationData.converted_to_invoice ? 'Convertida em factura' : 'Não convertida', tone: quotationData.converted_to_invoice ? 'success' : 'neutral' },
+                    ]}
+                    meta={[
+                        { label: 'Data', value: formatDate(quotationData.quotation_date) },
+                        { label: 'Validade', value: formatDate(quotationData.due_date) },
+                        { label: 'Revisão', value: quotationData.revision_number || '-' },
+                        { label: 'Factura associada', value: quotationData.invoice_id || '-' },
+                    ]}
+                    note="Documento comercial não fiscal. Não serve como factura."
+                />
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                    <ReportCard title="Cliente" subtitle="Dados da proposta">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Nome', value: customer.company_name || customer.name || quotationData.customer?.name || '-' },
+                                { label: customer.tax_label || companyTaxLabel || 'NUIT', value: customer.tax_number || quotationData.customer_details?.tax_number || '-' },
+                                { label: 'E-mail', value: customer.email || quotationData.customer?.email || '-' },
+                                { label: 'Código', value: quotationData.customer_details?.customer_code || '-' },
+                                { label: 'Morada', value: customer.billing_address?.address_line_1 || '-', span: 2 },
+                                { label: 'Cidade', value: [customer.billing_address?.city, customer.billing_address?.state, customer.billing_address?.zip_code].filter(Boolean).join(' - ') || '-', span: 2 },
+                            ]}
+                        />
+                    </ReportCard>
+
+                    <ReportCard title="Condições" subtitle="Dados comerciais">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Prazo', value: quotationData.payment_terms || 'Sem condições adicionais.' },
+                                { label: 'Estado', value: documentStatus.label },
+                                { label: 'Conversão', value: quotationData.converted_to_invoice ? `Sim #${quotationData.invoice_id || '-'}` : 'Não' },
+                                { label: 'Armazém', value: quotationData.warehouse?.name || '-' },
+                            ]}
+                        />
+                    </ReportCard>
                 </div>
 
-                <div className="flex justify-between mb-12">
-                    <div className="w-1/2">
-                        <h3 className="font-bold mb-3">{t('QUOTE TO')}</h3>
-                        <div className="text-sm space-y-1">
-                            <p className="font-semibold">{quotation.customer?.name}</p>
-                            <p>{quotation.customer?.email}</p>
-                            {quotation.customer_details?.billing_address && (
-                                <>
-                                    <p>{quotation.customer_details.billing_address.name}</p>
-                                    <p>{quotation.customer_details.billing_address.address_line_1}</p>
-                                    <p>{quotation.customer_details.billing_address.city}, {quotation.customer_details.billing_address.state} {quotation.customer_details.billing_address.zip_code}</p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <div className="text-right w-1/2">
-                        <h3 className="font-bold mb-3">{t('SHIP TO')}</h3>
-                        <div className="text-sm space-y-1">
-                            {quotation.customer_details?.shipping_address ? (
-                                <>
-                                    <p className="font-semibold">{quotation.customer_details.shipping_address.name}</p>
-                                    <p>{quotation.customer_details.shipping_address.address_line_1}</p>
-                                    <p>{quotation.customer_details.shipping_address.city}, {quotation.customer_details.shipping_address.state} {quotation.customer_details.shipping_address.zip_code}</p>
-                                </>
-                            ) : (
-                                <p className="text-gray-500">{t('Same as billing address')}</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                <ReportTable headers={['Descrição', 'Qtd', 'Preço líquido', 'Desconto', 'IVA', 'Total']}>
+                    {itemRows}
+                </ReportTable>
 
-                <div className="mb-8">
-                    <table className="w-full table-fixed">
-                        <thead>
-                            <tr className="border-b border-gray-300">
-                                <th className="text-left py-3 font-bold">{t('ITEM')}</th>
-                                <th className="text-center py-3 font-bold">{t('QTY')}</th>
-                                <th className="text-right py-3 font-bold">{t('PRICE')}</th>
-                                <th className="text-right py-3 font-bold">{t('DISCOUNT')}</th>
-                                <th className="text-right py-3 font-bold">{t('TAX')}</th>
-                                <th className="text-right py-3 font-bold">{t('TOTAL')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {quotation.items?.map((item, index) => (
-                                <tr key={index} className="page-break-inside-avoid">
-                                    <td className="py-4">
-                                        <div className="font-semibold">{item.product?.name}</div>
-                                        {item.product?.sku && (
-                                            <div className="text-xs text-gray-500">{t('SKU')}: {item.product.sku}</div>
-                                        )}
-                                    </td>
-                                    <td className="text-center py-4">{item.quantity}</td>
-                                    <td className="text-right py-4">{formatCurrency(item.unit_price)}</td>
-                                    <td className="text-right py-4">
-                                        {item.discount_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.discount_percentage}%</div>
-                                                <div className="text-sm font-medium">-{formatCurrency(item.discount_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4">
-                                        {item.taxes && item.taxes.length > 0 ? (
-                                            <>
-                                                {item.taxes.map((tax, taxIndex) => (
-                                                    <div key={taxIndex} className="text-sm">{tax.tax_name} ({tax.tax_rate}%)</div>
-                                                ))}
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : item.tax_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.tax_percentage}%</div>
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4 font-semibold">{formatCurrency(item.total_amount)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="flex justify-end mb-8">
-                    <div className="w-80">
-                        <div className="border border-gray-400 p-4">
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <span>{t('Subtotal')}:</span>
-                                    <span>{formatCurrency(quotation.subtotal)}</span>
-                                </div>
-                                {quotation.discount_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Discount')}:</span>
-                                        <span>-{formatCurrency(quotation.discount_amount)}</span>
-                                    </div>
-                                )}
-                                {quotation.tax_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Tax')}:</span>
-                                        <span>{formatCurrency(quotation.tax_amount)}</span>
-                                    </div>
-                                )}
-                                <div className="border-t border-gray-400 pt-2 mt-2">
-                                    <div className="flex justify-between font-bold text-lg">
-                                        <span>{t('TOTAL')}:</span>
-                                        <span>{formatCurrency(quotation.total_amount)}</span>
-                                    </div>
-                                </div>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+                    <ReportCard title="Notas" subtitle="Instruções e observações">
+                        <div className="space-y-4 text-sm leading-6 text-slate-700">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Condições</div>
+                                <div className="mt-1">{quotationData.payment_terms || 'Sem condições adicionais.'}</div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Notas</div>
+                                <div className="mt-1 whitespace-pre-line">{quotationData.notes || 'Sem notas adicionais.'}</div>
                             </div>
                         </div>
-                    </div>
+                    </ReportCard>
+
+                    <ReportSummaryCard
+                        title="Resumo"
+                        subtitle="Totais do documento"
+                        rows={[
+                            { label: 'Subtotal', value: formatCurrency(quotationData.subtotal) },
+                            { label: 'Desconto', value: `-${formatCurrency(quotationData.discount_amount)}` },
+                            { label: 'IVA', value: formatCurrency(quotationData.tax_amount) },
+                            { label: 'Total', value: formatCurrency(quotationData.total_amount), emphasis: true },
+                        ]}
+                    />
                 </div>
 
-                <div className="border-t border-gray-400 pt-6 text-center">
-                    <p className="font-semibold">{t('PAYMENT TERMS')}: {quotation.payment_terms || t('Net 30 Days')}</p>
-                    <p className="text-sm mt-2">{t('Thank you for your business!')}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportPill tone="info">Documento comercial</ReportPill>
+                    <ReportPill tone={documentStatus.tone}>{documentStatus.label}</ReportPill>
+                    {quotationData.converted_to_invoice ? <ReportPill tone="success">Convertida em factura</ReportPill> : <ReportPill tone="neutral">Conversão pendente</ReportPill>}
                 </div>
             </div>
-
-            <style>{`
-                body {
-                    -webkit-print-color-adjust: exact;
-                    color-adjust: exact;
-                    font-family: Arial, sans-serif;
-                }
-
-                @page {
-                    margin: 0.25in;
-                    size: A4;
-                }
-
-                .quotation-container {
-                    max-width: 100%;
-                    margin: 0;
-                    box-shadow: none;
-                }
-
-                .page-break-inside-avoid {
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }
-
-                @media print {
-                    body {
-                        background: white;
-                    }
-
-                    .quotation-container {
-                        box-shadow: none;
-                    }
-                }
-            `}</style>
-        </div>
+        </ReportShell>
     );
 }

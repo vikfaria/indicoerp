@@ -41,7 +41,7 @@ class PgcNirfSeeder extends Seeder
                     'is_movement_account' => $account['movement'],
                     'tax_type' => $account['tax'],
                     'financial_statement_line' => $account['fs_line'],
-                    'description' => null,
+                    'description' => $account['description'] ?? null,
                 ]
             );
             $count++;

@@ -1,14 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
-import { formatCurrency, formatDate, getCompanyTaxLabel, resolveDocumentIssuer, resolveSalesDocumentCounterparty } from '@/utils/helpers';
+import {
+    formatCurrency,
+    formatDate,
+    getCompanyTaxLabel,
+    resolveDocumentIssuer,
+    resolveSalesDocumentCounterparty,
+} from '@/utils/helpers';
 import { saveElementAsPdf } from '@/utils/pdf';
+import {
+    ReportCard,
+    ReportHero,
+    ReportKeyValueGrid,
+    ReportPill,
+    ReportShell,
+    ReportSummaryCard,
+    ReportTable,
+} from '@/components/print/report-kit';
 import { SalesReturn } from './types';
 
 interface PrintProps {
-    return: SalesReturn;
+    return: SalesReturn & Record<string, any>;
     [key: string]: any;
 }
+
+const toNumber = (value: unknown): number => Number(value ?? 0);
+
+const statusMeta: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+    draft: { label: 'Rascunho', tone: 'neutral' },
+    approved: { label: 'Aprovada', tone: 'info' },
+    completed: { label: 'Concluída', tone: 'success' },
+    cancelled: { label: 'Cancelada', tone: 'danger' },
+};
 
 const formatReason = (reason?: string): string => {
     if (!reason) {
@@ -26,31 +50,35 @@ export default function Print() {
     const page = usePage<PrintProps>();
     const { return: salesReturn } = page.props;
     const [isDownloading, setIsDownloading] = useState(false);
-    const issuer = resolveDocumentIssuer(salesReturn as Record<string, any>, page.props);
-    const customer = resolveSalesDocumentCounterparty(salesReturn as Record<string, any>);
+
+    const returnData = salesReturn as PrintProps['return'];
+    const issuer = resolveDocumentIssuer(returnData as Record<string, any>, page.props);
+    const customer = resolveSalesDocumentCounterparty(returnData as Record<string, any>);
     const companyTaxLabel = issuer.tax_label || getCompanyTaxLabel(page.props);
     const companyTaxNumber = issuer.tax_number || null;
-    const counterpartyTaxLabel = customer.tax_label || companyTaxLabel;
-    const documentTitle = salesReturn.status === 'draft' ? t('SALES RETURN') : t('CREDIT NOTE');
+    const customerTaxLabel = customer.tax_label || companyTaxLabel;
+    const documentStatus = statusMeta[returnData.status || 'draft'] || statusMeta.draft;
+    const willCreateCreditNote = returnData.status === 'approved' || returnData.status === 'completed';
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('download') === 'pdf') {
             downloadPDF();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.return-container');
+        const printContent = document.querySelector('.document-print-container');
         if (printContent) {
             const opt = {
                 margin: 0.25,
-                filename: `sales-return-${salesReturn.return_number}.pdf`,
+                filename: `sales-return-${returnData.return_number}.pdf`,
                 image: { type: 'jpeg' as const, quality: 0.98 },
                 html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const }
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
             };
 
             try {
@@ -64,169 +92,143 @@ export default function Print() {
         setIsDownloading(false);
     };
 
+    const itemRows = (returnData.items ?? []).map((item, index) => {
+        const taxes = item.taxes ?? [];
+        const taxLabel = taxes.length > 0
+            ? taxes.map((tax) => `${tax.tax_name} (${tax.tax_rate}%)`).join(', ')
+            : item.tax_percentage > 0
+                ? `${item.tax_percentage}%`
+                : '0%';
+
+        return (
+            <tr key={index} className="report-page-break-inside-avoid">
+                <td className="px-4 py-4 align-top">
+                    <div className="font-semibold text-slate-900">{item.product?.name || '-'}</div>
+                    {item.product?.sku && <div className="mt-1 text-xs text-slate-500">SKU: {item.product.sku}</div>}
+                    {item.product?.description && <div className="mt-1 text-xs leading-5 text-slate-500">{item.product.description}</div>}
+                </td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{item.return_quantity || item.quantity}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">{formatCurrency(item.unit_price)}</td>
+                <td className="px-4 py-4 text-right align-top tabular-nums">
+                    {toNumber(item.discount_amount) > 0 ? `-${formatCurrency(item.discount_amount)}` : formatCurrency(0)}
+                </td>
+                <td className="px-4 py-4 text-right align-top">
+                    <div className="tabular-nums">{taxLabel}</div>
+                </td>
+                <td className="px-4 py-4 text-right align-top font-semibold tabular-nums">{formatCurrency(item.total_amount)}</td>
+            </tr>
+        );
+    });
+
     return (
-        <div className="min-h-screen bg-white">
-            <Head title={documentTitle} />
+        <ReportShell>
+            <Head title={`Devolução de venda #${returnData.return_number}`} />
 
             {isDownloading && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="rounded-lg bg-white p-6 shadow-lg">
-                        <div className="flex items-center space-x-3">
-                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-blue-600"></div>
-                            <p className="text-lg font-semibold text-gray-700">{t('Generating PDF...')}</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="rounded-2xl bg-white px-6 py-5 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-lg font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="return-container mx-auto max-w-4xl bg-white p-8">
-                <div className="mb-8 flex items-start justify-between">
-                    <div className="w-1/2">
-                        <h1 className="mb-4 text-2xl font-bold">{issuer.company_name || 'YOUR COMPANY'}</h1>
-                        <div className="space-y-1 text-sm">
-                            {issuer.company_address && <p>{issuer.company_address}</p>}
-                            {(issuer.company_city || issuer.company_state || issuer.company_zipcode) && (
-                                <p>
-                                    {issuer.company_city}{issuer.company_state && `, ${issuer.company_state}`} {issuer.company_zipcode}
-                                </p>
-                            )}
-                            {issuer.company_country && <p>{issuer.company_country}</p>}
-                            {issuer.company_telephone && <p>{t('Phone')}: {issuer.company_telephone}</p>}
-                            {issuer.company_email && <p>{t('Email')}: {issuer.company_email}</p>}
-                            {issuer.registration_number && <p>{t('Registration')}: {issuer.registration_number}</p>}
-                            {companyTaxNumber && <p>{companyTaxLabel}: {companyTaxNumber}</p>}
-                        </div>
-                    </div>
-                    <div className="w-1/2 text-right">
-                        <h2 className="mb-2 text-2xl font-bold">{documentTitle}</h2>
-                        <p className="text-lg font-semibold">#{salesReturn.return_number}</p>
-                        <div className="mt-2 space-y-1 text-sm">
-                            <p>{t('Date')}: {formatDate(salesReturn.return_date)}</p>
-                            <p>{t('Status')}: {t(salesReturn.status.toUpperCase())}</p>
-                            <p>{t('Reference Invoice')}: #{salesReturn.original_invoice?.invoice_number || '-'}</p>
-                        </div>
-                    </div>
+            <div className="document-print-container space-y-6">
+                <ReportHero
+                    title={willCreateCreditNote ? 'Nota de Crédito' : 'Nota / Guia de Devolução'}
+                    subtitle={willCreateCreditNote ? 'Regularização da venda original' : 'Documento de devolução física'}
+                    issuerTitle="Emitente"
+                    issuerLines={[
+                        issuer.company_name || 'Empresa',
+                        issuer.company_address,
+                        [issuer.company_city, issuer.company_state, issuer.company_zipcode].filter(Boolean).join(', '),
+                        issuer.company_country,
+                        issuer.company_telephone ? `Telefone: ${issuer.company_telephone}` : null,
+                        issuer.company_email ? `E-mail: ${issuer.company_email}` : null,
+                        companyTaxNumber ? `${companyTaxLabel}: ${companyTaxNumber}` : null,
+                    ].filter(Boolean) as React.ReactNode[]}
+                    documentLabel="Documento"
+                    documentNumber={`#${returnData.return_number}`}
+                    statusPills={[
+                        { label: 'Devolução', tone: 'info' },
+                        { label: documentStatus.label, tone: documentStatus.tone },
+                        { label: willCreateCreditNote ? 'Gera nota de crédito' : 'A aguardar aprovação', tone: willCreateCreditNote ? 'success' : 'warning' },
+                    ]}
+                    meta={[
+                        { label: 'Data', value: formatDate(returnData.return_date) },
+                        { label: 'Factura original', value: returnData.original_invoice?.invoice_number ? `#${returnData.original_invoice.invoice_number}` : '-' },
+                        { label: 'Armazém', value: returnData.warehouse?.name || '-' },
+                        { label: 'Motivo', value: formatReason(returnData.reason) },
+                    ]}
+                    note={willCreateCreditNote ? 'Impacto no stock: devolução física registada.' : 'Este documento pode ser convertido em nota de crédito após aprovação.'}
+                />
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                    <ReportCard title="Cliente" subtitle="Dados da devolução">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Nome', value: customer.company_name || customer.name || returnData.customer?.name || '-' },
+                                { label: customerTaxLabel || 'NUIT', value: customer.tax_number || '-' },
+                                { label: 'E-mail', value: customer.email || '-' },
+                                { label: 'Código', value: returnData.customer_details?.customer_code || '-' },
+                                { label: 'Morada', value: customer.billing_address?.address_line_1 || '-', span: 2 },
+                                { label: 'Cidade', value: [customer.billing_address?.city, customer.billing_address?.state, customer.billing_address?.zip_code].filter(Boolean).join(' - ') || '-', span: 2 },
+                            ]}
+                        />
+                    </ReportCard>
+
+                    <ReportCard title="Contexto operacional" subtitle="Regularização e referência">
+                        <ReportKeyValueGrid
+                            columns={2}
+                            items={[
+                                { label: 'Estado', value: documentStatus.label },
+                                { label: 'Gera nota de crédito', value: willCreateCreditNote ? 'Sim' : 'Não' },
+                                { label: 'Motivo', value: formatReason(returnData.reason) },
+                                { label: 'Observação', value: returnData.notes || '-' },
+                            ]}
+                        />
+                    </ReportCard>
                 </div>
 
-                <div className="mb-8 flex justify-between">
-                    <div className="w-1/2">
-                        <h3 className="mb-3 font-bold">{t('CUSTOMER')}</h3>
-                        <div className="space-y-1 text-sm">
-                            <p className="font-semibold">{customer.name}</p>
-                            {customer.company_name && <p>{customer.company_name}</p>}
-                            <p>{customer.email}</p>
-                            {customer.tax_number && <p>{counterpartyTaxLabel}: {customer.tax_number}</p>}
-                            {customer.billing_address && (
-                                <>
-                                    <p>{customer.billing_address.name}</p>
-                                    <p>{customer.billing_address.address_line_1}</p>
-                                    <p>{customer.billing_address.city}, {customer.billing_address.state} {customer.billing_address.zip_code}</p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <div className="w-1/2 text-right">
-                        <h3 className="mb-3 font-bold">{t('DETAILS')}</h3>
-                        <div className="space-y-1 text-sm">
-                            <p>{t('Warehouse')}: {salesReturn.warehouse?.name || '-'}</p>
-                            <p>{t('Reason')}: {t(formatReason(salesReturn.reason))}</p>
-                        </div>
-                    </div>
-                </div>
+                <ReportTable headers={['Descrição', 'Qtd', 'Preço líquido', 'Desconto', 'IVA', 'Total']}>
+                    {itemRows}
+                </ReportTable>
 
-                <div className="mb-8">
-                    <table className="w-full table-fixed">
-                        <thead>
-                            <tr className="border-b border-gray-300">
-                                <th className="py-3 text-left font-bold">{t('ITEM')}</th>
-                                <th className="py-3 text-center font-bold">{t('QTY')}</th>
-                                <th className="py-3 text-right font-bold">{t('PRICE')}</th>
-                                <th className="py-3 text-right font-bold">{t('DISCOUNT')}</th>
-                                <th className="py-3 text-right font-bold">{t('TAX')}</th>
-                                <th className="py-3 text-right font-bold">{t('TOTAL')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {salesReturn.items?.map((item, index) => (
-                                <tr key={index} className="page-break-inside-avoid">
-                                    <td className="py-4">
-                                        <div className="font-semibold">{item.product?.name}</div>
-                                        {item.product?.sku && <div className="text-xs text-gray-500">{t('SKU')}: {item.product.sku}</div>}
-                                    </td>
-                                    <td className="py-4 text-center">{item.return_quantity || item.quantity}</td>
-                                    <td className="py-4 text-right">{formatCurrency(item.unit_price)}</td>
-                                    <td className="py-4 text-right">
-                                        {item.discount_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.discount_percentage}%</div>
-                                                <div className="text-sm font-medium">-{formatCurrency(item.discount_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="py-4 text-right">
-                                        {item.taxes && item.taxes.length > 0 ? (
-                                            <>
-                                                {item.taxes.map((tax, taxIndex) => (
-                                                    <div key={taxIndex} className="text-sm">{tax.tax_name} ({tax.tax_rate}%)</div>
-                                                ))}
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : item.tax_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.tax_percentage}%</div>
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="py-4 text-right font-semibold">{formatCurrency(item.total_amount)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="mb-4 flex justify-end">
-                    <div className="w-80">
-                        <div className="border border-gray-400 p-4">
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <span>{t('Subtotal')}:</span>
-                                    <span>{formatCurrency(salesReturn.subtotal)}</span>
-                                </div>
-                                {salesReturn.discount_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Discount')}:</span>
-                                        <span>-{formatCurrency(salesReturn.discount_amount)}</span>
-                                    </div>
-                                )}
-                                {salesReturn.tax_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Tax')}:</span>
-                                        <span>{formatCurrency(salesReturn.tax_amount)}</span>
-                                    </div>
-                                )}
-                                <div className="mt-2 border-t border-gray-400 pt-2">
-                                    <div className="flex justify-between text-lg font-bold">
-                                        <span>{t('TOTAL')}:</span>
-                                        <span>{formatCurrency(salesReturn.total_amount)}</span>
-                                    </div>
-                                </div>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+                    <ReportCard title="Notas" subtitle="Detalhes adicionais">
+                        <div className="space-y-4 text-sm leading-6 text-slate-700">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Motivo</div>
+                                <div className="mt-1">{formatReason(returnData.reason)}</div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Notas</div>
+                                <div className="mt-1 whitespace-pre-line">{returnData.notes || 'Sem notas adicionais.'}</div>
                             </div>
                         </div>
-                    </div>
+                    </ReportCard>
+
+                    <ReportSummaryCard
+                        title="Resumo"
+                        subtitle="Totais da devolução"
+                        rows={[
+                            { label: 'Subtotal', value: formatCurrency(returnData.subtotal) },
+                            { label: 'Desconto', value: `-${formatCurrency(returnData.discount_amount)}` },
+                            { label: 'IVA', value: formatCurrency(returnData.tax_amount) },
+                            { label: 'Total', value: formatCurrency(returnData.total_amount), emphasis: true },
+                        ]}
+                    />
                 </div>
 
-                {(salesReturn.notes || salesReturn.reason) && (
-                    <div className="mt-8 border-t pt-6 text-sm">
-                        <p><span className="font-semibold">{t('Reason')}:</span> {t(formatReason(salesReturn.reason))}</p>
-                        {salesReturn.notes && <p className="mt-2"><span className="font-semibold">{t('Notes')}:</span> {salesReturn.notes}</p>}
-                    </div>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                    <ReportPill tone="info">Devolução de venda</ReportPill>
+                    <ReportPill tone={documentStatus.tone}>{documentStatus.label}</ReportPill>
+                    {willCreateCreditNote ? <ReportPill tone="success">Regulariza factura</ReportPill> : <ReportPill tone="warning">Pendência de aprovação</ReportPill>}
+                </div>
             </div>
-        </div>
+        </ReportShell>
     );
 }

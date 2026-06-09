@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\User;
 
 class Transfer extends Model
 {
@@ -12,6 +13,9 @@ class Transfer extends Model
         'product_id',
         'quantity',
         'date',
+        'carrier_name',
+        'vehicle_plate',
+        'driver_name',
         'creator_id',
         'created_by',
     ];
@@ -37,5 +41,10 @@ class Transfer extends Model
     public function product()
     {
         return $this->belongsTo(\Workdo\ProductService\Models\ProductServiceItem::class, 'product_id');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'creator_id');
     }
 }

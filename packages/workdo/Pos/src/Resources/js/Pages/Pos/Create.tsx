@@ -253,7 +253,9 @@ function CreateContent({ customers = [], warehouses = [], categories = [] }: Cre
                     customer: selectedCustomer ? customers.find(c => c.id.toString() === selectedCustomer) : null,
                     warehouse: warehouses.find(w => w.id.toString() === selectedWarehouse),
                     payment_method: paymentMethod,
-                    paid_amount: parseFloat(paidAmount || '0')
+                    paid_amount: parseFloat(paidAmount || '0'),
+                    operator_name: auth?.user?.name || '',
+                    document_series: response.props?.document_series || ''
                 });
                 // Close payment modal first, then show receipt
                 setShowPaymentModal(false);

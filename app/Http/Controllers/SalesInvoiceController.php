@@ -212,7 +212,15 @@ class SalesInvoiceController extends Controller
                 return redirect()->route('sales-invoices.index')->with('error', __('Permission denied'));
             }
 
-            $salesInvoice->load(['customer', 'customerDetails', 'items.product', 'items.taxes', 'warehouse']);
+            $salesInvoice->load([
+                'customer',
+                'customerDetails',
+                'items.product',
+                'items.taxes',
+                'warehouse',
+                'paymentAllocations.payment.bankAccount.branch',
+                'paymentAllocations.payment.branch',
+            ]);
 
             return Inertia::render('Sales/View', [
                 'invoice' => $salesInvoice

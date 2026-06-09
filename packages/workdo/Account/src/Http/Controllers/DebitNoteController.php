@@ -114,7 +114,15 @@ class DebitNoteController extends Controller
                 return redirect()->route('account.debit-notes.index')->with('error', __('Permission denied'));
             }
 
-            $debitNote->load(['vendor', 'invoice', 'items.product', 'items.taxes', 'purchaseReturn', 'applications.payment']);
+            $debitNote->load([
+                'vendor',
+                'invoice',
+                'items.product',
+                'items.taxes',
+                'purchaseReturn',
+                'applications.payment.bankAccount.branch',
+                'applications.payment.branch',
+            ]);
 
             return Inertia::render('Account/DebitNotes/View', [
                 'debitNote' => $debitNote
@@ -133,7 +141,15 @@ class DebitNoteController extends Controller
                 return redirect()->route('account.debit-notes.index')->with('error', __('Permission denied'));
             }
 
-            $debitNote->load(['vendor', 'invoice', 'items.product', 'items.taxes', 'purchaseReturn', 'applications.payment']);
+            $debitNote->load([
+                'vendor',
+                'invoice',
+                'items.product',
+                'items.taxes',
+                'purchaseReturn',
+                'applications.payment.bankAccount.branch',
+                'applications.payment.branch',
+            ]);
 
             return Inertia::render('Account/DebitNotes/Print', [
                 'debitNote' => $debitNote

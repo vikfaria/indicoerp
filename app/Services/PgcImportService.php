@@ -19,6 +19,14 @@ use Workdo\Account\Models\ChartOfAccount;
 class PgcImportService
 {
     /**
+     * Operational codes that are already reserved by the core chart
+     * and must not be counted as missing during strict PGC validation.
+     */
+    private const RESERVED_OPERATIONAL_CODES = [
+        'pgc_nirf' => ['2210'],
+    ];
+
+    /**
      * Default mapping from legacy generic codes to PGC-MZ codes.
      * Used for automatic migration of existing companies.
      */
@@ -68,6 +76,7 @@ class PgcImportService
         $catalogAccounts = PgcAccountCatalog::where('framework', $framework)
             ->orderBy('account_code')
             ->get();
+        $reservedCodes = $this->reservedOperationalCodes($framework);
 
         if ($catalogAccounts->isEmpty()) {
             return ['imported' => 0, 'skipped' => 0, 'error' => 'Catálogo PGC não encontrado. Execute o seeder primeiro.'];
@@ -77,8 +86,13 @@ class PgcImportService
         $skipped = 0;
         $accountTypeCache = [];
 
-        DB::transaction(function () use ($catalogAccounts, $companyId, $framework, &$imported, &$skipped, &$accountTypeCache) {
+        DB::transaction(function () use ($catalogAccounts, $companyId, $framework, $reservedCodes, &$imported, &$skipped, &$accountTypeCache) {
             foreach ($catalogAccounts as $catalog) {
+                if (in_array($catalog->account_code, $reservedCodes, true)) {
+                    $skipped++;
+                    continue;
+                }
+
                 // Skip if account already exists for this company
                 $exists = ChartOfAccount::where('account_code', $catalog->account_code)
                     ->where('created_by', $companyId)
@@ -248,6 +262,7 @@ class PgcImportService
     public function buildValidationReport(int $companyId, ?string $framework = null): array
     {
         $resolvedFramework = $framework ?: 'pgc_nirf';
+        $reservedCodes = $this->reservedOperationalCodes($resolvedFramework);
         $profile = CompanyFiscalProfile::query()
             ->where('company_id', $companyId)
             ->where('is_active', true)
@@ -287,8 +302,9 @@ class PgcImportService
                 && (string) ($account->accounting_framework ?? '') === $resolvedFramework;
         })->values();
 
-        $legacyActiveAccounts = $companyAccounts->filter(function (ChartOfAccount $account) use ($resolvedFramework): bool {
+        $legacyActiveAccounts = $companyAccounts->filter(function (ChartOfAccount $account) use ($resolvedFramework, $reservedCodes): bool {
             return $account->is_active
+                && ! in_array((string) $account->account_code, $reservedCodes, true)
                 && (
                     $account->pgc_class === null
                     || (string) ($account->accounting_framework ?? '') !== $resolvedFramework
@@ -319,6 +335,15 @@ class PgcImportService
 
         foreach ($missingClasses as $class) {
             $errors[] = __('Classe :class não tem contas PGC activas.', ['class' => $class]);
+        }
+
+        $catalog = $catalog->reject(fn (PgcAccountCatalog $account): bool => in_array((string) $account->account_code, $reservedCodes, true))->values();
+        $officialAccounts = $officialAccounts->reject(fn (ChartOfAccount $account): bool => in_array((string) $account->account_code, $reservedCodes, true))->values();
+
+        if (!empty($reservedCodes)) {
+            $warnings[] = __('Alguns códigos operacionais estão reservados pelo núcleo e foram excluídos da validação estrita: :codes', [
+                'codes' => implode(', ', $reservedCodes),
+            ]);
         }
 
         $catalogCodes = $catalog->pluck('account_code')->values()->all();
@@ -380,6 +405,14 @@ class PgcImportService
             'errors' => $errors,
             'valid' => empty($errors),
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function reservedOperationalCodes(string $framework): array
+    {
+        return self::RESERVED_OPERATIONAL_CODES[$framework] ?? [];
     }
 
     /**

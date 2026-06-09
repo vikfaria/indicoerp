@@ -194,6 +194,9 @@ class PosController extends Controller
             $sale->sale_number = $saleNumber;
             $sale->customer_id = $validated['customer_id'] ?? null;
             $sale->warehouse_id = $validated['warehouse_id'];
+            $sale->bank_account_id = $validated['bank_account_id'] ?? null;
+            $sale->payment_method = $validated['payment_method'];
+            $sale->paid_amount = $validated['paid_amount'];
             $sale->pos_date = $validated['pos_date'] ?? now()->toDateString();
             $sale->creator_id = Auth::id();
             $sale->created_by = creatorId();
@@ -340,7 +343,9 @@ class PosController extends Controller
         if(Auth::user()->can('view-pos-orders') && $this->canAccessSale($sale)){
             $sale->load([
                 'customer:id,name,email',
+                'creator:id,name',
                 'warehouse:id,name',
+                'bankAccount:id,account_name,account_number,branch_id,branch_name',
                 'items:id,pos_id,product_id,quantity,price,subtotal,tax_ids,tax_amount,total_amount',
                 'items.product:id,name,sku',
                 'payment:pos_id,discount,amount,discount_amount'
@@ -406,7 +411,9 @@ class PosController extends Controller
         if(Auth::user()->can('view-pos-orders') && $this->canAccessSale($sale)){
             $sale->load([
                 'customer:id,name,email',
+                'creator:id,name',
                 'warehouse:id,name',
+                'bankAccount:id,account_name,account_number,branch_id,branch_name',
                 'items:id,pos_id,product_id,quantity,price,subtotal,tax_ids,tax_amount,total_amount',
                 'items.product:id,name,sku',
                 'payment:pos_id,discount,amount,discount_amount'

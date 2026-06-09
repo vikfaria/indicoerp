@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Models\BankAccount;
 use Illuminate\Support\Facades\Schema;
 
 class Pos extends Model
@@ -22,6 +23,9 @@ class Pos extends Model
         'establishment_id',
         'customer_id',
         'warehouse_id',
+        'bank_account_id',
+        'payment_method',
+        'paid_amount',
         'pos_date',
         'status',
         'fiscal_submission_status',
@@ -45,6 +49,8 @@ class Pos extends Model
             'tax_amount' => 'decimal:2',
             'document_sequence' => 'integer',
             'establishment_id' => 'integer',
+            'bank_account_id' => 'integer',
+            'paid_amount' => 'decimal:2',
             'pos_date' => 'date',
             'fiscal_submitted_at' => 'datetime',
             'fiscal_validated_at' => 'datetime',
@@ -58,9 +64,19 @@ class Pos extends Model
         return $this->belongsTo(User::class, 'customer_id');
     }
 
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'creator_id');
+    }
+
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
+    }
+
+    public function bankAccount(): BelongsTo
+    {
+        return $this->belongsTo(BankAccount::class, 'bank_account_id');
     }
 
     public function items(): HasMany

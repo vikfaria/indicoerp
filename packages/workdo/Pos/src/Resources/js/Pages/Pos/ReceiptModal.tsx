@@ -22,6 +22,22 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
     const receiptRef = useRef<HTMLDivElement>(null);
     const companyTaxLabel = resolveCompanyTaxLabel(globalSettings);
     const companyTaxNumber = resolveCompanyTaxNumber(globalSettings);
+    const receivedAmount = Number(completedSale?.paid_amount ?? completedSale?.total ?? 0);
+    const totalAmount = Number(completedSale?.total ?? 0);
+    const changeAmount = Math.max(receivedAmount - totalAmount, 0);
+    const hasTax = Number(completedSale?.tax || 0) > 0 || (completedSale?.items || []).some((item: any) => Number(item.tax_amount || 0) > 0);
+    const paymentMethodLabel = (method?: string | null): string => {
+        const map: Record<string, string> = {
+            cash: 'Caixa',
+            bank_transfer: 'Transferência bancária',
+            card: 'Cartão',
+            mobile_money: 'Mobile Money',
+            cheque: 'Cheque',
+            other: 'Outro',
+        };
+
+        return method ? (map[method] || method) : '-';
+    };
 
     const handlePrint = () => {
         printReceipt(completedSale, globalSettings);
@@ -61,6 +77,7 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
                                         <div>{globalSettings?.company_city || 'City'}, {globalSettings?.company_state || 'State'}</div>
                                         <div>{globalSettings?.company_country || 'Country'} - {globalSettings?.company_zipcode || 'Zipcode'}</div>
                                         {companyTaxNumber && <div>{companyTaxLabel}: {companyTaxNumber}</div>}
+                                        {completedSale.operator_name && <div>{t('Operator')}: {completedSale.operator_name}</div>}
                                     </div>
                                 </div>
 
@@ -80,8 +97,20 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
                                         <span>{formatDate(new Date())}</span>
                                     </div>
                                     <div className="flex justify-between py-0.5">
+                                        <span className="font-medium">{t('Time')}:</span>
+                                        <span>{new Date().toLocaleTimeString()}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5">
+                                        <span className="font-medium">{t('Terminal')}:</span>
+                                        <span>{completedSale.document_series || '-'}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5">
                                         <span className="font-medium">{t('Customer')}:</span>
                                         <span className="truncate ml-2 font-medium">{completedSale.customer?.name || t('Walk-in')}</span>
+                                    </div>
+                                    <div className="flex justify-between py-0.5">
+                                        <span className="font-medium">{t('Payment')}:</span>
+                                        <span className="truncate ml-2 font-medium">{paymentMethodLabel(completedSale.payment_method)}</span>
                                     </div>
                                 </div>
 
@@ -146,9 +175,21 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
                                         <span className="font-medium">{t('Discount')}:</span>
                                         <span className="font-bold">-{formatCurrency(completedSale.discount)}</span>
                                     </div>
+                                    <div className="flex justify-between py-1 text-sm">
+                                        <span className="font-medium">{t('Received')}:</span>
+                                        <span className="font-bold">{formatCurrency(receivedAmount)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 text-sm">
+                                        <span className="font-medium">{t('Change')}:</span>
+                                        <span className="font-bold">{formatCurrency(changeAmount)}</span>
+                                    </div>
                                     <div className="flex justify-between py-2 text-base font-bold border-t-2 border-double border-gray-600">
                                         <span>{t('Total')}:</span>
-                                        <span className="text-lg">{formatCurrency(completedSale.total)}</span>
+                                        <span className="text-lg">{formatCurrency(totalAmount)}</span>
+                                    </div>
+                                    <div className="flex justify-between py-1 text-xs">
+                                        <span className="font-medium">{t('Status')}:</span>
+                                        <span>{receivedAmount >= totalAmount ? t('Pago') : t('Parcial')}</span>
                                     </div>
                                 </div>
 
@@ -159,10 +200,11 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
 
                                 {/* Footer */}
                                 <div className="text-center">
-                                    <div className="text-xs font-medium">{t('★ Thank you for your business! ★')}</div>
-                                    <div className="text-xs mt-1 opacity-75">{new Date().toLocaleTimeString()}</div>
-                                </div>
+                                <div className="text-xs font-medium">{t('★ Thank you for your business! ★')}</div>
+                                <div className="text-xs mt-1 opacity-75">{new Date().toLocaleTimeString()}</div>
+                                {hasTax && <div className="text-xs mt-1 opacity-75">{t('IVA incluído')}</div>}
                             </div>
+                        </div>
                         </div>
 
                     {/* Action Buttons */}

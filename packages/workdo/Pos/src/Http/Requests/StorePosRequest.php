@@ -19,7 +19,10 @@ class StorePosRequest extends FormRequest
         return [
             'customer_id' => ['nullable', $this->companyClientExistsRule()],
             'warehouse_id' => ['required', $this->companyWarehouseExistsRule()],
+            'bank_account_id' => ['nullable', $this->tenantOwnedExistsRule('bank_accounts')],
             'pos_date' => 'nullable|date',
+            'payment_method' => 'required|string|in:cash,bank_transfer,card,mobile_money,cheque,other',
+            'paid_amount' => 'required|numeric|min:0',
             'items' => 'required|array|min:1',
             'items.*.id' => ['required', $this->companyProductExistsRule('product')],
             'items.*.quantity' => 'required|numeric|min:1',

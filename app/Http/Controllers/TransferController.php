@@ -100,6 +100,9 @@ class TransferController extends Controller
                 $transfer->product_id = $validated['product_id'];
                 $transfer->quantity = $validated['quantity'];
                 $transfer->date = $validated['date'];
+                $transfer->carrier_name = $validated['carrier_name'] ?? null;
+                $transfer->vehicle_plate = $validated['vehicle_plate'] ?? null;
+                $transfer->driver_name = $validated['driver_name'] ?? null;
                 $transfer->creator_id = Auth::id();
                 $transfer->created_by = creatorId();
                 $transfer->save();
@@ -155,7 +158,7 @@ class TransferController extends Controller
                 return redirect()->route('transfers.index')->with('error', __('Permission denied'));
             }
 
-            $transfer->load(['fromWarehouse', 'toWarehouse', 'product']);
+            $transfer->load(['fromWarehouse', 'toWarehouse', 'product', 'creator:id,name']);
 
             return Inertia::render('Transfers/Show', [
                 'transfer' => $transfer,

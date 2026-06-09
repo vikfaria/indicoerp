@@ -223,7 +223,15 @@ class PurchaseInvoiceController extends Controller
                 return redirect()->route('purchase-invoices.index')->with('error', __('Permission denied'));
             }
 
-            $purchaseInvoice->load(['vendor', 'vendorDetails', 'items.product', 'items.taxes', 'warehouse']);
+            $purchaseInvoice->load([
+                'vendor',
+                'vendorDetails',
+                'items.product',
+                'items.taxes',
+                'warehouse',
+                'paymentAllocations.payment.bankAccount.branch',
+                'paymentAllocations.payment.branch',
+            ]);
 
             return Inertia::render('Purchase/View', [
                 'invoice' => $purchaseInvoice

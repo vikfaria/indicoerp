@@ -121,6 +121,98 @@ class TransferTenantIsolationTest extends TestCase
         ])->assertSessionDoesntHaveErrors();
     }
 
+    public function test_transfer_store_persists_complete_transport_details(): void
+    {
+        $company = $this->makeCompany();
+        $fromWarehouse = $this->makeWarehouse($company, 'Origem');
+        $toWarehouse = $this->makeWarehouse($company, 'Destino');
+        $product = $this->makeProduct($company, 'Produto Transporte');
+
+        WarehouseStock::create([
+            'warehouse_id' => $fromWarehouse->id,
+            'product_id' => $product->id,
+            'quantity' => 8,
+        ]);
+
+        app(InventoryCostingService::class)->recordPurchase(
+            $company->id,
+            $product->id,
+            8,
+            25.00,
+            now()->toDateString(),
+            'manual_stock_adjustment',
+            $product->id,
+            (string) $fromWarehouse->id,
+            false
+        );
+
+        $this->grantPermissions($company, ['create-transfers']);
+
+        $this->actingAs($company)
+            ->post(route('transfers.store'), [
+                'from_warehouse' => $fromWarehouse->id,
+                'to_warehouse' => $toWarehouse->id,
+                'product_id' => $product->id,
+                'quantity' => 3,
+                'date' => now()->toDateString(),
+                'carrier_name' => 'Swift Logistics',
+                'vehicle_plate' => 'ABC-123-MP',
+                'driver_name' => 'João Manjate',
+            ])
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseHas('transfers', [
+            'from_warehouse' => $fromWarehouse->id,
+            'to_warehouse' => $toWarehouse->id,
+            'product_id' => $product->id,
+            'carrier_name' => 'Swift Logistics',
+            'vehicle_plate' => 'ABC-123-MP',
+            'driver_name' => 'João Manjate',
+        ]);
+    }
+
+    public function test_transfer_store_rejects_partial_transport_details(): void
+    {
+        $company = $this->makeCompany();
+        $fromWarehouse = $this->makeWarehouse($company, 'Origem Parcial');
+        $toWarehouse = $this->makeWarehouse($company, 'Destino Parcial');
+        $product = $this->makeProduct($company, 'Produto Parcial');
+
+        WarehouseStock::create([
+            'warehouse_id' => $fromWarehouse->id,
+            'product_id' => $product->id,
+            'quantity' => 8,
+        ]);
+
+        app(InventoryCostingService::class)->recordPurchase(
+            $company->id,
+            $product->id,
+            8,
+            25.00,
+            now()->toDateString(),
+            'manual_stock_adjustment',
+            $product->id,
+            (string) $fromWarehouse->id,
+            false
+        );
+
+        $this->grantPermissions($company, ['create-transfers']);
+
+        $response = $this->actingAs($company)->post(route('transfers.store'), [
+            'from_warehouse' => $fromWarehouse->id,
+            'to_warehouse' => $toWarehouse->id,
+            'product_id' => $product->id,
+            'quantity' => 3,
+            'date' => now()->toDateString(),
+            'carrier_name' => 'Swift Logistics',
+        ]);
+
+        $response->assertSessionHasErrors([
+            'vehicle_plate',
+            'driver_name',
+        ]);
+    }
+
     private function makeCompany(): User
     {
         return User::factory()->create([

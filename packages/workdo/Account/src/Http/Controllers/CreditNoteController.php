@@ -113,7 +113,15 @@ class CreditNoteController extends Controller
                 return redirect()->route('account.credit-notes.index')->with('error', __('Permission denied'));
             }
 
-            $creditNote->load(['customer', 'invoice', 'items.product', 'items.taxes', 'salesReturn', 'applications.payment']);
+            $creditNote->load([
+                'customer',
+                'invoice',
+                'items.product',
+                'items.taxes',
+                'salesReturn',
+                'applications.payment.bankAccount.branch',
+                'applications.payment.branch',
+            ]);
 
             return Inertia::render('Account/CreditNotes/View', [
                 'creditNote' => $creditNote
@@ -132,7 +140,15 @@ class CreditNoteController extends Controller
                 return redirect()->route('account.credit-notes.index')->with('error', __('Permission denied'));
             }
 
-            $creditNote->load(['customer', 'invoice', 'items.product', 'items.taxes', 'salesReturn', 'applications.payment']);
+            $creditNote->load([
+                'customer',
+                'invoice',
+                'items.product',
+                'items.taxes',
+                'salesReturn',
+                'applications.payment.bankAccount.branch',
+                'applications.payment.branch',
+            ]);
 
             return Inertia::render('Account/CreditNotes/Print', [
                 'creditNote' => $creditNote
