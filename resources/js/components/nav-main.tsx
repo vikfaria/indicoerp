@@ -153,11 +153,14 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                 data-current={false}
                                                 data-blocked={itemIsBlocked}
                                                 title={itemTitle}
-                                                className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
+                                                className={itemIsBlocked
+                                                    ? 'h-auto min-h-10 items-start py-2 data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100'
+                                                    : 'h-auto min-h-10 items-start py-2'
+                                                }
                                             >
                                                 {item.icon && <item.icon />}
                                                 {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                <span className="min-w-0 flex-1 truncate">{itemTitle}</span>
+                                                <span className="min-w-0 flex-1 whitespace-normal break-words leading-tight !overflow-visible">{itemTitle}</span>
                                                 <ChevronDown className="ml-auto h-4 w-4 shrink-0 transition-transform group-data-[state=open]/collapsible:rotate-180" />
                                             </SidebarMenuButton>
                                         </CollapsibleTrigger>
@@ -184,11 +187,14 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                 data-current={false}
                                                                                 data-blocked={subItemIsBlocked}
                                                                                 title={subItemTitle}
-                                                                                className={subItemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
+                                                                                className={subItemIsBlocked
+                                                                                    ? 'h-auto min-h-7 items-start py-1.5 data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100'
+                                                                                    : 'h-auto min-h-7 items-start py-1.5'
+                                                                                }
                                                                             >
                                                                                 {subItem.icon && <subItem.icon className="h-4 w-4" />}
                                                                                 {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                                                <span className="min-w-0 flex-1 truncate">{subItemTitle}</span>
+                                                                                <span className="min-w-0 flex-1 whitespace-normal break-words leading-tight !overflow-visible">{subItemTitle}</span>
                                                                                 <ChevronDown className="ml-auto h-3 w-3 shrink-0 transition-transform group-data-[state=open]/subcollapsible:rotate-180" />
                                                                             </SidebarMenuSubButton>
                                                                         </CollapsibleTrigger>
@@ -209,12 +215,15 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                             data-current={isSubSubActive}
                                                                                             data-blocked={subSubItemIsBlocked}
                                                                                             title={subSubItemTitle}
-                                                                                            className={subSubItemIsBlocked ? 'text-sm data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : 'text-sm'}
+                                                                                            className={subSubItemIsBlocked
+                                                                                                ? 'h-auto min-h-7 items-start py-1.5 text-sm data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100'
+                                                                                                : 'h-auto min-h-7 items-start py-1.5 text-sm'
+                                                                                            }
                                                                                         >
                                                                                             <Link href={subSubItem.href!}>
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
                                                                                                 {subSubItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                                                                <span className="min-w-0 flex-1 truncate">{subSubItemTitle}</span>
+                                                                                                <span className="min-w-0 flex-1 whitespace-normal break-words leading-tight !overflow-visible">{subSubItemTitle}</span>
                                                                                             </Link>
                                                                                         </SidebarMenuSubButton>
                                                                                     </SidebarMenuSubItem>
@@ -268,7 +277,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                 <span>{itemTitle}</span>
                                             </SidebarMenuButton>
                                         </DropdownMenuTrigger>
-                                        <DropdownMenuContent side="right" align="start" className="w-48">
+                                        <DropdownMenuContent side="right" align="start" className="w-56">
                                         {item.children.map((subItem) => {
                                                 const subItemTitle = translateTitle(subItem.title);
                                                 const subItemActivation = subItem.assistantActivation?.status === 'blocked' ? subItem.assistantActivation : undefined;
@@ -284,17 +293,17 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                     <ChevronDown className="ml-auto h-3 w-3" />
                                                                 </DropdownMenuItem>
                                                             </DropdownMenuTrigger>
-                                                            <DropdownMenuContent side="right" align="start" className="w-44">
+                                                            <DropdownMenuContent side="right" align="start" className="w-56">
                                                                 {subItem.children.map((subSubItem) => {
                                                                     const subSubItemTitle = translateTitle(subSubItem.title);
                                                                     const subSubItemActivation = subSubItem.assistantActivation?.status === 'blocked' ? subSubItem.assistantActivation : undefined;
                                                                     const subSubItemIsBlocked = !!subSubItemActivation;
                                                                     return (
                                                                         <DropdownMenuItem key={subSubItem.title} asChild>
-                                                                            <Link href={subSubItem.href!} className={subSubItemIsBlocked ? 'flex items-center gap-2 text-amber-700' : 'flex items-center gap-2'}>
+                                                                            <Link href={subSubItem.href!} title={subSubItemTitle} className={subSubItemIsBlocked ? 'flex items-center gap-2 whitespace-normal text-amber-700' : 'flex items-center gap-2 whitespace-normal'}>
                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3" />}
                                                                                 {subSubItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                                                                <span className="text-sm">{subSubItemTitle}</span>
+                                                                                <span className="text-sm leading-tight">{subSubItemTitle}</span>
                                                                             </Link>
                                                                         </DropdownMenuItem>
                                                                     );
@@ -306,7 +315,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                 
                                                 return (
                                                     <DropdownMenuItem key={subItem.title} asChild>
-                                                        <Link href={subItem.href!} className="flex items-center gap-2">
+                                                        <Link href={subItem.href!} title={subItemTitle} className="flex items-center gap-2 whitespace-normal">
                                                             {subItem.icon && <subItem.icon className="h-4 w-4" />}
                                                             {subItemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
                                                             <span>{subItemTitle}</span>
@@ -332,10 +341,10 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                 tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
                                 className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                             >
-                                <Link href={item.href!}>
+                                <Link href={item.href!} title={itemTitle}>
                                     {item.icon && <item.icon />}
                                     {itemIsBlocked && <Lock className="h-3 w-3 text-amber-600" />}
-                                    <span>{itemTitle}</span>
+                                    <span className="whitespace-normal break-words leading-tight">{itemTitle}</span>
                                 </Link>
                             </SidebarMenuButton>
                         </SidebarMenuItem>

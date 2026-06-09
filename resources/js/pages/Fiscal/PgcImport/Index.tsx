@@ -41,12 +41,53 @@ interface PageProps extends Record<string, unknown> {
     framework: string;
 }
 
+function ValidationSummaryCard({
+    label,
+    value,
+    helper,
+    tone = 'slate',
+}: {
+    label: string;
+    value: string | number;
+    helper: string;
+    tone?: 'slate' | 'amber' | 'red' | 'blue' | 'green';
+}) {
+    const toneClasses: Record<string, { border: string; bg: string; label: string; value: string; helper: string }> = {
+        slate: { border: 'border-slate-200', bg: 'bg-slate-50/70', label: 'text-slate-600', value: 'text-slate-900', helper: 'text-slate-500' },
+        amber: { border: 'border-amber-200', bg: 'bg-amber-50/70', label: 'text-amber-700', value: 'text-amber-900', helper: 'text-amber-600' },
+        red: { border: 'border-red-200', bg: 'bg-red-50/70', label: 'text-red-700', value: 'text-red-900', helper: 'text-red-600' },
+        blue: { border: 'border-blue-200', bg: 'bg-blue-50/70', label: 'text-blue-700', value: 'text-blue-900', helper: 'text-blue-600' },
+        green: { border: 'border-green-200', bg: 'bg-green-50/70', label: 'text-green-700', value: 'text-green-900', helper: 'text-green-600' },
+    };
+
+    const toneStyle = toneClasses[tone];
+
+    return (
+        <div className={`rounded-xl border ${toneStyle.border} ${toneStyle.bg} p-4`}>
+            <p className={`text-xs font-medium uppercase tracking-[0.18em] ${toneStyle.label}`}>{label}</p>
+            <p className={`mt-2 text-2xl font-bold ${toneStyle.value}`}>{value}</p>
+            <p className={`mt-1 text-xs leading-snug ${toneStyle.helper}`}>{helper}</p>
+        </div>
+    );
+}
+
 export default function PgcImportIndex() {
     const { t } = useTranslation();
     const { catalog, totalCatalog, importedCount, validationReport, framework } = usePage<PageProps>().props;
     const issues = validationReport?.errors ?? [];
     const warnings = validationReport?.warnings ?? [];
     const profileFramework = validationReport?.profile_framework ?? null;
+    const missingClassLabels = validationReport?.missing_classes
+        .map((classNumber) => validationReport.class_coverage.find((item) => item.class === classNumber)?.label ?? `${classNumber}`)
+        .filter((label): label is string => Boolean(label));
+    const previewCodes = (codes: string[]) => {
+        if (codes.length === 0) {
+            return t('Nenhuma');
+        }
+
+        const preview = codes.slice(0, 4).join(', ');
+        return codes.length > 4 ? `${preview}…` : preview;
+    };
 
     const [expanded, setExpanded] = useState<number[]>([]);
     const [search, setSearch] = useState('');
@@ -148,12 +189,74 @@ export default function PgcImportIndex() {
                 </Card>
             )}
 
+            {(issues.length > 0 || warnings.length > 0) && (
+                <Card className="mb-6 border-slate-200 bg-slate-50/50">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-sm text-slate-900 flex items-center gap-2">
+                            <AlertTriangle className="h-4 w-4 text-slate-600" />
+                            {t('Como ler esta validação')}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                            {issues.length > 0
+                                ? t('A validação encontrou :count problemas. O número inclui classes em falta, contas oficiais em falta e contas fora do catálogo. Use os cartões abaixo para perceber exactamente o que precisa de ser corrigido.', { count: issues.length })
+                                : t('A estrutura está válida, mas existem avisos de acompanhamento que devem ser revistos antes do fecho.')
+                            }
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                            <ValidationSummaryCard
+                                tone={issues.length > 0 ? 'red' : 'green'}
+                                label={t('Problemas totais')}
+                                value={issues.length}
+                                helper={issues.length > 0 ? t('Regras de validação falhadas') : t('Nenhum erro estrutural')}
+                            />
+                            <ValidationSummaryCard
+                                tone={validationReport.missing_classes.length > 0 ? 'amber' : 'green'}
+                                label={t('Classes em falta')}
+                                value={validationReport.missing_classes.length}
+                                helper={validationReport.missing_classes.length > 0
+                                    ? `${missingClassLabels.slice(0, 2).join(', ')}${missingClassLabels.length > 2 ? '…' : ''}`
+                                    : t('Todas as classes obrigatórias estão presentes')}
+                            />
+                            <ValidationSummaryCard
+                                tone={validationReport.missing_codes.length > 0 ? 'amber' : 'green'}
+                                label={t('Contas oficiais em falta')}
+                                value={validationReport.missing_codes.length}
+                                helper={validationReport.missing_codes.length > 0 ? previewCodes(validationReport.missing_codes) : t('Catálogo importado completo')}
+                            />
+                            <ValidationSummaryCard
+                                tone={validationReport.extra_codes.length > 0 ? 'amber' : 'green'}
+                                label={t('Contas fora do catálogo')}
+                                value={validationReport.extra_codes.length}
+                                helper={validationReport.extra_codes.length > 0 ? previewCodes(validationReport.extra_codes) : t('Sem desvios adicionais')}
+                            />
+                        </div>
+                        {warnings.length > 0 && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                                <p className="text-sm font-medium text-amber-900">{t('Avisos de contexto')}</p>
+                                <ul className="mt-2 space-y-1 text-sm text-amber-800">
+                                    {warnings.slice(0, 3).map((warning) => (
+                                        <li key={warning}>• {warning}</li>
+                                    ))}
+                                </ul>
+                                {warnings.length > 3 && (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        {t('Mostrando apenas os 3 primeiros avisos.')}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Validation issues */}
             {issues.length > 0 && (
                 <Card className="mb-6 border-red-200 bg-red-50/30">
                     <CardHeader className="py-3">
                         <CardTitle className="text-sm text-red-700 flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4" /> {t('Problemas de Validação')}
+                            <AlertTriangle className="h-4 w-4" /> {t('Problemas de validação detalhados')}
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">

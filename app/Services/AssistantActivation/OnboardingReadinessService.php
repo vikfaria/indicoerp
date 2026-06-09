@@ -1859,7 +1859,7 @@ class OnboardingReadinessService
         )));
 
         if ($missingItems === []) {
-            return __('Tax mapping is missing or incomplete.');
+            return __('Tax mapping is missing or incomplete. Open System > Settings > Mozambique Tax Mapping to review the fiscal account links.');
         }
 
         $labels = array_map(function (string $item): string {
@@ -1873,7 +1873,7 @@ class OnboardingReadinessService
             };
         }, $missingItems);
 
-        return __('Tax mapping is missing or incomplete. Missing fields: :fields.', [
+        return __('Tax mapping is missing or incomplete. Missing fields: :fields. Open System > Settings > Mozambique Tax Mapping to complete them.', [
             'fields' => implode(', ', $labels),
         ]);
     }

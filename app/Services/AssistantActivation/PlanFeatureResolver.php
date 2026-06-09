@@ -1287,7 +1287,7 @@ class PlanFeatureResolver
             'fiscal_profile' => 'Perfil fiscal',
             'accounting_period' => 'Período contabilístico',
             'document_series' => 'Séries documentais',
-            'tax_profile' => 'Perfil fiscal de impostos',
+            'tax_profile' => 'Mapeamento fiscal',
             'chart_of_accounts' => 'Plano de contas',
             'payroll_calendar' => 'Calendário salarial',
             'payroll_contributions' => 'Contribuições da folha',

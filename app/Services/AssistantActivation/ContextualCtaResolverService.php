@@ -44,10 +44,10 @@ class ContextualCtaResolverService
         ],
         'tax_profile' => [
             'action' => 'complete_configuration',
-            'label' => 'Rever perfil fiscal',
-            'route' => 'sce.fiscal.index',
+            'label' => 'Configurar mapeamento fiscal',
+            'route' => 'account.mozambique-tax-account-mappings.index',
             'anchor' => null,
-            'message' => 'Revise o regime fiscal e as retenções aplicáveis.',
+            'message' => 'Abra Sistema > Configurações > Mapeamento Fiscal e associe as contas fiscais em falta.',
             'tone' => 'default',
         ],
         'customer_masterdata' => [
@@ -886,10 +886,10 @@ class ContextualCtaResolverService
                 'message' => 'Abra o período contabilístico para permitir a emissão fiscal.',
             ],
             'tax_profile', 'missing_mapping' => [
-                'label' => 'Rever mapa de IVA',
-                'route' => 'sce.tax.vat-map',
+                'label' => 'Configurar mapeamento fiscal',
+                'route' => 'account.mozambique-tax-account-mappings.index',
                 'anchor' => null,
-                'message' => 'Revise o mapa de IVA e as contas fiscais associadas.',
+                'message' => 'Complete o mapeamento fiscal na configuração do sistema e associe as contas em falta.',
             ],
             'calendar_routes', 'missing_calendar_routes' => [
                 'label' => 'Abrir calendário fiscal',
