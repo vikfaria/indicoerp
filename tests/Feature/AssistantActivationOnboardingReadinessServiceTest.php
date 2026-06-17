@@ -106,14 +106,14 @@ class AssistantActivationOnboardingReadinessServiceTest extends TestCase
         );
 
         $this->assertSame('blocked', $report['summary']['readiness_state']);
-        $this->assertSame(16.67, $report['summary']['module_component_score']);
+        $this->assertSame(73.33, $report['summary']['module_component_score']);
         $this->assertSame(100.0, $report['summary']['critical_config_score']);
-        $this->assertSame(41.67, $report['summary']['overall_score']);
+        $this->assertSame(81.33, $report['summary']['overall_score']);
         $this->assertSame(4, $report['summary']['applicable_modules_total']);
         $this->assertSame(21, $report['summary']['applicable_config_checks_total']);
-        $this->assertSame(19, $report['summary']['critical_blocks_total']);
+        $this->assertSame(6, $report['summary']['critical_blocks_total']);
         $this->assertSame(0, $report['summary']['config_blocks_total']);
-        $this->assertSame(19, $report['summary']['step_blocks_total']);
+        $this->assertSame(6, $report['summary']['step_blocks_total']);
 
         $checks = collect($report['critical_config_keys'])->keyBy('key');
         $this->assertTrue($checks['company_profile']['satisfied']);
@@ -132,6 +132,32 @@ class AssistantActivationOnboardingReadinessServiceTest extends TestCase
         $this->assertContains('hr', $checks['payroll_contributions']['owner_modules']);
         $this->assertSame([], $report['critical_blocks'][0]['owner_modules'] ?? []);
         $this->assertSame('step_incomplete', $report['critical_blocks'][0]['type']);
+    }
+
+    public function test_it_clears_config_driven_billing_pending_steps_when_live_configuration_is_already_valid(): void
+    {
+        $plan = $this->createPlan();
+        $company = $this->makeCompany($plan);
+
+        $this->prepareCompanySettings($company);
+        $this->prepareFiscalSetup($company);
+
+        $report = app(OnboardingReadinessService::class)->calculateForCompany(
+            $company,
+            ['Account', 'ProductService', 'DoubleEntry', 'Hrm'],
+            'Professional Plan'
+        );
+
+        $billingModule = collect($report['progress']['modules'])->firstWhere('key', 'billing');
+        $criticalBlocks = collect($report['critical_blocks']);
+
+        $this->assertNotNull($billingModule);
+        $this->assertSame(50.0, $billingModule['progress_percent']);
+        $this->assertFalse($criticalBlocks->contains(fn (array $block): bool => $block['key'] === 'billing.configure_fiscal_profile'));
+        $this->assertFalse($criticalBlocks->contains(fn (array $block): bool => $block['key'] === 'billing.configure_document_series'));
+        $this->assertFalse($criticalBlocks->contains(fn (array $block): bool => $block['key'] === 'billing.open_accounting_period'));
+        $this->assertTrue($criticalBlocks->contains(fn (array $block): bool => $block['type'] === 'config_missing' && $block['key'] === 'customer_masterdata'));
+        $this->assertTrue($criticalBlocks->contains(fn (array $block): bool => $block['type'] === 'config_missing' && $block['key'] === 'product_masterdata'));
     }
 
     public function test_it_reports_missing_tax_mapping_fields_when_vat_accounts_are_not_configured(): void

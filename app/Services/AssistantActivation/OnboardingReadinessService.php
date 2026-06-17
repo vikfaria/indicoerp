@@ -38,6 +38,30 @@ class OnboardingReadinessService
 
     private const CASH_ACCOUNT_TYPES = ['cash', 'petty_cash', 'cashbox', 'caixa', 'caixa_menor'];
 
+    private const CONFIG_DRIVEN_STEP_KEYS = [
+        'billing.configure_fiscal_profile',
+        'billing.configure_document_series',
+        'billing.open_accounting_period',
+        'billing.create_customer_masterdata',
+        'billing.create_product_masterdata',
+        'accounting.configure_chart_of_accounts',
+        'accounting.record_opening_balances',
+        'accounting.open_period',
+        'accounting.configure_journal_templates',
+        'hr.create_employee_masterdata',
+        'hr.configure_contract_templates',
+        'hr.configure_attendance_policy',
+        'hr.configure_leave_policy',
+        'hr.configure_payroll_calendar',
+        'treasury.create_bank_accounts',
+        'treasury.configure_payment_methods',
+        'treasury.configure_reconciliation_rules',
+        'inventory.create_warehouse',
+        'inventory.load_initial_stock',
+        'inventory.verify_fifo_layers',
+        'pos.run_test_sale',
+    ];
+
     public function __construct(
         private readonly OnboardingStepRegistry $onboardingStepRegistry,
         private readonly OnboardingProgressService $onboardingProgressService,
@@ -122,64 +146,13 @@ class OnboardingReadinessService
         $planModules = $this->normalizeList($planModules ?? (array) data_get($progress, 'meta.plan_modules', []));
         $planLabel = $planLabel ?? (string) data_get($progress, 'meta.plan_label');
 
-        $progressModules = collect((array) data_get($progress, 'modules', []))->keyBy('key');
         $moduleWeights = collect($this->readinessScoreService->moduleWeights())->keyBy('key');
-        $configWeights = collect($this->readinessScoreService->criticalConfigWeights())->keyBy('key');
-        $ownershipMap = $this->buildConfigOwnershipMap();
-
-        $moduleReports = [];
-        $applicableModuleWeightTotal = 0.0;
-        $moduleWeightedScoreTotal = 0.0;
-        $applicableModulesTotal = 0;
-        $outOfScopeModulesTotal = 0;
-
-        foreach ($this->onboardingStepRegistry->modules() as $module) {
-            $progressModule = $progressModules->get($module['key']);
-            $weight = (float) ($moduleWeights->get($module['key'], ['weight' => 0])['weight'] ?? 0);
-            $availableStepCount = (int) ($progressModule['available_step_count'] ?? 0);
-            $available = (bool) ($progressModule['available'] ?? false) && $availableStepCount > 0;
-            $progressPercent = $available ? (float) ($progressModule['progress_percent'] ?? 0) : 0.0;
-
-            if ($available) {
-                $applicableModulesTotal++;
-                $applicableModuleWeightTotal += $weight;
-                $moduleWeightedScoreTotal += ($progressPercent * $weight);
-            } else {
-                $outOfScopeModulesTotal++;
-            }
-
-            $moduleReports[] = [
-                'key' => $module['key'],
-                'label' => $module['label'],
-                'weight' => $weight,
-                'available' => $available,
-                'applicable' => $available,
-                'out_of_scope' => ! $available,
-                'score' => $available ? $progressPercent : null,
-                'progress_percent' => $progressPercent,
-                'contribution' => $available ? round($progressPercent * $weight, 2) : 0.0,
-                'step_count' => (int) ($progressModule['step_count'] ?? $module['step_count']),
-                'available_step_count' => $availableStepCount,
-                'unavailable_step_count' => (int) ($progressModule['unavailable_step_count'] ?? 0),
-                'required_step_count' => (int) ($progressModule['required_step_count'] ?? $module['required_step_count']),
-                'required_available_step_count' => (int) ($progressModule['required_available_step_count'] ?? 0),
-                'completed_required_step_count' => (int) ($progressModule['completed_required_step_count'] ?? 0),
-                'completed_step_count' => (int) ($progressModule['completed_step_count'] ?? 0),
-                'partial_step_count' => (int) ($progressModule['partial_step_count'] ?? 0),
-                'pending_step_count' => (int) ($progressModule['pending_step_count'] ?? 0),
-                'blocked_step_count' => (int) ($progressModule['blocked_step_count'] ?? 0),
-                'technical_modules' => $module['technical_modules'],
-            ];
-        }
-
-        $availableModuleKeys = array_values(array_map(
-            static fn (array $module): string => (string) $module['key'],
-            array_values(array_filter($moduleReports, static fn (array $module): bool => (bool) $module['available']))
-        ));
-
-        $moduleComponentScore = $applicableModuleWeightTotal > 0
-            ? round($moduleWeightedScoreTotal / $applicableModuleWeightTotal, 2)
-            : 0.0;
+        $availableModuleKeys = collect((array) data_get($progress, 'modules', []))
+            ->filter(static fn (array $module): bool => (bool) ($module['available'] ?? false))
+            ->map(static fn (array $module): string => (string) ($module['key'] ?? ''))
+            ->filter(static fn (string $moduleKey): bool => $moduleKey !== '')
+            ->values()
+            ->all();
 
         $configReports = [];
         $applicableConfigWeightTotal = 0.0;
@@ -215,6 +188,54 @@ class OnboardingReadinessService
                 'contribution' => $applicable && $evaluation['satisfied'] ? $weight : 0.0,
             ]);
         }
+
+        $progress = $this->applyConfigDrivenProgress($progress, $configReports);
+
+        $moduleReports = [];
+        $applicableModuleWeightTotal = 0.0;
+        $moduleWeightedScoreTotal = 0.0;
+        $outOfScopeModulesTotal = 0;
+
+        foreach ((array) data_get($progress, 'modules', []) as $module) {
+            $weight = (float) ($moduleWeights->get($module['key'], ['weight' => 0])['weight'] ?? 0);
+            $availableStepCount = (int) ($module['available_step_count'] ?? 0);
+            $available = (bool) ($module['available'] ?? false) && $availableStepCount > 0;
+            $progressPercent = $available ? (float) ($module['progress_percent'] ?? 0) : 0.0;
+
+            if ($available) {
+                $applicableModuleWeightTotal += $weight;
+                $moduleWeightedScoreTotal += ($progressPercent * $weight);
+            } else {
+                $outOfScopeModulesTotal++;
+            }
+
+            $moduleReports[] = [
+                'key' => (string) ($module['key'] ?? ''),
+                'label' => (string) ($module['label'] ?? $module['key'] ?? ''),
+                'weight' => $weight,
+                'available' => $available,
+                'applicable' => $available,
+                'out_of_scope' => ! $available,
+                'score' => $available ? $progressPercent : null,
+                'progress_percent' => $progressPercent,
+                'contribution' => $available ? round($progressPercent * $weight, 2) : 0.0,
+                'step_count' => (int) ($module['step_count'] ?? 0),
+                'available_step_count' => $availableStepCount,
+                'unavailable_step_count' => (int) ($module['unavailable_step_count'] ?? 0),
+                'required_step_count' => (int) ($module['required_step_count'] ?? 0),
+                'required_available_step_count' => (int) ($module['required_available_step_count'] ?? 0),
+                'completed_required_step_count' => (int) ($module['completed_required_step_count'] ?? 0),
+                'completed_step_count' => (int) ($module['completed_step_count'] ?? 0),
+                'partial_step_count' => (int) ($module['partial_step_count'] ?? 0),
+                'pending_step_count' => (int) ($module['pending_step_count'] ?? 0),
+                'blocked_step_count' => (int) ($module['blocked_step_count'] ?? 0),
+                'technical_modules' => (array) ($module['technical_modules'] ?? []),
+            ];
+        }
+
+        $moduleComponentScore = $applicableModuleWeightTotal > 0
+            ? round($moduleWeightedScoreTotal / $applicableModuleWeightTotal, 2)
+            : 0.0;
 
         $criticalConfigScore = $applicableConfigWeightTotal > 0
             ? round(($configWeightedScoreTotal / $applicableConfigWeightTotal) * 100, 2)
@@ -283,7 +304,7 @@ class OnboardingReadinessService
                 'ready_threshold' => $readyThreshold,
                 'warning_threshold' => $warningThreshold,
                 'blocked_threshold' => $blockedThreshold,
-                'applicable_modules_total' => count(array_filter($moduleReports, fn (array $module): bool => $module['available'])),
+                'applicable_modules_total' => (int) data_get($progress, 'summary.available_modules_total', 0),
                 'out_of_scope_modules_total' => $outOfScopeModulesTotal,
                 'applicable_module_weight_total' => round($applicableModuleWeightTotal, 2),
                 'applicable_config_checks_total' => $applicableConfigChecksTotal,
@@ -304,6 +325,240 @@ class OnboardingReadinessService
         ];
     }
 
+    private function applyConfigDrivenProgress(array $progress, array $configReports): array
+    {
+        $configByKey = collect($configReports)->keyBy('key');
+        $modules = array_map(function (array $module) use ($configByKey): array {
+            $steps = array_map(function (array $step) use ($configByKey): array {
+                $runtimeResolution = $this->deriveConfigDrivenStepResolution($step, $configByKey);
+                $step['runtime_resolution'] = $runtimeResolution;
+
+                if (! ($runtimeResolution['supported'] ?? false)) {
+                    return $step;
+                }
+
+                $currentProgress = (float) ($step['progress_percent'] ?? 0);
+                $currentState = (string) ($step['state'] ?? 'pending');
+
+                if (in_array($currentState, ['completed', 'skipped', 'not_applicable', 'blocked'], true)) {
+                    return $step;
+                }
+
+                $runtimeProgress = (float) ($runtimeResolution['progress_percent'] ?? 0);
+                if ($runtimeProgress <= $currentProgress) {
+                    return $step;
+                }
+
+                $step['progress_percent'] = $runtimeProgress;
+                $step['state'] = (string) ($runtimeResolution['state'] ?? $currentState);
+                $step['state_label'] = $this->labelizeStepState((string) ($step['state'] ?? 'pending'));
+                $step['resolved'] = $runtimeProgress >= 100.0;
+
+                return $step;
+            }, (array) ($module['steps'] ?? []));
+
+            return array_merge($module, $this->summarizeModuleProgress($steps), [
+                'steps' => $steps,
+            ]);
+        }, (array) data_get($progress, 'modules', []));
+
+        $progress['modules'] = $modules;
+        $progress['summary'] = $this->summarizeProgress($modules);
+        data_set($progress, 'meta.runtime_resolution_applied', true);
+
+        return $progress;
+    }
+
+    private function summarizeModuleProgress(array $steps): array
+    {
+        $availableSteps = collect($steps)->filter(static fn (array $step): bool => (bool) ($step['available'] ?? false))->values();
+        $requiredAvailableSteps = $availableSteps->filter(static fn (array $step): bool => (bool) ($step['required'] ?? false))->values();
+
+        $availableStepCount = $availableSteps->count();
+        $progressPercent = $availableStepCount > 0
+            ? round((float) $availableSteps->avg(static fn (array $step): float => (float) ($step['progress_percent'] ?? 0)), 2)
+            : 100.0;
+
+        return [
+            'available' => $availableStepCount > 0,
+            'available_step_count' => $availableStepCount,
+            'unavailable_step_count' => collect($steps)->where('available', false)->count(),
+            'required_available_step_count' => $requiredAvailableSteps->count(),
+            'completed_required_step_count' => $requiredAvailableSteps
+                ->filter(static fn (array $step): bool => (float) ($step['progress_percent'] ?? 0) >= 100.0)
+                ->count(),
+            'completed_step_count' => $availableSteps
+                ->filter(static fn (array $step): bool => (float) ($step['progress_percent'] ?? 0) >= 100.0)
+                ->count(),
+            'partial_step_count' => $availableSteps
+                ->filter(static fn (array $step): bool => (float) ($step['progress_percent'] ?? 0) > 0.0 && (float) ($step['progress_percent'] ?? 0) < 100.0)
+                ->count(),
+            'pending_step_count' => $availableSteps
+                ->filter(static fn (array $step): bool => (float) ($step['progress_percent'] ?? 0) === 0.0)
+                ->count(),
+            'blocked_step_count' => $availableSteps
+                ->filter(static fn (array $step): bool => (string) ($step['state'] ?? 'pending') === 'blocked')
+                ->count(),
+            'progress_percent' => $progressPercent,
+        ];
+    }
+
+    private function summarizeProgress(array $modules): array
+    {
+        $summary = [
+            'modules_total' => count($modules),
+            'available_modules_total' => 0,
+            'unavailable_modules_total' => 0,
+            'steps_total' => 0,
+            'available_steps_total' => 0,
+            'unavailable_steps_total' => 0,
+            'completed_steps_total' => 0,
+            'skipped_steps_total' => 0,
+            'blocked_steps_total' => 0,
+            'pending_steps_total' => 0,
+            'in_progress_steps_total' => 0,
+            'not_applicable_steps_total' => 0,
+            'partial_steps_total' => 0,
+            'resolved_steps_total' => 0,
+            'required_steps_total' => 0,
+            'completed_required_steps_total' => 0,
+            'progress_percent' => 0.0,
+        ];
+
+        $availableProgressTotal = 0.0;
+
+        foreach ($modules as $module) {
+            $steps = (array) ($module['steps'] ?? []);
+            $summary['steps_total'] += count($steps);
+            $summary['required_steps_total'] += (int) ($module['required_step_count'] ?? 0);
+            $summary['completed_required_steps_total'] += (int) ($module['completed_required_step_count'] ?? 0);
+
+            if ((bool) ($module['available'] ?? false)) {
+                $summary['available_modules_total']++;
+            } else {
+                $summary['unavailable_modules_total']++;
+            }
+
+            foreach ($steps as $step) {
+                if (! (bool) ($step['available'] ?? false)) {
+                    $summary['unavailable_steps_total']++;
+                    continue;
+                }
+
+                $summary['available_steps_total']++;
+                $progressPercent = (float) ($step['progress_percent'] ?? 0);
+                $availableProgressTotal += $progressPercent;
+
+                if ($progressPercent >= 100.0) {
+                    $summary['completed_steps_total']++;
+                    $summary['resolved_steps_total']++;
+                } elseif ($progressPercent > 0.0) {
+                    $summary['partial_steps_total']++;
+                } else {
+                    $summary['pending_steps_total']++;
+                }
+
+                match ((string) ($step['state'] ?? 'pending')) {
+                    'skipped' => $summary['skipped_steps_total']++,
+                    'blocked' => $summary['blocked_steps_total']++,
+                    'in_progress' => $summary['in_progress_steps_total']++,
+                    'not_applicable' => $summary['not_applicable_steps_total']++,
+                    default => null,
+                };
+            }
+        }
+
+        $summary['progress_percent'] = $summary['available_steps_total'] > 0
+            ? round($availableProgressTotal / $summary['available_steps_total'], 2)
+            : 100.0;
+
+        return $summary;
+    }
+
+    private function deriveConfigDrivenStepResolution(array $step, \Illuminate\Support\Collection $configByKey): array
+    {
+        if (! $this->supportsConfigDrivenStep($step)) {
+            return [
+                'supported' => false,
+                'resolved' => false,
+                'progress_percent' => 0.0,
+                'state' => 'pending',
+                'satisfied_config_keys' => [],
+                'pending_config_keys' => [],
+            ];
+        }
+
+        $configKeys = array_values(array_unique(array_filter(array_map(
+            static fn ($value): string => trim((string) $value),
+            (array) ($step['config_keys'] ?? [])
+        ))));
+
+        $checks = collect($configKeys)
+            ->map(function (string $configKey) use ($configByKey): ?array {
+                $check = $configByKey->get($configKey);
+                if (! is_array($check)) {
+                    return null;
+                }
+
+                return [
+                    'key' => $configKey,
+                    'label' => (string) ($check['label'] ?? $configKey),
+                    'satisfied' => (bool) ($check['satisfied'] ?? false),
+                    'reason' => (string) ($check['reason'] ?? 'unknown'),
+                ];
+            })
+            ->filter()
+            ->values();
+
+        if ($checks->count() !== count($configKeys) || $checks->isEmpty()) {
+            return [
+                'supported' => false,
+                'resolved' => false,
+                'progress_percent' => 0.0,
+                'state' => 'pending',
+                'satisfied_config_keys' => [],
+                'pending_config_keys' => [],
+            ];
+        }
+
+        $satisfiedChecks = $checks->where('satisfied', true)->values();
+        $pendingChecks = $checks->where('satisfied', false)->values();
+        $progressPercent = round(($satisfiedChecks->count() / $checks->count()) * 100, 2);
+
+        return [
+            'supported' => true,
+            'resolved' => $pendingChecks->isEmpty(),
+            'progress_percent' => $progressPercent,
+            'state' => $pendingChecks->isEmpty()
+                ? 'completed'
+                : ($satisfiedChecks->isNotEmpty() ? 'in_progress' : 'pending'),
+            'satisfied_config_keys' => $satisfiedChecks->all(),
+            'pending_config_keys' => $pendingChecks->all(),
+        ];
+    }
+
+    private function supportsConfigDrivenStep(array $step): bool
+    {
+        $stepKey = trim((string) ($step['key'] ?? ''));
+        if ($stepKey === '' || ! in_array($stepKey, self::CONFIG_DRIVEN_STEP_KEYS, true)) {
+            return false;
+        }
+
+        return array_values(array_filter((array) ($step['config_keys'] ?? []))) !== [];
+    }
+
+    private function labelizeStepState(string $state): string
+    {
+        return match ($state) {
+            'in_progress' => 'Em progresso',
+            'completed' => 'Concluído',
+            'skipped' => 'Ignorado',
+            'blocked' => 'Bloqueado',
+            'not_applicable' => 'Não aplicável',
+            default => 'Pendente',
+        };
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
@@ -318,6 +573,10 @@ class OnboardingReadinessService
 
             foreach ((array) ($module['steps'] ?? []) as $step) {
                 if (! (bool) ($step['available'] ?? false) || ! (bool) ($step['required'] ?? false)) {
+                    continue;
+                }
+
+                if (($step['runtime_resolution']['supported'] ?? false) === true) {
                     continue;
                 }
 
