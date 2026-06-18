@@ -191,6 +191,10 @@ class User extends Authenticatable implements MustVerifyEmail
             $this->syncRoles([$companyRole]);
         }
 
+        $this->unsetRelation('roles');
+        $this->unsetRelation('permissions');
+        $this->load('roles.permissions');
+
         app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
 
         return $companyRole;
@@ -280,6 +284,23 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'manage-stock',
             'create-stock',
+            'manage-bank-accounts',
+            'manage-any-bank-accounts',
+            'manage-own-bank-accounts',
+            'view-bank-accounts',
+            'create-bank-accounts',
+            'edit-bank-accounts',
+            'delete-bank-accounts',
+            'manage-bank-transactions',
+            'reconcile-bank-transactions',
+            'manage-bank-transfers',
+            'manage-any-bank-transfers',
+            'manage-own-bank-transfers',
+            'view-bank-transfers',
+            'create-bank-transfers',
+            'edit-bank-transfers',
+            'delete-bank-transfers',
+            'process-bank-transfers',
         ];
     }
 

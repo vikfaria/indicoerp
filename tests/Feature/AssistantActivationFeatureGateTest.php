@@ -68,6 +68,21 @@ class AssistantActivationFeatureGateTest extends TestCase
         $response->assertJsonPath('feature_gate.config.missing.0', 'warehouses');
     }
 
+    public function test_warehouse_route_is_available_with_product_service_without_a_fake_warehouse_module(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, [
+            'manage-warehouses',
+            'manage-any-warehouses',
+        ]);
+
+        $response = $this->actingAs($company)
+            ->get(route('warehouses.index'));
+
+        $response->assertOk();
+        $response->assertSessionMissing('feature_gate');
+    }
+
     private function makeCompany(): User
     {
         $company = User::forceCreate([

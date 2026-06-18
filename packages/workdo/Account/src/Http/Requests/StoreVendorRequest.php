@@ -12,6 +12,19 @@ class StoreVendorRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $userId = $this->input('user_id');
+
+        if ($userId === '' || $userId === '0' || $userId === 0) {
+            $userId = null;
+        }
+
+        $this->merge([
+            'user_id' => $userId,
+        ]);
+    }
+
     public function rules()
     {
         return [

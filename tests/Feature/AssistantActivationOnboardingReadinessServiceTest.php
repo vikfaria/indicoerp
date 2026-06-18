@@ -194,7 +194,7 @@ class AssistantActivationOnboardingReadinessServiceTest extends TestCase
 
         $report = app(OnboardingReadinessService::class)->calculateForCompany(
             $company,
-            ['Account', 'ProductService', 'DoubleEntry', 'Hrm', 'warehouses', 'Pos'],
+            ['Account', 'ProductService', 'DoubleEntry', 'Hrm', 'Pos'],
             'Inventory Plan'
         );
 
@@ -298,7 +298,7 @@ class AssistantActivationOnboardingReadinessServiceTest extends TestCase
             'name' => 'Inventory Plan',
             'status' => true,
             'free_plan' => false,
-            'modules' => ['Account', 'ProductService', 'DoubleEntry', 'Hrm', 'warehouses', 'Pos'],
+            'modules' => ['Account', 'ProductService', 'DoubleEntry', 'Hrm', 'Pos'],
             'package_price_yearly' => 960,
             'package_price_monthly' => 99,
             'storage_limit' => 51200,

@@ -19,6 +19,13 @@ use Workdo\Account\Events\DestroyVendor;
 
 class VendorController extends Controller
 {
+    /**
+     * Cache the vendor table column availability to avoid repeated schema lookups.
+     *
+     * @var array<string, bool>
+     */
+    private static array $vendorColumnCache = [];
+
     public function index()
     {
         if(Auth::user()->can('manage-vendors')){
@@ -62,33 +69,7 @@ class VendorController extends Controller
             $validated = $request->validated();
 
             $vendor = new Vendor();
-            $vendor->user_id = $validated['user_id'] ?? null;
-            $vendor->company_name = $validated['company_name'];
-            $vendor->contact_person_name = $validated['contact_person_name'];
-            $vendor->contact_person_email = $validated['contact_person_email'] ?? null;
-            $vendor->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
-            $vendor->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
-            $vendor->fiscal_residency_status = $validated['fiscal_residency_status'] ?? 'resident';
-            $vendor->vendor_type = $validated['vendor_type'] ?? null;
-            $vendor->fiscal_country = $validated['fiscal_country'] ?? null;
-            $vendor->vat_regime = $validated['vat_regime'] ?? null;
-            $vendor->supply_type = $validated['supply_type'] ?? null;
-            $vendor->payment_currency_code = isset($validated['payment_currency_code'])
-                ? strtoupper((string) $validated['payment_currency_code'])
-                : null;
-            $vendor->foreign_tax_number = $validated['foreign_tax_number'] ?? null;
-            $vendor->withholding_tax_applicable = (bool) ($validated['withholding_tax_applicable'] ?? false);
-            $vendor->reverse_charge_applicable = (bool) ($validated['reverse_charge_applicable'] ?? false);
-            $vendor->adt_eligible = (bool) ($validated['adt_eligible'] ?? false);
-            $vendor->adt_country = $validated['adt_country'] ?? null;
-            $vendor->compliance_documents = $validated['compliance_documents'] ?? null;
-            $vendor->payment_terms = $validated['payment_terms'] ?? null;
-            $vendor->billing_address = $validated['billing_address'];
-            $vendor->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
-            $vendor->same_as_billing = $validated['same_as_billing'] ?? false;
-            $vendor->notes = $validated['notes'] ?? null;
-            $vendor->creator_id = Auth::id();
-            $vendor->created_by = creatorId();
+            $this->syncVendorAttributes($vendor, $validated, true);
             $vendor->save();
 
             CreateVendor::dispatch($request, $vendor);
@@ -112,30 +93,7 @@ class VendorController extends Controller
                 ? $this->buildFiscalAuditSnapshot($vendor, $validated)
                 : null;
 
-            $vendor->company_name = $validated['company_name'];
-            $vendor->contact_person_name = $validated['contact_person_name'];
-            $vendor->contact_person_email = $validated['contact_person_email'] ?? null;
-            $vendor->contact_person_mobile = $validated['contact_person_mobile'] ?? null;
-            $vendor->tax_number = MozambiqueTaxNumber::normalize($validated['tax_number'] ?? null);
-            $vendor->fiscal_residency_status = $validated['fiscal_residency_status'] ?? $vendor->fiscal_residency_status ?? 'resident';
-            $vendor->vendor_type = $validated['vendor_type'] ?? $vendor->vendor_type;
-            $vendor->fiscal_country = $validated['fiscal_country'] ?? $vendor->fiscal_country;
-            $vendor->vat_regime = $validated['vat_regime'] ?? $vendor->vat_regime;
-            $vendor->supply_type = $validated['supply_type'] ?? $vendor->supply_type;
-            $vendor->payment_currency_code = isset($validated['payment_currency_code'])
-                ? strtoupper((string) $validated['payment_currency_code'])
-                : $vendor->payment_currency_code;
-            $vendor->foreign_tax_number = $validated['foreign_tax_number'] ?? $vendor->foreign_tax_number;
-            $vendor->withholding_tax_applicable = (bool) ($validated['withholding_tax_applicable'] ?? $vendor->withholding_tax_applicable);
-            $vendor->reverse_charge_applicable = (bool) ($validated['reverse_charge_applicable'] ?? $vendor->reverse_charge_applicable);
-            $vendor->adt_eligible = (bool) ($validated['adt_eligible'] ?? $vendor->adt_eligible);
-            $vendor->adt_country = $validated['adt_country'] ?? $vendor->adt_country;
-            $vendor->compliance_documents = $validated['compliance_documents'] ?? $vendor->compliance_documents;
-            $vendor->payment_terms = $validated['payment_terms'] ?? null;
-            $vendor->billing_address = $validated['billing_address'];
-            $vendor->shipping_address = $validated['same_as_billing'] ? $validated['billing_address'] : $validated['shipping_address'];
-            $vendor->same_as_billing = $validated['same_as_billing'] ?? false;
-            $vendor->notes = $validated['notes'] ?? null;
+            $this->syncVendorAttributes($vendor, $validated, false);
 
             if ($hasFiscalHistory && $vendor->fiscal_identity_locked_at === null) {
                 $vendor->fiscal_identity_locked_at = now();
@@ -311,5 +269,97 @@ class VendorController extends Controller
                 'fields' => array_keys(array_diff_assoc($newValues, $oldValues)),
             ],
         ]);
+    }
+
+    private function syncVendorAttributes(Vendor $vendor, array $validated, bool $isCreate): void
+    {
+        $sameAsBilling = (bool) data_get($validated, 'same_as_billing', false);
+        $billingAddress = data_get($validated, 'billing_address', []);
+        $shippingAddress = $sameAsBilling
+            ? $billingAddress
+            : (data_get($validated, 'shipping_address') ?: $billingAddress);
+        $paymentCurrencyCode = $this->resolveVendorPaymentCurrencyCode($validated, $vendor, $isCreate);
+
+        $this->setVendorAttributeIfColumnExists($vendor, 'user_id', $this->normalizeNullableInteger(data_get($validated, 'user_id')));
+        $this->setVendorAttributeIfColumnExists($vendor, 'company_name', data_get($validated, 'company_name'));
+        $this->setVendorAttributeIfColumnExists($vendor, 'contact_person_name', data_get($validated, 'contact_person_name'));
+        $this->setVendorAttributeIfColumnExists($vendor, 'contact_person_email', data_get($validated, 'contact_person_email'));
+        $this->setVendorAttributeIfColumnExists($vendor, 'contact_person_mobile', data_get($validated, 'contact_person_mobile'));
+        $this->setVendorAttributeIfColumnExists($vendor, 'tax_number', MozambiqueTaxNumber::normalize(data_get($validated, 'tax_number')));
+        $this->setVendorAttributeIfColumnExists(
+            $vendor,
+            'fiscal_residency_status',
+            data_get($validated, 'fiscal_residency_status', $isCreate ? 'resident' : ($vendor->fiscal_residency_status ?? 'resident'))
+        );
+        $this->setVendorAttributeIfColumnExists($vendor, 'vendor_type', data_get($validated, 'vendor_type', $vendor->vendor_type ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'fiscal_country', data_get($validated, 'fiscal_country', $vendor->fiscal_country ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'vat_regime', data_get($validated, 'vat_regime', $vendor->vat_regime ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'supply_type', data_get($validated, 'supply_type', $vendor->supply_type ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'payment_currency_code', $paymentCurrencyCode);
+        $this->setVendorAttributeIfColumnExists($vendor, 'foreign_tax_number', data_get($validated, 'foreign_tax_number', $vendor->foreign_tax_number ?? null));
+        $this->setVendorAttributeIfColumnExists(
+            $vendor,
+            'withholding_tax_applicable',
+            (bool) data_get($validated, 'withholding_tax_applicable', $vendor->withholding_tax_applicable ?? false)
+        );
+        $this->setVendorAttributeIfColumnExists(
+            $vendor,
+            'reverse_charge_applicable',
+            (bool) data_get($validated, 'reverse_charge_applicable', $vendor->reverse_charge_applicable ?? false)
+        );
+        $this->setVendorAttributeIfColumnExists($vendor, 'adt_eligible', (bool) data_get($validated, 'adt_eligible', $vendor->adt_eligible ?? false));
+        $this->setVendorAttributeIfColumnExists($vendor, 'adt_country', data_get($validated, 'adt_country', $vendor->adt_country ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'compliance_documents', data_get($validated, 'compliance_documents', $vendor->compliance_documents ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'payment_terms', data_get($validated, 'payment_terms', $vendor->payment_terms ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'billing_address', $billingAddress);
+        $this->setVendorAttributeIfColumnExists($vendor, 'shipping_address', $shippingAddress);
+        $this->setVendorAttributeIfColumnExists($vendor, 'same_as_billing', $sameAsBilling);
+        $this->setVendorAttributeIfColumnExists($vendor, 'notes', data_get($validated, 'notes', $vendor->notes ?? null));
+
+        if ($isCreate) {
+            $this->setVendorAttributeIfColumnExists($vendor, 'creator_id', Auth::id());
+            $this->setVendorAttributeIfColumnExists($vendor, 'created_by', creatorId());
+            $this->setVendorAttributeIfColumnExists($vendor, 'is_active', true);
+        }
+
+        $this->setVendorAttributeIfColumnExists($vendor, 'primary_email', data_get($validated, 'contact_person_email', $vendor->contact_person_email ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'primary_mobile', data_get($validated, 'contact_person_mobile', $vendor->contact_person_mobile ?? null));
+        $this->setVendorAttributeIfColumnExists($vendor, 'currency_code', $paymentCurrencyCode ?? 'MZN');
+    }
+
+    private function resolveVendorPaymentCurrencyCode(array $validated, Vendor $vendor, bool $isCreate): ?string
+    {
+        if (array_key_exists('payment_currency_code', $validated) && $validated['payment_currency_code'] !== null && $validated['payment_currency_code'] !== '') {
+            return strtoupper((string) $validated['payment_currency_code']);
+        }
+
+        return $isCreate
+            ? null
+            : ($vendor->payment_currency_code ?? $vendor->currency_code ?? null);
+    }
+
+    private function normalizeNullableInteger(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+
+        return is_numeric($value) ? (int) $value : null;
+    }
+
+    private function setVendorAttributeIfColumnExists(Vendor $vendor, string $column, mixed $value): void
+    {
+        if ($this->vendorColumnExists($column)) {
+            $vendor->setAttribute($column, $value);
+        }
+    }
+
+    private function vendorColumnExists(string $column): bool
+    {
+        if (!array_key_exists($column, self::$vendorColumnCache)) {
+            self::$vendorColumnCache[$column] = Schema::hasColumn('vendors', $column);
+        }
+
+        return self::$vendorColumnCache[$column];
     }
 }

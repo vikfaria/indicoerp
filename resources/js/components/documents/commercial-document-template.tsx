@@ -8,6 +8,9 @@ export const COMMERCIAL_DOCUMENT_CONTAINER_CLASS = 'commercial-document-pdf-root
 export const buildCommercialDocumentPdfOptions = (filename: string) => ({
     margin: 0,
     filename,
+    fitToPage: true,
+    fitToPageMarginMm: 4,
+    fitToPageMinScale: 0.55,
     image: { type: 'jpeg' as const, quality: 0.98 },
     html2canvas: {
         scale: 2,
@@ -314,7 +317,7 @@ export function CommercialDocumentTemplate({
             <style>{`
                 @page {
                     size: A4;
-                    margin: 10mm;
+                    margin: 6mm;
                 }
 
                 body {
@@ -327,7 +330,7 @@ export function CommercialDocumentTemplate({
                     width: 210mm;
                     min-height: 297mm;
                     margin: 0 auto;
-                    padding: 11mm;
+                    padding: 8mm;
                     box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
                 }
 
@@ -373,12 +376,12 @@ export function CommercialDocumentTemplate({
 
             <header className="relative grid gap-10 md:grid-cols-[1.04fr_0.96fr]">
                 <div>
-                    <div className="mb-3 min-h-[54px]">
+                    <div className="mb-2 min-h-[46px]">
                         {logoPath ? (
                             <img
                                 src={getImagePath(logoPath)}
                                 alt={String(issuer.name || 'Logo')}
-                                className="max-h-[54px] max-w-[230px] object-contain"
+                                className="max-h-[46px] max-w-[220px] object-contain"
                             />
                         ) : (
                             <div className="text-2xl font-black uppercase leading-none">{issuer.name || 'Empresa'}</div>
@@ -390,15 +393,15 @@ export function CommercialDocumentTemplate({
 
                 <div>
                     {recipient && (
-                        <div className="min-h-[42mm] border-2 border-slate-950 px-4 py-3">
+                        <div className="min-h-[34mm] border-2 border-slate-950 px-3 py-2.5">
                             <CompactParty party={recipient} fallbackTitle="Para:" boxed />
                         </div>
                     )}
                 </div>
             </header>
 
-            <section className="mt-4 grid items-end gap-4 md:grid-cols-[1fr_auto_1fr]">
-                <div className="border-t-2 border-slate-950 pt-2">
+            <section className="mt-3 grid items-end gap-3 md:grid-cols-[1fr_auto_1fr]">
+                <div className="border-t-2 border-slate-950 pt-1.5">
                     <div className="text-[15px] font-black">{documentLabel}-{title}</div>
                     {subtitle && <div className="mt-0.5 text-[10.5px] font-semibold text-slate-700">{subtitle}</div>}
                 </div>
@@ -407,7 +410,7 @@ export function CommercialDocumentTemplate({
             </section>
 
             {statusPills.length > 0 && (
-                <section className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border border-slate-950 px-2 py-1 text-[10px] font-semibold">
+                <section className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border border-slate-950 px-2 py-1 text-[9.5px] font-semibold">
                     {statusPills.map((pill, index) => (
                         <span key={index}>
                             <span className="font-black">Estado:</span> {pill.label}
@@ -420,38 +423,38 @@ export function CommercialDocumentTemplate({
                 <DocumentMetaGrid meta={meta} />
             </div>
 
-            <section className="mt-5 min-h-[142mm] overflow-hidden border-2 border-slate-950">
-                <table className="commercial-lines-table w-full border-collapse text-[11px]">
+            <section className="mt-4 min-h-[124mm] overflow-hidden border-2 border-slate-950">
+                <table className="commercial-lines-table w-full border-collapse text-[10px]">
                     <thead>
                         <tr className="border-b-2 border-slate-950 bg-white">
-                            <th className="w-[12%] px-1.5 py-1.5 text-left font-black">Referência</th>
-                            <th className="w-[28%] px-1.5 py-1.5 text-left font-black">Designação</th>
-                            <th className="w-[6%] px-1.5 py-1.5 text-center font-black">Unid.</th>
-                            <th className="w-[7%] px-1.5 py-1.5 text-right font-black">Quant.</th>
-                            <th className="w-[10%] px-1.5 py-1.5 text-right font-black">Preço</th>
-                            <th className="w-[8%] px-1.5 py-1.5 text-right font-black">Descontos</th>
-                            <th className="w-[10%] px-1.5 py-1.5 text-right font-black">Pr. Líquido</th>
-                            <th className="w-[8%] px-1.5 py-1.5 text-right font-black">IVA</th>
-                            <th className="w-[11%] px-1.5 py-1.5 text-right font-black">Total</th>
+                            <th className="w-[12%] px-1 py-1 text-left font-black">Referência</th>
+                            <th className="w-[28%] px-1 py-1 text-left font-black">Designação</th>
+                            <th className="w-[6%] px-1 py-1 text-center font-black">Unid.</th>
+                            <th className="w-[7%] px-1 py-1 text-right font-black">Quant.</th>
+                            <th className="w-[10%] px-1 py-1 text-right font-black">Preço</th>
+                            <th className="w-[8%] px-1 py-1 text-right font-black">Desc.</th>
+                            <th className="w-[10%] px-1 py-1 text-right font-black">Pr. Líquido</th>
+                            <th className="w-[8%] px-1 py-1 text-right font-black">IVA</th>
+                            <th className="w-[11%] px-1 py-1 text-right font-black">Total</th>
                         </tr>
                     </thead>
                     <tbody>
                         {lines.length > 0 ? lines.map((line, index) => (
                             <tr key={index} className="commercial-page-break-avoid align-top">
-                                <td className="px-1.5 py-1.5 font-mono text-[10px] text-slate-800">{line.reference || '-'}</td>
-                                <td className="px-1.5 py-1.5">
-                                    <div className="font-semibold text-slate-950">{line.description}</div>
+                                <td className="px-1 py-1 font-mono text-[9px] text-slate-800">{line.reference || '-'}</td>
+                                <td className="px-1 py-1">
+                                    <div className="text-[9.5px] font-semibold leading-tight text-slate-950">{line.description}</div>
                                 </td>
-                                <td className="px-1.5 py-1.5 text-center">{line.unit || 'UN'}</td>
-                                <td className="px-1.5 py-1.5 text-right tabular-nums">{line.quantity || '-'}</td>
-                                <td className="px-1.5 py-1.5 text-right tabular-nums">{line.unitPrice || '-'}</td>
-                                <td className="px-1.5 py-1.5 text-right tabular-nums">{line.discount || '-'}</td>
-                                <td className="px-1.5 py-1.5 text-right tabular-nums">{line.netPrice || '-'}</td>
-                                <td className="px-1.5 py-1.5 text-right">
+                                <td className="px-1 py-1 text-center text-[9.5px]">{line.unit || 'UN'}</td>
+                                <td className="px-1 py-1 text-right tabular-nums">{line.quantity || '-'}</td>
+                                <td className="px-1 py-1 text-right tabular-nums">{line.unitPrice || '-'}</td>
+                                <td className="px-1 py-1 text-right tabular-nums">{line.discount || '-'}</td>
+                                <td className="px-1 py-1 text-right tabular-nums">{line.netPrice || '-'}</td>
+                                <td className="px-1 py-1 text-right">
                                     <div className="tabular-nums">{line.tax || '0%'}</div>
                                     {line.taxAmount && <div className="text-[10px] text-slate-500">{line.taxAmount}</div>}
                                 </td>
-                                <td className="px-1.5 py-1.5 text-right font-bold tabular-nums">{line.total || '-'}</td>
+                                <td className="px-1 py-1 text-right font-bold tabular-nums">{line.total || '-'}</td>
                             </tr>
                         )) : (
                             <tr>
@@ -462,16 +465,16 @@ export function CommercialDocumentTemplate({
                 </table>
             </section>
 
-            <section className="commercial-page-break-avoid mt-5 grid gap-7 md:grid-cols-[1fr_330px]">
+            <section className="commercial-page-break-avoid mt-4 grid gap-5 md:grid-cols-[1fr_330px]">
                 <div className="space-y-4">
-                    <div className="min-h-[92px] border-2 border-slate-950 px-3 py-2 text-[11px] leading-5">
+                    <div className="min-h-[80px] border-2 border-slate-950 px-3 py-2 text-[10px] leading-[1.35]">
                         <div className="mb-1 font-black">Observações / Condições</div>
                         <div className="whitespace-pre-line text-slate-800">{observations || 'Sem observações adicionais.'}</div>
                         {legalNotice && <div className="mt-2 border border-slate-950 px-2 py-1 font-semibold text-slate-950">{legalNotice}</div>}
                     </div>
 
                     {bankDetails.length > 0 && (
-                        <div className="border border-slate-950 px-3 py-2 text-[10.5px]">
+                        <div className="border border-slate-950 px-3 py-2 text-[9.5px]">
                             <div className="mb-1 font-black">Dados bancários</div>
                             <div className="grid grid-cols-2 gap-2">
                                 {bankDetails.filter((item) => !empty(item.value)).map((item, index) => (
@@ -484,17 +487,17 @@ export function CommercialDocumentTemplate({
                     )}
                 </div>
 
-                <div className="grid grid-cols-[1fr_118px] border-2 border-slate-950 text-[13px]">
+                <div className="grid grid-cols-[1fr_112px] border-2 border-slate-950 text-[12px]">
                     <div className="border-r-2 border-slate-950 py-2">
                         {totals.map((row, index) => (
-                            <div key={index} className={`px-3 text-right ${row.emphasis ? 'text-lg font-black' : 'font-black'}`}>
+                            <div key={index} className={`px-3 text-right ${row.emphasis ? 'text-base font-black' : 'font-black'}`}>
                                 {row.label}:
                             </div>
                         ))}
                     </div>
                     <div className="py-2">
                         {totals.map((row, index) => (
-                            <div key={index} className={`px-3 text-right tabular-nums ${row.emphasis ? 'text-lg font-black' : 'font-bold'}`}>
+                            <div key={index} className={`px-3 text-right tabular-nums ${row.emphasis ? 'text-base font-black' : 'font-bold'}`}>
                                 {row.value}
                             </div>
                         ))}
@@ -502,7 +505,7 @@ export function CommercialDocumentTemplate({
                 </div>
             </section>
 
-            <footer className="commercial-page-break-avoid mt-6 border-t-2 border-slate-950 pt-2 text-[9.5px] leading-5 text-slate-700">
+            <footer className="commercial-page-break-avoid mt-4 border-t-2 border-slate-950 pt-1.5 text-[8.5px] leading-4 text-slate-700">
                 <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                     <div>
                         <span className="font-bold">{footerNote}</span>

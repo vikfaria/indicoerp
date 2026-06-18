@@ -43,7 +43,7 @@ class AssistantActivationOnboardingStepRegistryTest extends TestCase
 
         $this->assertNotNull($inventory);
         $this->assertSame(3, $inventory['step_count']);
-        $this->assertContains('warehouses', $inventory['technical_modules']);
+        $this->assertContains('ProductService', $inventory['technical_modules']);
 
         $this->assertNotNull($pos);
         $this->assertSame(1, $pos['step_count']);
@@ -81,7 +81,7 @@ class AssistantActivationOnboardingStepRegistryTest extends TestCase
 
         $freePlanReport = $service->buildPlanReport(['Taskly', 'Account', 'Hrm', 'DoubleEntry'], 'Free Plan');
         $professionalPlanReport = $service->buildPlanReport(['Taskly', 'Account', 'Hrm', 'DoubleEntry', 'ProductService'], 'Professional Plan');
-        $inventoryPlanReport = $service->buildPlanReport(['Taskly', 'Account', 'Hrm', 'DoubleEntry', 'ProductService', 'warehouses', 'Pos'], 'Inventory Plan');
+        $inventoryPlanReport = $service->buildPlanReport(['Taskly', 'Account', 'Hrm', 'DoubleEntry', 'ProductService', 'Pos'], 'Inventory Plan');
 
         $this->assertSame('Free Plan', $freePlanReport['meta']['plan_label']);
         $this->assertSame(['Taskly', 'Account', 'Hrm', 'DoubleEntry'], $freePlanReport['meta']['plan_modules']);

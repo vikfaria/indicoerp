@@ -34,6 +34,10 @@ class PlanLimitGate
             return $next($request);
         }
 
+        if (method_exists($user, 'ensureCompanyAccessRole')) {
+            $user->ensureCompanyAccessRole();
+        }
+
         $limitKey = trim($limitKey);
         if ($limitKey === '' || ! $this->shouldEnforceForCurrentRoute($request)) {
             return $next($request);

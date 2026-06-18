@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Workdo\Account\Models\BankAccount;
@@ -115,6 +116,40 @@ class AccountReportsPermissionHardeningTest extends TestCase
         $allowedResponse->assertOk();
         $allowedResponse->assertJsonCount(1);
         $allowedResponse->assertJsonPath('0.account_name', 'Conta Bancária');
+    }
+
+    public function test_bank_accounts_index_self_heals_company_access_permissions_before_rendering(): void
+    {
+        $company = $this->makeCompany();
+
+        foreach ([
+            'manage-bank-accounts',
+            'manage-any-bank-accounts',
+            'manage-own-bank-accounts',
+        ] as $permissionName) {
+            Permission::firstOrCreate(
+                ['name' => $permissionName, 'guard_name' => 'web'],
+                [
+                    'add_on' => 'general',
+                    'module' => 'tests',
+                    'label' => $permissionName,
+                ]
+            );
+        }
+
+        $response = $this->actingAs($company)->get(route('account.bank-accounts.index'), $this->inertiaHeaders());
+
+        $response->assertOk();
+        $response->assertHeader('X-Inertia', 'true');
+        $response->assertJsonPath('component', 'Account/BankAccounts/Index');
+
+        $companyRole = Role::query()
+            ->where('name', 'company')
+            ->where('created_by', $company->id)
+            ->firstOrFail();
+
+        $this->assertTrue($companyRole->hasPermissionTo('manage-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-any-bank-accounts'));
     }
 
     private function inertiaHeaders(): array

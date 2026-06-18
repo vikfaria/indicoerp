@@ -17,11 +17,11 @@ class AssistantActivationModuleFeatureBridgeTest extends TestCase
 
         $this->assertSame('2026-06-06', $report['meta']['catalog_version']);
         $this->assertSame(31, $report['summary']['modules_total']);
-        $this->assertSame(6, $report['summary']['modules_with_feature_links_total']);
+        $this->assertSame(5, $report['summary']['modules_with_feature_links_total']);
         $this->assertSame(22, $report['summary']['features_total']);
         $this->assertSame(22, $report['summary']['features_with_module_links_total']);
-        $this->assertSame(29, $report['summary']['links_total']);
-        $this->assertSame(6, $report['summary']['linked_module_keys_total']);
+        $this->assertSame(27, $report['summary']['links_total']);
+        $this->assertSame(5, $report['summary']['linked_module_keys_total']);
         $this->assertSame(22, $report['summary']['linked_feature_keys_total']);
 
         $account = collect($report['modules'])->firstWhere('key', 'account');
@@ -39,7 +39,9 @@ class AssistantActivationModuleFeatureBridgeTest extends TestCase
         $this->assertNotNull($productService);
         $this->assertContains('billing.invoice.create', $productService['feature_keys']);
         $this->assertContains('billing.product.manage', $productService['feature_keys']);
+        $this->assertContains('inventory.warehouse.manage', $productService['feature_keys']);
         $this->assertContains('inventory.stock.manage', $productService['feature_keys']);
+        $this->assertContains('inventory.pos.manage', $productService['feature_keys']);
 
         $this->assertNotNull($doubleEntry);
         $this->assertContains('accounting.double_entry.post', $doubleEntry['feature_keys']);
@@ -49,8 +51,7 @@ class AssistantActivationModuleFeatureBridgeTest extends TestCase
         $this->assertSame([], $taskly['feature_keys']);
 
         $this->assertNotNull($warehouses);
-        $this->assertContains('inventory.warehouse.manage', $warehouses['feature_keys']);
-        $this->assertContains('inventory.pos.manage', $warehouses['feature_keys']);
+        $this->assertSame([], $warehouses['feature_keys']);
 
         $this->assertNotNull($pos);
         $this->assertContains('inventory.pos.manage', $pos['feature_keys']);
@@ -63,9 +64,9 @@ class AssistantActivationModuleFeatureBridgeTest extends TestCase
         $this->assertSame(['account', 'product_service'], $billingInvoiceCreate['module_keys']);
 
         $this->assertNotNull($inventoryWarehouseManage);
-        $this->assertSame(['warehouses'], $inventoryWarehouseManage['module_keys']);
+        $this->assertSame(['product_service'], $inventoryWarehouseManage['module_keys']);
 
         $this->assertNotNull($inventoryPosManage);
-        $this->assertSame(['pos', 'product_service', 'warehouses'], $inventoryPosManage['module_keys']);
+        $this->assertSame(['pos', 'product_service'], $inventoryPosManage['module_keys']);
     }
 }

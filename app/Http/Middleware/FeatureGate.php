@@ -30,6 +30,10 @@ class FeatureGate
             return $next($request);
         }
 
+        if (method_exists($user, 'ensureCompanyAccessRole')) {
+            $user->ensureCompanyAccessRole();
+        }
+
         $featureKey = trim($featureKey);
         if ($featureKey === '') {
             return $next($request);

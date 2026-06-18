@@ -388,7 +388,7 @@ return [
         'inventory' => [
             'label' => 'Inventário',
             'priority' => 5,
-            'technical_modules' => ['warehouses', 'ProductService'],
+            'technical_modules' => ['ProductService'],
             'required_permissions' => [
                 'manage-warehouses',
                 'manage-stock',
@@ -407,7 +407,7 @@ return [
                     'description' => 'Registar o primeiro armazém para suportar stock e POS.',
                     'order' => 10,
                     'required' => true,
-                    'module_refs' => ['warehouses'],
+                    'module_refs' => ['ProductService'],
                     'permissions' => ['manage-warehouses', 'create-warehouses'],
                     'config_keys' => ['warehouses'],
                     'evidence' => 'Armazém activo e pronto para stock.',
@@ -419,7 +419,7 @@ return [
                     'description' => 'Criar o stock inicial com o custo base para gerar as layers FIFO.',
                     'order' => 20,
                     'required' => true,
-                    'module_refs' => ['ProductService', 'warehouses'],
+                    'module_refs' => ['ProductService'],
                     'permissions' => ['manage-stock', 'create-stock'],
                     'config_keys' => ['initial_stock'],
                     'evidence' => 'Stock inicial carregado no armazém.',
@@ -431,7 +431,7 @@ return [
                     'description' => 'Confirmar que as layers FIFO existem e acompanham o stock activo.',
                     'order' => 30,
                     'required' => true,
-                    'module_refs' => ['ProductService', 'warehouses'],
+                    'module_refs' => ['ProductService'],
                     'permissions' => ['manage-stock'],
                     'config_keys' => ['fifo_layers'],
                     'evidence' => 'Layers FIFO disponíveis para o stock carregado.',
@@ -441,7 +441,7 @@ return [
         'pos' => [
             'label' => 'POS',
             'priority' => 6,
-            'technical_modules' => ['Pos', 'ProductService', 'warehouses'],
+            'technical_modules' => ['Pos', 'ProductService'],
             'required_permissions' => [
                 'manage-pos',
                 'manage-pos-orders',
@@ -458,7 +458,7 @@ return [
                     'description' => 'Abrir o POS e registar uma venda de validação com stock disponível.',
                     'order' => 10,
                     'required' => true,
-                    'module_refs' => ['Pos', 'ProductService', 'warehouses'],
+                    'module_refs' => ['Pos', 'ProductService'],
                     'permissions' => ['create-pos'],
                     'config_keys' => ['pos_registers'],
                     'evidence' => 'Venda POS de teste emitida com sucesso.',

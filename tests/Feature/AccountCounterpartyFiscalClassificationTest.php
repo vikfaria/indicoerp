@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Workdo\Account\Models\Vendor;
 
 class AccountCounterpartyFiscalClassificationTest extends TestCase
 {
@@ -116,6 +117,41 @@ class AccountCounterpartyFiscalClassificationTest extends TestCase
             'foreign_tax_number',
             'compliance_documents',
         ]);
+    }
+
+    public function test_vendor_store_accepts_optional_user_placeholder_and_defaults_shipping_to_billing(): void
+    {
+        $company = $this->makeCompany();
+        $this->grantPermissions($company, ['create-vendors']);
+
+        $response = $this->from(route('account.vendors.index'))
+            ->actingAs($company)
+            ->post(route('account.vendors.store'), [
+                'user_id' => '0',
+                'company_name' => 'Fornecedor Sem Utilizador',
+                'contact_person_name' => 'Financeiro',
+                'contact_person_email' => 'vendor@teste.com',
+                'tax_number' => '400123456',
+                'fiscal_residency_status' => 'resident',
+                'vendor_type' => 'service_provider',
+                'fiscal_country' => 'Mozambique',
+                'supply_type' => 'services',
+                'payment_currency_code' => 'MZN',
+                'billing_address' => $this->mozambiqueAddress('Fornecedor Sem Utilizador'),
+            ]);
+
+        $response->assertRedirect(route('account.vendors.index'));
+        $response->assertSessionHasNoErrors();
+
+        $vendor = Vendor::query()
+            ->where('company_name', 'Fornecedor Sem Utilizador')
+            ->where('created_by', $company->id)
+            ->firstOrFail();
+
+        $this->assertNull($vendor->user_id);
+        $this->assertSame($vendor->billing_address, $vendor->shipping_address);
+        $this->assertSame('vendor@teste.com', $vendor->primary_email);
+        $this->assertSame('MZN', $vendor->currency_code);
     }
 
     private function makeCompany(): User

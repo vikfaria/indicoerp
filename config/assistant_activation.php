@@ -165,7 +165,7 @@ return [
         'inventory' => [
             'label' => 'Inventário',
             'priority' => 5,
-            'recommended_modules' => ['warehouses', 'ProductService', 'Pos'],
+            'recommended_modules' => ['ProductService', 'Pos'],
             'required_permissions' => [
                 'manage-warehouses',
                 'create-warehouses',

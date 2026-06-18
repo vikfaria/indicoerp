@@ -10,6 +10,14 @@ class Vendor extends Model
 {
     use HasFactory;
 
+    protected $appends = [
+        'name',
+        'primary_email',
+        'primary_mobile',
+        'currency_code',
+        'is_active',
+    ];
+
     protected $fillable = [
         'user_id',
         'vendor_code',
@@ -60,6 +68,37 @@ class Vendor extends Model
             'compliance_documents' => 'array',
             'fiscal_identity_locked_at' => 'datetime',
         ];
+    }
+
+    public function getNameAttribute(mixed $value): ?string
+    {
+        return $value ?: $this->company_name;
+    }
+
+    public function getPrimaryEmailAttribute(mixed $value): ?string
+    {
+        return $value ?: $this->contact_person_email;
+    }
+
+    public function getPrimaryMobileAttribute(mixed $value): ?string
+    {
+        return $value ?: $this->contact_person_mobile;
+    }
+
+    public function getCurrencyCodeAttribute(mixed $value): string
+    {
+        $currencyCode = $value ?: $this->payment_currency_code;
+
+        return strtoupper((string) ($currencyCode ?: 'MZN'));
+    }
+
+    public function getIsActiveAttribute(mixed $value): bool
+    {
+        if ($value !== null) {
+            return (bool) $value;
+        }
+
+        return true;
     }
 
     public function user()

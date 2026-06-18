@@ -21,7 +21,7 @@ class AssistantActivationFeatureCatalogTest extends TestCase
         $this->assertCount(22, $features);
         $this->assertSame(22, $report['summary']['features_total']);
         $this->assertSame(5, $report['summary']['domains_total']);
-        $this->assertSame(6, $report['summary']['modules_total']);
+        $this->assertSame(5, $report['summary']['modules_total']);
         $this->assertGreaterThan(0, $report['summary']['permissions_total']);
         $this->assertSame(10, $report['summary']['config_keys_total']);
 
@@ -43,7 +43,7 @@ class AssistantActivationFeatureCatalogTest extends TestCase
         $this->assertContains('Inventário', $inventoryStockManage['menu_groups']);
 
         $this->assertNotNull($inventoryWarehouseManage);
-        $this->assertContains('warehouses', $inventoryWarehouseManage['modules']);
+        $this->assertContains('ProductService', $inventoryWarehouseManage['modules']);
         $this->assertContains('warehouses', $inventoryWarehouseManage['route_prefixes']);
 
         $this->assertNotNull($inventoryPosManage);
@@ -63,7 +63,7 @@ class AssistantActivationFeatureCatalogTest extends TestCase
 
         $this->assertNotNull($inventoryDomain);
         $this->assertSame(4, $inventoryDomain['features_total']);
-        $this->assertContains('warehouses', $inventoryDomain['modules']);
+        $this->assertContains('ProductService', $inventoryDomain['modules']);
         $this->assertContains('Pos', $inventoryDomain['modules']);
         $this->assertContains('manage-stock', array_merge(
             $inventoryStockManage['permissions_all'],

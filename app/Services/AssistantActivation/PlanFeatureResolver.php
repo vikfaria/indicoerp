@@ -383,11 +383,28 @@ class PlanFeatureResolver
                 continue;
             }
 
-            $exists = $moduleHelper->has($module);
-            $enabled = $exists && $moduleHelper->isEnabled($module);
-            $active = in_array($module, $activeModules, true);
             $featureKeys = $this->moduleFeatureBridgeService->featureKeysForModuleReference($module);
             $catalogModuleKeys = $this->moduleFeatureBridgeService->moduleKeysForReference($module);
+            $isCoreCatalogModule = false;
+
+            foreach ($catalogModuleKeys as $catalogModuleKey) {
+                $catalogModule = $this->moduleCatalogService->find($catalogModuleKey);
+
+                if (($catalogModule['type'] ?? null) === 'core') {
+                    $isCoreCatalogModule = true;
+                    break;
+                }
+            }
+
+            if ($isCoreCatalogModule) {
+                $exists = true;
+                $enabled = true;
+                $active = true;
+            } else {
+                $exists = $moduleHelper->has($module);
+                $enabled = $exists && $moduleHelper->isEnabled($module);
+                $active = in_array($module, $activeModules, true);
+            }
 
             if ($active) {
                 $state = 'active';

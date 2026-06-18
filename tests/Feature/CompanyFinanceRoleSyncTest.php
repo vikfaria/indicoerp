@@ -230,6 +230,23 @@ class CompanyFinanceRoleSyncTest extends TestCase
             'manage-dashboard',
             'manage-stock',
             'create-stock',
+            'manage-bank-accounts',
+            'manage-any-bank-accounts',
+            'manage-own-bank-accounts',
+            'view-bank-accounts',
+            'create-bank-accounts',
+            'edit-bank-accounts',
+            'delete-bank-accounts',
+            'manage-bank-transactions',
+            'reconcile-bank-transactions',
+            'manage-bank-transfers',
+            'manage-any-bank-transfers',
+            'manage-own-bank-transfers',
+            'view-bank-transfers',
+            'create-bank-transfers',
+            'edit-bank-transfers',
+            'delete-bank-transfers',
+            'process-bank-transfers',
         ]);
 
         $superadmin = User::forceCreate([
@@ -288,6 +305,16 @@ class CompanyFinanceRoleSyncTest extends TestCase
         $this->assertTrue($companyRole->hasPermissionTo('manage-dashboard'));
         $this->assertTrue($companyRole->hasPermissionTo('manage-stock'));
         $this->assertTrue($companyRole->hasPermissionTo('create-stock'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-any-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-own-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('create-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('edit-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('delete-bank-accounts'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-bank-transactions'));
+        $this->assertTrue($companyRole->hasPermissionTo('reconcile-bank-transactions'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-bank-transfers'));
+        $this->assertTrue($companyRole->hasPermissionTo('process-bank-transfers'));
     }
 
     /**

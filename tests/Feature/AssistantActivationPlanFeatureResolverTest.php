@@ -279,7 +279,7 @@ class AssistantActivationPlanFeatureResolverTest extends TestCase
             'name' => 'Inventory Plan',
             'status' => true,
             'free_plan' => false,
-            'modules' => ['warehouses', 'ProductService', 'Pos'],
+            'modules' => ['ProductService', 'Pos'],
             'package_price_yearly' => 960,
             'package_price_monthly' => 99,
             'storage_limit' => 51200,
@@ -288,7 +288,6 @@ class AssistantActivationPlanFeatureResolverTest extends TestCase
             'number_of_users' => 100,
         ]);
 
-        $this->enableModule('warehouses');
         $this->enableModule('ProductService');
         $this->enableModule('Pos');
 
@@ -306,12 +305,15 @@ class AssistantActivationPlanFeatureResolverTest extends TestCase
             'create-pos',
         ]);
 
-        $this->activateModuleForCompany($company, 'warehouses');
         $this->activateModuleForCompany($company, 'ProductService');
         $this->activateModuleForCompany($company, 'Pos');
 
         $cacheService = app(AssistantActivationCacheService::class);
         $resolver = app(PlanFeatureResolver::class);
+
+        $warehouseFeature = $resolver->resolve('inventory.warehouse.manage', $company);
+        $this->assertSame('active', $warehouseFeature['state']);
+        $this->assertSame([], $warehouseFeature['missing_modules']);
 
         $stockFeatureKey1 = $cacheService->featureCacheKey('inventory.stock.manage', $company);
         $stockFeatureLocked = $resolver->resolve('inventory.stock.manage', $company);
