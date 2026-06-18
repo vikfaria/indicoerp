@@ -224,6 +224,72 @@ class CompanyFinanceRoleSyncTest extends TestCase
         $this->assertTrue($financeComplianceSupervisor->hasPermissionTo('view-tax-summary'));
     }
 
+    public function test_company_access_role_backfills_missing_permissions_from_the_template_role(): void
+    {
+        $this->provisionPermissions([
+            'manage-dashboard',
+            'manage-stock',
+            'create-stock',
+        ]);
+
+        $superadmin = User::forceCreate([
+            'name' => 'Super Admin',
+            'email' => 'superadmin@example.com',
+            'password' => 'password',
+            'type' => 'superadmin',
+            'email_verified_at' => now(),
+        ]);
+
+        $templateRole = Role::firstOrCreate(
+            [
+                'name' => 'company',
+                'guard_name' => 'web',
+                'created_by' => $superadmin->id,
+            ],
+            [
+                'label' => 'Company',
+                'editable' => false,
+            ]
+        );
+
+        $templateRole->syncPermissions(['manage-dashboard', 'manage-stock']);
+
+        $company = User::forceCreate([
+            'name' => 'Company User',
+            'email' => 'company@example.com',
+            'password' => 'password',
+            'type' => 'company',
+            'email_verified_at' => now(),
+            'active_plan' => 1,
+            'plan_expire_date' => now()->addMonth(),
+        ]);
+
+        $companyRole = Role::firstOrCreate(
+            [
+                'name' => 'company',
+                'guard_name' => 'web',
+                'created_by' => $company->id,
+            ],
+            [
+                'label' => 'Company',
+                'editable' => false,
+            ]
+        );
+
+        $companyRole->syncPermissions(['manage-dashboard']);
+        $company->syncRoles([$companyRole]);
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $company->ensureCompanyAccessRole();
+
+        $companyRole->refresh();
+
+        $this->assertTrue($companyRole->hasPermissionTo('manage-dashboard'));
+        $this->assertTrue($companyRole->hasPermissionTo('manage-stock'));
+        $this->assertTrue($companyRole->hasPermissionTo('create-stock'));
+    }
+
     /**
      * @param array<int, string> $permissionNames
      */

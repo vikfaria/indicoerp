@@ -296,6 +296,7 @@ class PermissionRoleSeeder extends Seeder
                     'manage-users', 'manage-any-users', 'manage-own-users', 'create-users', 'edit-users', 'delete-users', 'change-password-users', 'toggle-status-users', 'impersonate-users', 'view-login-history',
                     'manage-roles', 'view-roles', 'create-roles', 'edit-roles', 'delete-roles',
                     'manage-warehouses', 'manage-any-warehouses', 'manage-own-warehouses', 'create-warehouses', 'edit-warehouses', 'delete-warehouses',
+                    'manage-stock', 'create-stock',
                     'manage-transfers', 'manage-any-transfers', 'manage-own-transfers', 'create-transfers', 'edit-transfers', 'delete-transfers',
 
 

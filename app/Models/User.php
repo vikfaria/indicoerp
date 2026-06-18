@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Support\Collection;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -184,36 +185,7 @@ class User extends Authenticatable implements MustVerifyEmail
             ]
         );
 
-        if ($companyRole->permissions()->count() === 0) {
-            $templateRole = null;
-            $templateAdmin = static::firstSuperAdmin();
-
-            if ($templateAdmin) {
-                $templateRole = Role::where('name', 'company')
-                    ->where('guard_name', 'web')
-                    ->where('created_by', $templateAdmin->id)
-                    ->first();
-            }
-
-            if ($templateRole && $templateRole->permissions()->count() > 0) {
-                $companyRole->syncPermissions($templateRole->permissions);
-                app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
-            } else {
-                $fallbackPermissions = ModelsPermission::whereIn('name', [
-                    'manage-dashboard',
-                    'manage-plans',
-                    'view-plans',
-                    'manage-profile',
-                    'edit-profile',
-                    'change-password-profile',
-                ])->get();
-
-                if ($fallbackPermissions->isNotEmpty()) {
-                    $companyRole->syncPermissions($fallbackPermissions);
-                    app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
-                }
-            }
-        }
+        $this->syncCompanyAccessRolePermissions($companyRole);
 
         if (!$this->roles()->where('roles.id', $companyRole->id)->exists()) {
             $this->syncRoles([$companyRole]);
@@ -222,6 +194,93 @@ class User extends Authenticatable implements MustVerifyEmail
         app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
 
         return $companyRole;
+    }
+
+    private function syncCompanyAccessRolePermissions(Role $companyRole): void
+    {
+        $desiredPermissions = $this->resolveCompanyAccessRolePermissions();
+
+        if ($desiredPermissions->isEmpty()) {
+            return;
+        }
+
+        $currentPermissionNames = $companyRole->permissions()
+            ->pluck('name')
+            ->all();
+
+        $missingPermissions = $desiredPermissions->filter(
+            fn (ModelsPermission $permission) => !in_array($permission->name, $currentPermissionNames, true)
+        );
+
+        if ($missingPermissions->isEmpty()) {
+            return;
+        }
+
+        $companyRole->givePermissionTo($missingPermissions);
+        app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
+    }
+
+    private function resolveCompanyAccessRolePermissions(): Collection
+    {
+        $desiredPermissions = collect();
+
+        $templateRole = $this->resolveCompanyAccessTemplateRole();
+
+        if ($templateRole) {
+            $desiredPermissions = $templateRole->permissions()->get();
+        } else {
+            $desiredPermissions = ModelsPermission::whereIn('name', $this->companyAccessFallbackPermissionNames())->get();
+        }
+
+        $supplementPermissions = ModelsPermission::whereIn('name', $this->companyAccessSupplementPermissionNames())->get();
+
+        return $desiredPermissions
+            ->merge($supplementPermissions)
+            ->unique('id')
+            ->values();
+    }
+
+    private function resolveCompanyAccessTemplateRole(): ?Role
+    {
+        $templateAdmin = static::firstSuperAdmin();
+
+        if (!$templateAdmin) {
+            return null;
+        }
+
+        return Role::where('name', 'company')
+            ->where('guard_name', 'web')
+            ->where('created_by', $templateAdmin->id)
+            ->first();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function companyAccessFallbackPermissionNames(): array
+    {
+        return [
+            'manage-dashboard',
+            'manage-plans',
+            'view-plans',
+            'manage-profile',
+            'edit-profile',
+            'change-password-profile',
+        ];
+    }
+
+    /**
+     * Permissions that the company role must always inherit, even if the template
+     * role was created before new operational modules were introduced.
+     *
+     * @return array<int, string>
+     */
+    private function companyAccessSupplementPermissionNames(): array
+    {
+        return [
+            'manage-stock',
+            'create-stock',
+        ];
     }
 
     public static function CompanySetting($user_id)
