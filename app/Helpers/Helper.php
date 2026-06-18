@@ -397,6 +397,8 @@ if (!function_exists('assignPlan')) {
                 ]);
             }
 
+            $user->ensureCompanyCoreModules();
+
             if ($modules_array !== []) {
                 $moduleList = implode(',', $modules_array);
                 DefaultData::dispatch($user->id, $moduleList);

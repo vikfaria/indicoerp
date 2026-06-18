@@ -48,9 +48,17 @@ class PlanModuleCheck
             return $next($request);
         }
 
+        if ($user->type === 'company') {
+            try {
+                $user->ensureCompanyCoreModules();
+                $user->ensureCompanyAccessRole();
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
         if ($user->type === 'company' && !$request->session()->get('company_role_checked')) {
             try {
-                $user->ensureCompanyAccessRole();
                 User::MakeRole($user->id);
                 HrmModel::defaultdata($user->id);
                 Artisan::call('account:sync-finance-roles', [

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\UserActiveModule;
 use Spatie\Permission\Models\Permission as ModelsPermission;
 use Illuminate\Database\Eloquent\Builder;
 use Spatie\Permission\Models\Role;
@@ -198,6 +199,61 @@ class User extends Authenticatable implements MustVerifyEmail
         app(AssistantActivationCacheService::class)->touchCompanyVersion((int) $this->id);
 
         return $companyRole;
+    }
+
+    public function ensureCompanyCoreModules(): void
+    {
+        if ($this->type !== 'company') {
+            return;
+        }
+
+        $coreModules = array_values(array_filter(array_map(
+            static fn ($module) => trim((string) $module),
+            static::companyCoreModules()
+        )));
+
+        if ($coreModules === []) {
+            return;
+        }
+
+        $existingModules = UserActiveModule::query()
+            ->where('user_id', $this->id)
+            ->whereIn('module', $coreModules)
+            ->pluck('module')
+            ->all();
+
+        $missingModules = array_values(array_diff($coreModules, $existingModules));
+
+        if ($missingModules === []) {
+            return;
+        }
+
+        foreach ($missingModules as $module) {
+            UserActiveModule::updateOrCreate(
+                [
+                    'user_id' => $this->id,
+                    'module' => $module,
+                ],
+                [
+                    'module' => $module,
+                ]
+            );
+        }
+
+        app(AssistantActivationCacheService::class)->touchUserCompanyVersion($this);
+    }
+
+    /**
+     * Company-level modules that must always remain active for operational access.
+     *
+     * @return array<int, string>
+     */
+    public static function companyCoreModules(): array
+    {
+        return [
+            'Account',
+            'ProductService',
+        ];
     }
 
     private function syncCompanyAccessRolePermissions(Role $companyRole): void

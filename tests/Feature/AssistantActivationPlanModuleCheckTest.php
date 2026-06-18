@@ -3,13 +3,16 @@
 namespace Tests\Feature;
 
 use App\Classes\Module;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\AddOn;
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\UserActiveModule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 class AssistantActivationPlanModuleCheckTest extends TestCase
@@ -54,14 +57,57 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
         $response->assertJsonPath('route', 'account-active');
     }
 
-    public function test_it_blocks_a_known_module_and_uses_the_resolver_payload_when_available(): void
+    public function test_it_keeps_account_available_as_a_core_company_module_even_when_it_is_missing_from_the_plan(): void
     {
         $company = $this->makeCompany(901002, ['Hrm']);
         $this->enableModule('Account');
 
         $response = $this->withSession(['company_role_checked' => true])
             ->actingAs($company)
-            ->postJson('/__tests/plan-module/account-locked');
+            ->postJson('/__tests/plan-module/account-active');
+
+        $response->assertOk();
+        $response->assertJsonPath('ok', true);
+        $response->assertJsonPath('route', 'account-active');
+    }
+
+    public function test_it_allows_bank_accounts_index_even_when_account_is_missing_from_the_plan_and_the_session_was_already_checked(): void
+    {
+        $company = $this->makeCompany(901007, ['Hrm']);
+        $this->enableModule('Account');
+
+        foreach ([
+            'manage-bank-accounts',
+            'manage-any-bank-accounts',
+            'manage-own-bank-accounts',
+        ] as $permissionName) {
+            Permission::firstOrCreate(
+                ['name' => $permissionName, 'guard_name' => 'web'],
+                [
+                    'add_on' => 'general',
+                    'module' => 'tests',
+                    'label' => $permissionName,
+                ]
+            );
+        }
+
+        $response = $this->withSession(['company_role_checked' => true])
+            ->actingAs($company)
+            ->get(route('account.bank-accounts.index'), $this->inertiaHeaders());
+
+        $response->assertOk();
+        $response->assertHeader('X-Inertia', 'true');
+        $response->assertJsonPath('component', 'Account/BankAccounts/Index');
+    }
+
+    public function test_it_blocks_a_known_non_core_module_and_uses_the_resolver_payload_when_available(): void
+    {
+        $company = $this->makeCompany(901003, ['Account']);
+        $this->enableModule('Hrm');
+
+        $response = $this->withSession(['company_role_checked' => true])
+            ->actingAs($company)
+            ->postJson('/__tests/plan-module/hrm-locked');
 
         $response->assertStatus(403);
         $response->assertJsonPath('module_gate.allowed', false);
@@ -148,6 +194,15 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
                 ->name('tests.plan-module.account-locked');
         }
 
+        if (! Route::getRoutes()->getByName('tests.plan-module.hrm-locked')) {
+            Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Hrm'])
+                ->post('/__tests/plan-module/hrm-locked', static fn () => response()->json([
+                    'ok' => true,
+                    'route' => 'hrm-locked',
+                ]))
+                ->name('tests.plan-module.hrm-locked');
+        }
+
         if (! Route::getRoutes()->getByName('tests.plan-module.stripe')) {
             Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Stripe'])
                 ->post('/__tests/plan-module/stripe', static fn () => response()->json([
@@ -156,6 +211,15 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
                 ]))
                 ->name('tests.plan-module.stripe');
         }
+    }
+
+    private function inertiaHeaders(): array
+    {
+        return [
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(Request::create('/')) ?? '',
+        ];
     }
 
     private function makeCompany(int $id, array $planModules = ['Account']): User
