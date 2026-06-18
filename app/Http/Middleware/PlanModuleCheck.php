@@ -6,7 +6,6 @@ use Closure;
 use App\Classes\Module;
 use App\Models\Plan;
 use App\Models\User;
-use App\Models\UserActiveModule;
 use App\Services\AssistantActivation\ContextualCtaResolverService;
 use App\Services\AssistantActivation\PlanContractService;
 use App\Services\AssistantActivation\ModuleCatalogService;
@@ -291,28 +290,7 @@ class PlanModuleCheck
             return array_values((new Module())->allEnabled());
         }
 
-        $companyUserId = $user->type === 'company'
-            ? $user->id
-            : ($user->created_by ?: null);
-
-        if (! $companyUserId) {
-            return [];
-        }
-
-        $moduleHelper = new Module();
-        $availableModules = array_values($moduleHelper->allEnabled());
-        $activeModules = UserActiveModule::query()
-            ->where('user_id', $companyUserId)
-            ->pluck('module')
-            ->map(static fn ($module) => trim((string) $module))
-            ->filter()
-            ->values()
-            ->all();
-
-        return array_values(array_unique(array_merge(
-            User::$superadmin_activated_module,
-            array_values(array_intersect($availableModules, $activeModules))
-        )));
+        return Plan::getUserSubscriptionModules($user->id);
     }
 
     /**
@@ -365,8 +343,8 @@ class PlanModuleCheck
 
         return match ($moduleState) {
             'addon' => __('Módulo disponível no catálogo, mas ainda não activo para esta empresa.'),
-            'hidden' => __('Módulo indisponível para o seu plano actual.'),
-            default => __('Permission denied '),
+            'hidden' => __('A empresa não tem este módulo activo no plano actual ou nos add-ons.'),
+            default => __('A empresa não tem este módulo activo no plano actual ou nos add-ons.'),
         };
     }
 

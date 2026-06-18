@@ -257,9 +257,9 @@ function formatReasonCodeValue(reasonCode: string, t: (key: string) => string): 
         case 'limit_near':
             return t('Near limit');
         case 'addon_required':
-            return t('Add-on required');
+            return t('Add-on não activo');
         case 'module_unavailable':
-            return t('Module unavailable');
+            return t('Módulo não activo no plano');
         default:
             return t('Internal block');
     }
@@ -376,7 +376,7 @@ export default function BlockedContextBanner({ context, className }: BlockedCont
     const kindLabel = data.kind === 'subscription'
         ? t('Bloqueio de subscrição')
         : data.kind === 'module'
-            ? t('Bloqueio de módulo')
+            ? t('Pré-requisito do módulo')
             : data.kind === 'limit'
                 ? t('Bloqueio de limite')
                 : t('Bloqueio contextual');

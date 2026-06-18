@@ -8,6 +8,7 @@ use App\Models\OnboardingStep;
 use App\Models\Plan;
 use App\Models\TenantFeatureOverride;
 use App\Models\User;
+use App\Models\UserActiveModule;
 use App\Services\AssistantActivation\OnboardingSessionService;
 use App\Services\AssistantActivation\OnboardingStepSkipService;
 use App\Services\AssistantActivation\TenantFeatureOverrideService;
@@ -59,6 +60,17 @@ class AssistantActivationCriticalAuditTrailTest extends TestCase
         $this->assertSame($plan->id, $entry->new_values['active_plan']);
         $this->assertSame($plan->number_of_users, $entry->new_values['total_user']);
         $this->assertSame($plan->storage_limit, $entry->new_values['storage_limit']);
+        $this->assertDatabaseHas('user_active_modules', [
+            'user_id' => $company->id,
+            'module' => 'Account',
+        ]);
+        $this->assertEqualsCanonicalizing(
+            $plan->modules,
+            UserActiveModule::query()
+                ->where('user_id', $company->id)
+                ->pluck('module')
+                ->all()
+        );
     }
 
     public function test_it_audits_company_overrides_on_create_update_and_delete(): void

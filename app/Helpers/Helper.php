@@ -7,6 +7,7 @@ use App\Events\DefaultData;
 use App\Events\GivePermissionToRole;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\Plan;
 use App\Models\UserActiveModule;
 use App\Models\UserCoupon;
 use App\Models\AddOn;
@@ -251,29 +252,17 @@ if (!function_exists('ActivatedModule')) {
         $cacheKey = 'user:activated_modules:' . $cacheSuffix . ':module_version:' . app(AssistantActivationCacheService::class)->currentModuleVersion();
 
         $modules = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
-            $activated_module = User::$superadmin_activated_module;
-            $user_active_module = [];
             $moduleService = new Module();
-            $available_modules = array_values($moduleService->allEnabled());
 
             if (!empty($user)) {
                 if ($user->type == 'superadmin') {
-                    $user_active_module = $available_modules;
+                    return array_values($moduleService->allEnabled());
                 } else {
-                    $active_module = [];
-                    $companyUserId = $user->type == 'company' ? $user->id : $user->created_by;
-
-                    if ($companyUserId) {
-                        $active_module = UserActiveModule::where('user_id', $companyUserId)->pluck('module')->toArray();
-                        $user_active_module = array_values(array_intersect($available_modules, $active_module));
-                        $user_active_module = array_values(array_unique(array_merge($activated_module, $user_active_module)));
-                    }
+                    return Plan::getUserSubscriptionModules($user->id);
                 }
             } else {
-                $user_active_module = array_values($moduleService->allEnabledAdmin());
+                return array_values($moduleService->allEnabledAdmin());
             }
-
-            return $user_active_module;
         });
 
         $runtimeCache[$cacheSuffix] = $modules;
@@ -383,42 +372,42 @@ if (!function_exists('assignPlan')) {
             } else {
                 $user->plan_expire_date = null;
             }
-            // Handle modules assignment
-            if ($modules !== null) {
-                $modules_array = explode(',', $modules);
+            // When no explicit module list is supplied, inherit the plan modules.
+            $hasExplicitModules = !($modules === null || (is_string($modules) && trim($modules) === ''));
+
+            if ($hasExplicitModules) {
+                $rawModules = is_array($modules) ? $modules : explode(',', (string) $modules);
+                $modules_array = array_values(array_filter(array_map(
+                    static fn ($module) => trim((string) $module),
+                    $rawModules
+                )));
             } else {
-                $modules_array = is_array($plan->modules) ? $plan->modules : [];
+                $modules_array = array_values(array_filter(array_map(
+                    static fn ($module) => trim((string) $module),
+                    is_array($plan->modules) ? $plan->modules : []
+                )));
             }
-           if(!empty($modules))
-            {
-                UserActiveModule::where('user_id', $user->id)->delete();
 
-                $modules_array = explode(',',$modules);
-                $currentActiveModules = UserActiveModule::where('user_id', $user->id)->pluck('module')->toArray();
-                
-                $user_module = $currentActiveModules;
-                foreach ($modules_array as $module) {
-                    if(!in_array($module,$user_module)){
-                        array_push($user_module,$module);
-                    }
-                }
+            UserActiveModule::where('user_id', $user->id)->delete();
 
-                $newModules = array_diff($user_module, $currentActiveModules);
-                foreach ($newModules as $moduleName) {
-                    UserActiveModule::create([
-                        'user_id' => $user->id,
-                        'module' => $moduleName,
-                    ]);
-                }
-                DefaultData::dispatch($user->id, $modules);
+            foreach ($modules_array as $moduleName) {
+                UserActiveModule::create([
+                    'user_id' => $user->id,
+                    'module' => $moduleName,
+                ]);
+            }
+
+            if ($modules_array !== []) {
+                $moduleList = implode(',', $modules_array);
+                DefaultData::dispatch($user->id, $moduleList);
                 $client_role = Role::where('name', 'client')->where('created_by', $user->id)->first();
                 $staff_role = Role::where('name', 'staff')->where('created_by', $user->id)->first();
 
                 if (!empty($client_role)) {
-                    GivePermissionToRole::dispatch($client_role->id, 'client', $modules);
+                    GivePermissionToRole::dispatch($client_role->id, 'client', $moduleList);
                 }
                 if (!empty($staff_role)) {
-                    GivePermissionToRole::dispatch($staff_role->id, 'staff', $modules);
+                    GivePermissionToRole::dispatch($staff_role->id, 'staff', $moduleList);
                 }
             }
 

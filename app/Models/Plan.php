@@ -70,22 +70,31 @@ class Plan extends Model
             return (new Module())->allEnabled();
         }
 
+        $companyUser = $user->type === 'company'
+            ? $user
+            : ($user->created_by ? User::find($user->created_by) : null);
+
+        if (!$companyUser) {
+            return [];
+        }
+
         $availableModules = [];
 
-        // Get modules from user's active plan
-        if ($user->active_plan) {
-            $plan = self::find($user->active_plan);
+        // Get modules from the tenant company's active plan
+        if ($companyUser->active_plan) {
+            $plan = self::find($companyUser->active_plan);
             if ($plan && $plan->modules) {
                 $availableModules = array_merge($availableModules, $plan->modules);
             }
         }
 
-        // Get user's individually activated modules
-        $userActiveModules = UserActiveModule::where('user_id', $user->id)
+        // Get modules individually activated for the tenant company
+        $userActiveModules = UserActiveModule::where('user_id', $companyUser->id)
             ->pluck('module')
             ->toArray();
 
         $availableModules = array_merge($availableModules, $userActiveModules);
+        $availableModules = array_merge(User::$superadmin_activated_module, $availableModules);
 
         // Remove duplicates and ensure modules are actually enabled
         $enabledModules = (new Module())->allEnabled();

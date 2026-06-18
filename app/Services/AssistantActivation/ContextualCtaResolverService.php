@@ -685,17 +685,17 @@ class ContextualCtaResolverService
      */
     private const ACTION_TARGETS = [
         'activate_addon' => [
-            'label' => 'Activar add-on',
+            'label' => 'Rever add-ons',
             'route' => 'add-ons.index',
             'anchor' => null,
-            'message' => 'Active o add-on indicado para desbloquear a funcionalidade.',
+            'message' => 'Abra os add-ons da empresa e confirme se o módulo necessário está activo.',
             'tone' => 'secondary',
         ],
         'install_module' => [
-            'label' => 'Activar módulo',
+            'label' => 'Rever módulos',
             'route' => 'add-ons.index',
             'anchor' => null,
-            'message' => 'Active o módulo indicado no catálogo de add-ons.',
+            'message' => 'Abra os módulos/add-ons da empresa e confirme se este módulo está incluído no plano ou activo.',
             'tone' => 'secondary',
         ],
         'complete_configuration' => [

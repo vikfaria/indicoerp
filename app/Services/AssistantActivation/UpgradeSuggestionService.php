@@ -193,13 +193,13 @@ class UpgradeSuggestionService
         }
 
         if ($unavailableModules !== [] || in_array('module_unavailable', $reasons, true)) {
-            return $this->issue('module_unavailable', 'Módulo indisponível', [
+            return $this->issue('module_unavailable', 'Módulo não activo no plano', [
                 'modules' => $unavailableModules,
             ]);
         }
 
         if ($addonModules !== [] || in_array('addon_required', $reasons, true)) {
-            return $this->issue('addon_required', 'Add-on obrigatório', [
+            return $this->issue('addon_required', 'Add-on não activo', [
                 'modules' => $addonModules,
             ]);
         }
@@ -266,8 +266,8 @@ class UpgradeSuggestionService
             'recommended_config_keys' => [],
             'alternatives' => [],
             'message' => $addons === []
-                ? 'O módulo necessário não está disponível para activação imediata.'
-                : 'Active o add-on indicado para desbloquear a funcionalidade.',
+                ? 'A funcionalidade depende de um módulo que não está disponível para activação imediata nesta empresa.'
+                : 'O papel do utilizador pode estar correcto, mas a empresa ainda não activou o add-on necessário. Reveja os add-ons activos da empresa.',
         ];
     }
 
@@ -286,8 +286,8 @@ class UpgradeSuggestionService
             'recommended_config_keys' => [],
             'alternatives' => [],
             'message' => $addons === []
-                ? 'O módulo necessário não está instalado ou não está disponível no catálogo.'
-                : 'Active o módulo indicado junto do administrador do sistema.',
+                ? 'O papel do utilizador pode estar correcto, mas a empresa não tem este módulo disponível no plano ou no catálogo activo.'
+                : 'O papel do utilizador pode estar correcto, mas a empresa não tem este módulo activo no plano/add-ons. Reveja os módulos activos da empresa.',
         ];
     }
 

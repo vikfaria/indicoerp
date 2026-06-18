@@ -40,9 +40,23 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
         $response->assertJsonPath('route', 'account-active');
     }
 
+    public function test_it_allows_a_known_module_when_it_is_in_the_company_plan_even_without_user_active_module_rows(): void
+    {
+        $company = $this->makeCompany(901006);
+        $this->enableModule('Account');
+
+        $response = $this->withSession(['company_role_checked' => true])
+            ->actingAs($company)
+            ->postJson('/__tests/plan-module/account-active');
+
+        $response->assertOk();
+        $response->assertJsonPath('ok', true);
+        $response->assertJsonPath('route', 'account-active');
+    }
+
     public function test_it_blocks_a_known_module_and_uses_the_resolver_payload_when_available(): void
     {
-        $company = $this->makeCompany(901002);
+        $company = $this->makeCompany(901002, ['Hrm']);
         $this->enableModule('Account');
 
         $response = $this->withSession(['company_role_checked' => true])
@@ -56,7 +70,7 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
         $response->assertJsonPath('module_gate.suggestion.type', 'feature');
         $response->assertJsonPath('module_gate.suggestion.block.code', 'addon_required');
         $response->assertJsonPath('module_gate.suggestion.recommendation.action', 'activate_addon');
-        $response->assertJsonPath('module_gate.suggestion.recommendation.message', 'Active o add-on indicado para desbloquear a funcionalidade.');
+        $response->assertJsonPath('module_gate.suggestion.recommendation.message', 'O papel do utilizador pode estar correcto, mas a empresa ainda não activou o add-on necessário. Reveja os add-ons activos da empresa.');
     }
 
     public function test_it_blocks_expired_company_subscriptions_with_a_subscription_gate_payload(): void
@@ -144,13 +158,13 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
         }
     }
 
-    private function makeCompany(int $id): User
+    private function makeCompany(int $id, array $planModules = ['Account']): User
     {
         $plan = Plan::create([
             'name' => 'Professional Plan',
             'status' => true,
             'free_plan' => false,
-            'modules' => ['Account'],
+            'modules' => $planModules,
             'package_price_yearly' => 960,
             'package_price_monthly' => 99,
             'storage_limit' => 51200,
