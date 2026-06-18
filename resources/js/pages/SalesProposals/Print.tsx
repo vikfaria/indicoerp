@@ -1,17 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
-import { formatCurrency, formatDate, getCompanyTaxLabel, resolveDocumentIssuer, resolveSalesDocumentCounterparty } from '@/utils/helpers';
 import { saveElementAsPdf } from '@/utils/pdf';
+import {
+    formatDate,
+    getCompanyTaxLabel,
+    resolveDocumentIssuer,
+    resolveSalesDocumentCounterparty,
+} from '@/utils/helpers';
+import {
+    buildCommercialDocumentPdfOptions,
+    buildPartyCityLine,
+    buildPartyCountryLine,
+    buildStructuredDocumentNumber,
+    COMMERCIAL_DOCUMENT_CONTAINER_CLASS,
+    CommercialDocumentTemplate,
+    formatDocumentMoney,
+    formatDocumentQuantity,
+    moneyToPortugueseWords,
+} from '@/components/documents/commercial-document-template';
 
 interface Address {
-    name: string;
-    address_line_1: string;
+    name?: string;
+    address_line_1?: string;
     address_line_2?: string;
-    city: string;
-    state: string;
-    zip_code: string;
-    country: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    country?: string;
 }
 
 interface SalesProposal {
@@ -19,7 +35,9 @@ interface SalesProposal {
     proposal_number: string;
     proposal_date: string;
     due_date: string;
-    customer: { id: number; name: string; email: string };
+    document_series?: string;
+    document_sequence?: number;
+    customer?: { id: number; name: string; email?: string };
     subtotal: number;
     tax_amount: number;
     discount_amount: number;
@@ -35,18 +53,19 @@ interface SalesProposal {
     };
     items?: Array<{
         id: number;
-        product_id: number;
         quantity: number;
         unit_price: number;
-        discount_percentage: number;
-        discount_amount: number;
-        tax_percentage: number;
-        tax_amount: number;
+        discount_percentage?: number;
+        discount_amount?: number;
+        tax_percentage?: number;
+        tax_amount?: number;
         total_amount: number;
         product?: {
             id: number;
             name: string;
             sku?: string;
+            description?: string;
+            unit?: string;
         };
         taxes?: Array<{
             id: number;
@@ -61,39 +80,55 @@ interface PrintProps {
     [key: string]: any;
 }
 
+const toNumber = (value: unknown): number => Number(value ?? 0) || 0;
+
+type SalesProposalItem = NonNullable<SalesProposal['items']>[number];
+type SalesProposalItemTax = NonNullable<SalesProposalItem['taxes']>[number];
+
+const taxLabelForItem = (item: SalesProposalItem): string => {
+    if (item.taxes && item.taxes.length > 0) {
+        return item.taxes.map((tax: SalesProposalItemTax) => `${tax.tax_name} ${tax.tax_rate}%`).join(', ');
+    }
+
+    return toNumber(item.tax_percentage) > 0 ? `IVA ${item.tax_percentage}%` : '0%';
+};
+
 export default function Print() {
     const { t } = useTranslation();
     const page = usePage<PrintProps>();
     const { proposal } = page.props;
     const [isDownloading, setIsDownloading] = useState(false);
+    const settings = (page.props as any).companyAllSetting || {};
     const issuer = resolveDocumentIssuer(proposal as Record<string, any>, page.props);
     const customer = resolveSalesDocumentCounterparty(proposal as Record<string, any>);
     const companyTaxLabel = issuer.tax_label || getCompanyTaxLabel(page.props);
-    const companyTaxNumber = issuer.tax_number || null;
     const counterpartyTaxLabel = customer.tax_label || companyTaxLabel;
+    const documentNumber = buildStructuredDocumentNumber({
+        prefix: 'ORC',
+        series: proposal.document_series,
+        sequence: proposal.document_sequence,
+        number: proposal.proposal_number,
+        date: proposal.proposal_date,
+    });
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('download') === 'pdf') {
             downloadPDF();
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.proposal-container');
+        const printContent = document.querySelector(`.${COMMERCIAL_DOCUMENT_CONTAINER_CLASS}`);
         if (printContent) {
-            const opt = {
-                margin: 0.25,
-                filename: `sales-proposal-${proposal.proposal_number}.pdf`,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const }
-            };
-
             try {
-                await saveElementAsPdf(printContent as HTMLElement, opt);
+                await saveElementAsPdf(
+                    printContent as HTMLElement,
+                    buildCommercialDocumentPdfOptions(`orcamento-${documentNumber}.pdf`),
+                );
                 setTimeout(() => window.close(), 1000);
             } catch (error) {
                 console.error('PDF generation failed:', error);
@@ -103,201 +138,122 @@ export default function Print() {
         setIsDownloading(false);
     };
 
+    const lines = (proposal.items || []).map((item) => {
+        const quantity = toNumber(item.quantity);
+        const unitPrice = toNumber(item.unit_price);
+        const discount = toNumber(item.discount_amount);
+        const netUnitPrice = quantity > 0 ? Math.max(((unitPrice * quantity) - discount) / quantity, 0) : unitPrice;
+
+        return {
+            reference: item.product?.sku || String(item.id),
+            description: (
+                <>
+                    <div>{item.product?.name || '-'}</div>
+                    {item.product?.description && <div className="text-[10px] font-normal text-slate-500">{item.product.description}</div>}
+                </>
+            ),
+            unit: item.product?.unit || 'UN',
+            quantity: formatDocumentQuantity(quantity),
+            unitPrice: formatDocumentMoney(unitPrice, settings),
+            discount: toNumber(item.discount_percentage) > 0
+                ? `${item.discount_percentage}%`
+                : discount > 0 ? formatDocumentMoney(discount, settings) : '-',
+            netPrice: formatDocumentMoney(netUnitPrice, settings),
+            tax: taxLabelForItem(item),
+            taxAmount: formatDocumentMoney(toNumber(item.tax_amount), settings),
+            total: formatDocumentMoney(item.total_amount, settings),
+        };
+    });
+
+    const billing = customer.billing_address || proposal.customer_details?.billing_address || {};
+    const authUser = (page.props as any).auth?.user;
+
     return (
-        <div className="min-h-screen bg-white">
-            <Head title={t('Sales Proposal')} />
+        <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+            <Head title={`Orçamento #${documentNumber}`} />
 
             {isDownloading && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-lg">
-                        <div className="flex items-center space-x-3">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                            <p className="text-lg font-semibold text-gray-700">{t('Generating PDF...')}</p>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="rounded-lg bg-white px-5 py-4 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-sm font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="proposal-container bg-white max-w-4xl mx-auto p-8">
-                <div className="flex justify-between items-start mb-8">
-                    <div className="w-1/2">
-                        <h1 className="text-2xl font-bold mb-4">{issuer.company_name || 'YOUR COMPANY'}</h1>
-                        <div className="text-sm space-y-1">
-                            {issuer.company_address && <p>{issuer.company_address}</p>}
-                            {(issuer.company_city || issuer.company_state || issuer.company_zipcode) && (
-                                <p>
-                                    {issuer.company_city}{issuer.company_state && `, ${issuer.company_state}`} {issuer.company_zipcode}
-                                </p>
-                            )}
-                            {issuer.company_country && <p>{issuer.company_country}</p>}
-                            {issuer.company_telephone && <p>{t('Phone')}: {issuer.company_telephone}</p>}
-                            {issuer.company_email && <p>{t('Email')}: {issuer.company_email}</p>}
-                            {issuer.registration_number && <p>{t('Registration')}: {issuer.registration_number}</p>}
-                            {companyTaxNumber && <p>{companyTaxLabel}: {companyTaxNumber}</p>}
-                        </div>
-                    </div>
-                    <div className="text-right w-1/2">
-                        <h2 className="text-2xl font-bold mb-2">{t('SALES PROPOSAL')}</h2>
-                        <p className="text-lg font-semibold">#{proposal.proposal_number}</p>
-                        <div className="text-sm mt-2 space-y-1">
-                            <p>{t('Date')}: {formatDate(proposal.proposal_date)}</p>
-                            <p>{t('Due')}: {formatDate(proposal.due_date)}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex justify-between mb-8">
-                    <div className="w-1/2">
-                        <h3 className="font-bold mb-3">{t('PROPOSAL TO')}</h3>
-                        <div className="text-sm space-y-1">
-                            <p className="font-semibold">{customer.name}</p>
-                            {customer.company_name && <p>{customer.company_name}</p>}
-                            <p>{customer.email}</p>
-                            {customer.tax_number && <p>{counterpartyTaxLabel}: {customer.tax_number}</p>}
-                            {customer.billing_address && (
-                                <>
-                                    <p>{customer.billing_address.name}</p>
-                                    <p>{customer.billing_address.address_line_1}</p>
-                                    <p>{customer.billing_address.city}, {customer.billing_address.state} {customer.billing_address.zip_code}</p>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <div className="text-right w-1/2">
-                        <h3 className="font-bold mb-3">{t('WAREHOUSE')}</h3>
-                        <div className="text-sm space-y-1">
-                            <p>{proposal.warehouse?.name || '-'}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mb-8">
-                    <table className="w-full table-fixed">
-                        <thead>
-                            <tr className="border-b border-gray-300">
-                                <th className="text-left py-3 font-bold">{t('ITEM')}</th>
-                                <th className="text-center py-3 font-bold">{t('QTY')}</th>
-                                <th className="text-right py-3 font-bold">{t('PRICE')}</th>
-                                <th className="text-right py-3 font-bold">{t('DISCOUNT')}</th>
-                                <th className="text-right py-3 font-bold">{t('TAX')}</th>
-                                <th className="text-right py-3 font-bold">{t('TOTAL')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {proposal.items?.map((item, index) => (
-                                <tr key={index} className="page-break-inside-avoid">
-                                    <td className="py-4">
-                                        <div className="font-semibold">{item.product?.name}</div>
-                                        {item.product?.sku && (
-                                            <div className="text-xs text-gray-500">{t('SKU')}: {item.product.sku}</div>
-                                        )}
-                                    </td>
-                                    <td className="text-center py-4">{item.quantity}</td>
-                                    <td className="text-right py-4">{formatCurrency(item.unit_price)}</td>
-                                    <td className="text-right py-4">
-                                        {item.discount_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.discount_percentage}%</div>
-                                                <div className="text-sm font-medium">-{formatCurrency(item.discount_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4">
-                                        {item.taxes && item.taxes.length > 0 ? (
-                                            <>
-                                                {item.taxes.map((tax, taxIndex) => (
-                                                    <div key={taxIndex} className="text-sm">{tax.tax_name} ({tax.tax_rate}%)</div>
-                                                ))}
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : item.tax_percentage > 0 ? (
-                                            <>
-                                                <div className="text-sm">{item.tax_percentage}%</div>
-                                                <div className="text-sm font-medium">{formatCurrency(item.tax_amount)}</div>
-                                            </>
-                                        ) : (
-                                            <div className="text-sm">0%</div>
-                                        )}
-                                    </td>
-                                    <td className="text-right py-4 font-semibold">{formatCurrency(item.total_amount)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="flex justify-end mb-4 page-break-inside-avoid">
-                    <div className="w-80 page-break-inside-avoid">
-                        <div className="border border-gray-400 p-4 page-break-inside-avoid">
-                            <div className="space-y-2">
-                                <div className="flex justify-between">
-                                    <span>{t('Subtotal')}:</span>
-                                    <span>{formatCurrency(proposal.subtotal)}</span>
-                                </div>
-                                {proposal.discount_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Discount')}:</span>
-                                        <span>-{formatCurrency(proposal.discount_amount)}</span>
-                                    </div>
-                                )}
-                                {proposal.tax_amount > 0 && (
-                                    <div className="flex justify-between">
-                                        <span>{t('Tax')}:</span>
-                                        <span>{formatCurrency(proposal.tax_amount)}</span>
-                                    </div>
-                                )}
-                                <div className="border-t border-gray-400 pt-2 mt-2">
-                                    <div className="flex justify-between font-bold text-lg">
-                                        <span>{t('TOTAL')}:</span>
-                                        <span>{formatCurrency(proposal.total_amount)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="border-t border-gray-400 pt-4 text-center">
-                    <p className="font-semibold">{t('PAYMENT TERMS')}: {proposal.payment_terms || t('Net 30 Days')}</p>
-                    <p className="text-sm mt-2">{t('Thank you for your business!')}</p>
-                </div>
-            </div>
-
-            <style>{`
-                body {
-                    -webkit-print-color-adjust: exact;
-                    color-adjust: exact;
-                    font-family: Arial, sans-serif;
-                }
-
-                @page {
-                    margin: 0.5in;
-                    size: A4;
-                }
-
-                .proposal-container {
-                    max-width: 100%;
-                    margin: 0;
-                    box-shadow: none;
-                }
-
-                .page-break-inside-avoid {
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }
-
-                @media print {
-                    body {
-                        background: white;
-                    }
-
-                    .proposal-container {
-                        box-shadow: none;
-                    }
-                }
-            `}</style>
+            <CommercialDocumentTemplate
+                title="ORÇAMENTO"
+                subtitle="Cotação comercial"
+                documentLabel="Orçamento"
+                documentNumber={documentNumber}
+                copyLabel="ORIGINAL"
+                issuer={{
+                    title: 'Emitente',
+                    name: issuer.company_name || 'Empresa',
+                    logoPath: settings.logo_dark || settings.logo_light || null,
+                    address: issuer.company_address,
+                    cityLine: buildPartyCityLine(issuer),
+                    countryLine: buildPartyCountryLine(issuer),
+                    taxLabel: companyTaxLabel,
+                    taxNumber: issuer.tax_number,
+                    phone: issuer.company_telephone,
+                    email: issuer.company_email,
+                    website: settings.company_website || settings.website,
+                    registration: issuer.registration_number,
+                }}
+                recipient={{
+                    title: 'Para',
+                    name: customer.company_name || customer.name || proposal.customer?.name || 'Cliente',
+                    address: billing.address_line_1,
+                    cityLine: [billing.city, billing.state, billing.zip_code].filter(Boolean).join(', '),
+                    countryLine: billing.country,
+                    taxLabel: counterpartyTaxLabel,
+                    taxNumber: customer.tax_number,
+                    phone: customer.phone,
+                    email: customer.email || proposal.customer?.email,
+                }}
+                statusPills={[
+                    { label: 'Documento não fiscal', tone: 'warning' },
+                    { label: proposal.status || 'Rascunho', tone: proposal.status === 'accepted' ? 'success' : 'neutral' },
+                ]}
+                meta={[
+                    { label: 'Data', value: formatDate(proposal.proposal_date, page.props) },
+                    { label: 'Validade', value: formatDate(proposal.due_date, page.props) },
+                    { label: 'Vendedor', value: authUser?.name || '-' },
+                    { label: 'Pagamento', value: proposal.payment_terms || 'A combinar' },
+                    { label: 'Moeda', value: 'Metical' },
+                    { label: 'Armazém', value: proposal.warehouse?.name || '-' },
+                    { label: 'Série', value: proposal.document_series || '-' },
+                    { label: 'Sequência', value: proposal.document_sequence || '-' },
+                ]}
+                lines={lines}
+                totals={[
+                    { label: 'Subtotal', value: formatDocumentMoney(proposal.subtotal, settings) },
+                    { label: 'Descontos', value: formatDocumentMoney(proposal.discount_amount, settings) },
+                    { label: 'Valor tributável', value: formatDocumentMoney(Math.max(toNumber(proposal.subtotal) - toNumber(proposal.discount_amount), 0), settings) },
+                    { label: 'IVA', value: formatDocumentMoney(proposal.tax_amount, settings) },
+                    { label: 'Total com IVA', value: formatDocumentMoney(proposal.total_amount, settings), emphasis: true },
+                    { label: 'Total por extenso', value: moneyToPortugueseWords(proposal.total_amount) },
+                ]}
+                observations={proposal.notes || [
+                    'Validade da proposta conforme data indicada.',
+                    'Documento sujeito à confirmação de stock.',
+                    'Preços sujeitos a alteração após o prazo de validade.',
+                ].join('\n')}
+                legalNotice="Documento não fiscal. Não serve de factura."
+                bankDetails={[
+                    { label: 'Banco', value: settings.company_bank_name || settings.bank_name },
+                    { label: 'Conta', value: settings.company_bank_account || settings.bank_account },
+                    { label: 'NIB', value: settings.company_bank_nib || settings.bank_nib },
+                    { label: 'Titular', value: settings.company_bank_holder || issuer.company_name },
+                ]}
+                validationCode={`${documentNumber}-${proposal.id}`}
+                issuedBy={authUser?.name || '-'}
+                printedBy={authUser?.name || '-'}
+                printedAt={new Date().toLocaleString('pt-MZ')}
+            />
         </div>
     );
 }

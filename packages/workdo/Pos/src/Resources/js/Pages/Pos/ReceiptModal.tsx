@@ -1,14 +1,11 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, CheckCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { formatCurrency, formatDate, resolveCompanyTaxLabel, resolveCompanyTaxNumber } from '@/utils/helpers';
 import { printReceipt } from './PrintReceipt';
 import { downloadReceiptPDF } from './DownloadReceipt';
-
-
-
+import { PosReceiptTemplate, resolvePosReceiptNumber } from './PosReceiptTemplate';
 
 interface ReceiptModalProps {
     isOpen: boolean;
@@ -19,25 +16,6 @@ interface ReceiptModalProps {
 
 export default function ReceiptModal({ isOpen, onClose, completedSale, globalSettings }: ReceiptModalProps) {
     const { t } = useTranslation();
-    const receiptRef = useRef<HTMLDivElement>(null);
-    const companyTaxLabel = resolveCompanyTaxLabel(globalSettings);
-    const companyTaxNumber = resolveCompanyTaxNumber(globalSettings);
-    const receivedAmount = Number(completedSale?.paid_amount ?? completedSale?.total ?? 0);
-    const totalAmount = Number(completedSale?.total ?? 0);
-    const changeAmount = Math.max(receivedAmount - totalAmount, 0);
-    const hasTax = Number(completedSale?.tax || 0) > 0 || (completedSale?.items || []).some((item: any) => Number(item.tax_amount || 0) > 0);
-    const paymentMethodLabel = (method?: string | null): string => {
-        const map: Record<string, string> = {
-            cash: 'Caixa',
-            bank_transfer: 'Transferência bancária',
-            card: 'Cartão',
-            mobile_money: 'Mobile Money',
-            cheque: 'Cheque',
-            other: 'Outro',
-        };
-
-        return method ? (map[method] || method) : '-';
-    };
 
     const handlePrint = () => {
         printReceipt(completedSale, globalSettings);
@@ -63,149 +41,11 @@ export default function ReceiptModal({ isOpen, onClose, completedSale, globalSet
                         {/* Success Message */}
                         <div className="text-center bg-green-50 p-4 rounded-lg no-print">
                             <p className="text-green-800 font-medium">{t('Your transaction has been processed successfully.')}</p>
-                            <p className="text-green-600 text-sm mt-1">{t('Receipt Number')}: {completedSale.pos_number}</p>
+                            <p className="text-green-600 text-sm mt-1">{t('Receipt Number')}: {resolvePosReceiptNumber(completedSale)}</p>
                         </div>
 
                         {/* Thermal Receipt Preview */}
-                        <div ref={receiptRef} className="mx-auto w-72 bg-white border border-gray-200 shadow-lg font-mono text-xs leading-tight print-area print-receipt">
-                            <div className="p-3">
-                                {/* Header */}
-                                <div className="text-center mb-3">
-                                    <div className="font-bold text-base tracking-wider mb-1">{globalSettings?.company_name || 'COMPANY NAME'}</div>
-                                    <div className="text-xs leading-relaxed">
-                                        <div>{globalSettings?.company_address || 'Company Address'}</div>
-                                        <div>{globalSettings?.company_city || 'City'}, {globalSettings?.company_state || 'State'}</div>
-                                        <div>{globalSettings?.company_country || 'Country'} - {globalSettings?.company_zipcode || 'Zipcode'}</div>
-                                        {companyTaxNumber && <div>{companyTaxLabel}: {companyTaxNumber}</div>}
-                                        {completedSale.operator_name && <div>{t('Operator')}: {completedSale.operator_name}</div>}
-                                    </div>
-                                </div>
-
-                                {/* Separator */}
-                                <div className="text-center my-2">
-                                    <div className="border-t-2 border-dashed border-gray-400"></div>
-                                </div>
-
-                                {/* Receipt Info */}
-                                <div className="mb-3">
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Receipt')}:</span>
-                                        <span className="font-bold">{completedSale.pos_number}</span>
-                                    </div>
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Date')}:</span>
-                                        <span>{formatDate(new Date())}</span>
-                                    </div>
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Time')}:</span>
-                                        <span>{new Date().toLocaleTimeString()}</span>
-                                    </div>
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Terminal')}:</span>
-                                        <span>{completedSale.document_series || '-'}</span>
-                                    </div>
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Customer')}:</span>
-                                        <span className="truncate ml-2 font-medium">{completedSale.customer?.name || t('Walk-in')}</span>
-                                    </div>
-                                    <div className="flex justify-between py-0.5">
-                                        <span className="font-medium">{t('Payment')}:</span>
-                                        <span className="truncate ml-2 font-medium">{paymentMethodLabel(completedSale.payment_method)}</span>
-                                    </div>
-                                </div>
-
-                                {/* Separator */}
-                                <div className="text-center my-2">
-                                    <div className="border-t-2 border-dashed border-gray-400"></div>
-                                </div>
-
-                                {/* Items */}
-                                <div className="mb-3">
-                                    {completedSale.items.map((item: any) => {
-                                        const itemSubtotal = item.price * item.quantity;
-                                        let itemTaxAmount = 0;
-                                        let taxDisplay = '';
-                                        if (item.taxes && item.taxes.length > 0) {
-                                            const taxNames = item.taxes.map((tax: any) => {
-                                                itemTaxAmount += (itemSubtotal * tax.rate) / 100;
-                                                return `${tax.name} (${tax.rate}%)`;
-                                            });
-                                            taxDisplay = taxNames.join(', ');
-                                        } else {
-                                            taxDisplay = '-';
-                                        }
-                                        return (
-                                            <div key={item.id} className="mb-3 pb-2 border-b border-dotted border-gray-300">
-                                                <div className="font-bold text-sm mb-1 truncate">{item.name}</div>
-                                                <div className="space-y-0.5 text-xs">
-                                                    <div className="flex justify-between">
-                                                        <span>{t('Qty')}:</span>
-                                                        <span className="font-medium">{item.quantity}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span>{t('Price')}:</span>
-                                                        <span className="font-medium">{formatCurrency(item.price)}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span>{t('Tax')}:</span>
-                                                        <span className="font-medium">{taxDisplay}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span>{t('Tax Amount')}:</span>
-                                                        <span className="font-medium">{formatCurrency(itemTaxAmount)}</span>
-                                                    </div>
-                                                    <div className="flex justify-between font-bold border-t border-dotted pt-1">
-                                                        <span>{t('Sub Total')}:</span>
-                                                        <span>{formatCurrency(itemSubtotal)}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                {/* Separator */}
-                                <div className="text-center my-2">
-                                    <div className="border-t-2 border-dashed border-gray-400"></div>
-                                </div>
-
-                                {/* Totals */}
-                                <div className="mb-3">
-                                    <div className="flex justify-between py-1 text-sm">
-                                        <span className="font-medium">{t('Discount')}:</span>
-                                        <span className="font-bold">-{formatCurrency(completedSale.discount)}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 text-sm">
-                                        <span className="font-medium">{t('Received')}:</span>
-                                        <span className="font-bold">{formatCurrency(receivedAmount)}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 text-sm">
-                                        <span className="font-medium">{t('Change')}:</span>
-                                        <span className="font-bold">{formatCurrency(changeAmount)}</span>
-                                    </div>
-                                    <div className="flex justify-between py-2 text-base font-bold border-t-2 border-double border-gray-600">
-                                        <span>{t('Total')}:</span>
-                                        <span className="text-lg">{formatCurrency(totalAmount)}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 text-xs">
-                                        <span className="font-medium">{t('Status')}:</span>
-                                        <span>{receivedAmount >= totalAmount ? t('Pago') : t('Parcial')}</span>
-                                    </div>
-                                </div>
-
-                                {/* Separator */}
-                                <div className="text-center my-2">
-                                    <div className="border-t-2 border-dashed border-gray-400"></div>
-                                </div>
-
-                                {/* Footer */}
-                                <div className="text-center">
-                                <div className="text-xs font-medium">{t('★ Thank you for your business! ★')}</div>
-                                <div className="text-xs mt-1 opacity-75">{new Date().toLocaleTimeString()}</div>
-                                {hasTax && <div className="text-xs mt-1 opacity-75">{t('IVA incluído')}</div>}
-                            </div>
-                        </div>
-                        </div>
+                        <PosReceiptTemplate sale={completedSale} settings={globalSettings} framed />
 
                     {/* Action Buttons */}
                     <div className="flex justify-end gap-2 no-print">

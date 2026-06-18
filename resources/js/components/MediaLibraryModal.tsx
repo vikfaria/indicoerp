@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { Upload, X, Image as ImageIcon, Search, Plus, Check } from 'lucide-react';
 import { usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
+import MediaStorageQuotaBanner, { type MediaStorageQuota } from './media/media-storage-quota-banner';
+import { formatFileSize } from '@/utils/helpers';
 
 
 interface MediaItem {
@@ -51,6 +53,7 @@ export default function MediaLibraryModal({
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateDirectory, setShowCreateDirectory] = useState(false);
   const [newDirectoryName, setNewDirectoryName] = useState('');
+  const [storageQuota, setStorageQuota] = useState<MediaStorageQuota | null>(null);
   const itemsPerPage = 18;
 
   const fetchMedia = useCallback(async () => {
@@ -78,6 +81,7 @@ export default function MediaLibraryModal({
       setMedia(mediaArray);
       setDirectories(data.directories || []);
       setFilteredMedia(mediaArray);
+      setStorageQuota(data.storage || null);
     } catch (error) {
       toast.error(t('Loading media...'));
     } finally {
@@ -113,6 +117,16 @@ export default function MediaLibraryModal({
   const currentMedia = filteredMedia.slice(startIndex, startIndex + itemsPerPage);
 
   const handleFileUpload = async (files: FileList) => {
+    if (storageQuota?.status === 'exceeded') {
+      toast.error(t('Storage limit reached'), {
+        description: t('This upload would use {{projected}} of {{limit}}. Delete files or upgrade your plan to continue.', {
+          projected: formatFileSize(storageQuota.projected_bytes ?? storageQuota.current_bytes),
+          limit: storageQuota.limit_bytes < 0 ? t('Unlimited storage') : formatFileSize(storageQuota.limit_bytes),
+        }),
+      });
+      return;
+    }
+
     setUploading(true);
     
     const validFiles = Array.from(files);
@@ -156,11 +170,23 @@ export default function MediaLibraryModal({
           toast.success(result.message || t(' file(s) uploaded successfully', { count: result.data?.length || 0 }));
         }
       } else {
-        toast.error(result.message || t('Upload failed'));
-        if (result.errors) {
-          result.errors.forEach((error: string) => {
-            toast.error(error, { duration: 5000 });
+        const storage = result.storage as MediaStorageQuota | undefined;
+        const isStorageLimitExceeded = result.error_code === 'storage_limit_exceeded' || storage?.status === 'exceeded';
+
+        if (isStorageLimitExceeded && storage) {
+          toast.error(t('Storage limit reached'), {
+            description: t('This upload would use {{projected}} of {{limit}}. Delete files or upgrade your plan to continue.', {
+              projected: formatFileSize(storage.projected_bytes ?? storage.current_bytes),
+              limit: storage.limit_bytes < 0 ? t('Unlimited storage') : formatFileSize(storage.limit_bytes),
+            }),
           });
+        } else {
+          toast.error(result.message || t('Upload failed'));
+          if (result.errors) {
+            result.errors.forEach((error: string) => {
+              toast.error(error, { duration: 5000 });
+            });
+          }
         }
       }
     } catch (error) {
@@ -249,10 +275,10 @@ export default function MediaLibraryModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
-        <DialogHeader className="pb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <ImageIcon className="h-5 w-5" />
-            {t('Media Library')}
+          <DialogHeader className="pb-4">
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              {t('Media Library')}
             {filteredMedia.length > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {filteredMedia.length}
@@ -262,8 +288,16 @@ export default function MediaLibraryModal({
           <DialogDescription>
             {t('Upload new files to your media library')}
           </DialogDescription>
-        </DialogHeader>
-        
+          </DialogHeader>
+
+          {storageQuota && (
+            <MediaStorageQuotaBanner
+              quota={storageQuota}
+              upgradeHref={route('plans.my-plan')}
+              compact
+            />
+          )}
+
         <div className="flex-1 flex flex-col space-y-4 min-h-0">
           {/* Directory Navigation */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -344,7 +378,7 @@ export default function MediaLibraryModal({
                 type="button"
                 variant="outline"
                 onClick={() => document.getElementById('file-upload')?.click()}
-                disabled={uploading}
+                disabled={uploading || storageQuota?.status === 'exceeded'}
                 size="sm"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -404,7 +438,7 @@ export default function MediaLibraryModal({
                   <Button
                     type="button"
                     onClick={() => document.getElementById('file-upload')?.click()}
-                    disabled={uploading}
+                    disabled={uploading || storageQuota?.status === 'exceeded'}
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     {t('Upload Files')}

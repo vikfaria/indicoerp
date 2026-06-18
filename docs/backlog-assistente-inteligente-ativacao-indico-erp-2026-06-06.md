@@ -281,5 +281,4 @@ Fora do MVP:
 | Modo consultor completo | Pode entrar depois da operação básica estabilizar. |
 | Métricas avançadas | Depende de uso real. |
 | Overrides complexos | Devem ser introduzidos após regras comerciais estarem maduras. |
-| Automação completa de configuração | Deve começar assistida, não automática, para evitar dados fiscais incorretos. |
-
+| Automação completa de configuração | Deve começar assistida, não automática, para evitar dados fiscais incorretos.

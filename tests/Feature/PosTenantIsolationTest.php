@@ -63,6 +63,8 @@ class PosTenantIsolationTest extends TestCase
             'warehouse_id' => $foreignWarehouse->id,
             'pos_date' => now()->toDateString(),
             'discount' => 0,
+            'payment_method' => 'cash',
+            'paid_amount' => 100,
             'items' => [
                 [
                     'id' => $foreignProduct->id,
@@ -83,6 +85,8 @@ class PosTenantIsolationTest extends TestCase
             'warehouse_id' => $localWarehouse->id,
             'pos_date' => now()->toDateString(),
             'discount' => 0,
+            'payment_method' => 'cash',
+            'paid_amount' => 100,
             'items' => [
                 [
                     'id' => $localProduct->id,

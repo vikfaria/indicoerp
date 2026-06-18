@@ -1,35 +1,33 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
 import { saveElementAsPdf } from '@/utils/pdf';
 import {
-    formatCurrency,
     formatDate,
     getCompanyTaxLabel,
     resolveDocumentIssuer,
     resolvePurchaseDocumentCounterparty,
 } from '@/utils/helpers';
 import {
-    ReportCard,
-    ReportHero,
-    ReportKeyValueGrid,
-    ReportPill,
-    ReportShell,
-    ReportSummaryCard,
-    ReportTable,
-} from '@/components/print/report-kit';
+    buildCommercialDocumentPdfOptions,
+    buildPartyCityLine,
+    buildPartyCountryLine,
+    buildStructuredDocumentNumber,
+    COMMERCIAL_DOCUMENT_CONTAINER_CLASS,
+    CommercialDocumentTemplate,
+    formatDocumentMoney,
+    formatDocumentQuantity,
+    moneyToPortugueseWords,
+} from '@/components/documents/commercial-document-template';
 
 interface DebitNote {
     id: number;
     debit_note_number: string;
     debit_note_date: string;
-    vendor?: {
-        name?: string;
-        email?: string;
-    };
-    invoice?: {
-        invoice_number?: string;
-    };
+    document_series?: string;
+    document_sequence?: number;
+    vendor?: { name?: string; email?: string };
+    invoice?: { invoice_number?: string };
     total_amount: number | string;
     applied_amount: number | string;
     balance_amount: number | string;
@@ -39,37 +37,17 @@ interface DebitNote {
     status: string;
     reason: string;
     notes?: string;
-    issuer_snapshot?: Record<string, any> | null;
-    counterparty_snapshot?: Record<string, any> | null;
+    purchase_return?: { return_number: string };
     items: Array<{
         id: number;
-        product?: {
-            name?: string;
-            sku?: string;
-            description?: string;
-        };
+        product?: { name?: string; sku?: string; description?: string; unit?: string };
         quantity: number | string;
         unit_price: number | string;
-        discount_percentage: number | string;
         discount_amount: number | string;
         tax_percentage: number | string;
         tax_amount: number | string;
         total_amount: number | string;
-        taxes?: Array<{
-            tax_name: string;
-            tax_rate: number | string;
-        }>;
-    }>;
-    purchase_return?: {
-        return_number: string;
-    };
-    applications: Array<{
-        id: number;
-        applied_amount: number | string;
-        application_date: string;
-        payment?: {
-            payment_number?: string;
-        };
+        taxes?: Array<{ tax_name: string; tax_rate: number | string }>;
     }>;
 }
 
@@ -78,38 +56,53 @@ interface PrintProps {
     [key: string]: any;
 }
 
-const toNumber = (value: unknown): number => Number(value ?? 0);
+const toNumber = (value: unknown): number => Number(value ?? 0) || 0;
 
-const statusMeta: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
-    draft: { label: 'Rascunho', tone: 'neutral' },
-    approved: { label: 'Aprovada', tone: 'info' },
-    posted: { label: 'Lançada', tone: 'success' },
-    applied: { label: 'Aplicada', tone: 'success' },
-    cancelled: { label: 'Cancelada', tone: 'danger' },
+const statusLabel: Record<string, string> = {
+    draft: 'Rascunho',
+    approved: 'Aprovada',
+    posted: 'Lançada',
+    applied: 'Aplicada',
+    cancelled: 'Cancelada',
 };
 
 const formatReason = (reason?: string): string => {
-    if (!reason) {
-        return '-';
+    if (!reason) return '-';
+
+    return reason.split('_').map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(' ');
+};
+
+const taxLabelForItem = (item: any): string => {
+    const taxes = item.taxes || [];
+    if (taxes.length > 0) {
+        return taxes.map((tax: any) => `${tax.tax_name || 'IVA'} ${tax.tax_rate}%`).join(', ');
     }
 
-    return reason
-        .split('_')
-        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-        .join(' ');
+    return toNumber(item.tax_percentage) > 0 ? `IVA ${item.tax_percentage}%` : '0%';
 };
+
+const sanitizeFilename = (value: string): string => value.replace(/[^\w.-]+/g, '-');
 
 export default function Print() {
     const { t } = useTranslation();
-    const { debitNote } = usePage<PrintProps>().props;
+    const page = usePage<PrintProps>();
+    const { debitNote } = page.props;
     const [isDownloading, setIsDownloading] = useState(false);
-
+    const settings = (page.props as any).companyAllSetting || {};
     const note = debitNote as PrintProps['debitNote'];
-    const issuer = resolveDocumentIssuer(note as Record<string, any>);
+    const issuer = resolveDocumentIssuer(note as Record<string, any>, page.props);
     const counterparty = resolvePurchaseDocumentCounterparty(note as Record<string, any>);
-    const counterpartyTaxLabel = counterparty.tax_label || issuer.tax_label || getCompanyTaxLabel();
-    const issuerTaxLabel = issuer.tax_label || getCompanyTaxLabel();
-    const documentStatus = statusMeta[note.status || 'draft'] || statusMeta.draft;
+    const issuerTaxLabel = issuer.tax_label || getCompanyTaxLabel(page.props);
+    const counterpartyTaxLabel = counterparty.tax_label || issuerTaxLabel;
+    const documentNumber = buildStructuredDocumentNumber({
+        prefix: 'ND',
+        series: note.document_series,
+        sequence: note.document_sequence,
+        number: note.debit_note_number,
+        date: note.debit_note_date,
+    });
+    const billing = counterparty.billing_address || {};
+    const authUser = (page.props as any).auth?.user;
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -122,18 +115,13 @@ export default function Print() {
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.document-print-container');
+        const printContent = document.querySelector(`.${COMMERCIAL_DOCUMENT_CONTAINER_CLASS}`);
         if (printContent) {
-            const opt = {
-                margin: 0.25,
-                filename: `debit-note-${note.debit_note_number}.pdf`,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
-            };
-
             try {
-                await saveElementAsPdf(printContent as HTMLElement, opt);
+                await saveElementAsPdf(
+                    printContent as HTMLElement,
+                    buildCommercialDocumentPdfOptions(`nota-debito-${sanitizeFilename(documentNumber)}.pdf`),
+                );
                 setTimeout(() => window.close(), 1000);
             } catch (error) {
                 console.error('PDF generation failed:', error);
@@ -143,146 +131,113 @@ export default function Print() {
         setIsDownloading(false);
     };
 
-    const itemRows = (note.items ?? []).map((item, index) => {
-        const taxes = item.taxes ?? [];
-        const taxLabel = taxes.length > 0
-            ? taxes.map((tax) => `${tax.tax_name} (${tax.tax_rate}%)`).join(', ')
-            : toNumber(item.tax_percentage) > 0
-                ? `${item.tax_percentage}%`
-                : '0%';
+    const lines = (note.items || []).map((item) => {
+        const quantity = toNumber(item.quantity);
+        const unitPrice = toNumber(item.unit_price);
+        const discount = toNumber(item.discount_amount);
+        const netUnitPrice = quantity > 0 ? Math.max(((unitPrice * quantity) - discount) / quantity, 0) : unitPrice;
 
-        return (
-            <tr key={index} className="report-page-break-inside-avoid">
-                <td className="px-4 py-4 align-top">
-                    <div className="font-semibold text-slate-900">{item.product?.name || '-'}</div>
-                    {item.product?.sku && <div className="mt-1 text-xs text-slate-500">SKU: {item.product.sku}</div>}
-                    {item.product?.description && <div className="mt-1 text-xs leading-5 text-slate-500">{item.product.description}</div>}
-                </td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">{item.quantity}</td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">{formatCurrency(toNumber(item.unit_price))}</td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">{toNumber(item.discount_amount) > 0 ? `-${formatCurrency(toNumber(item.discount_amount))}` : formatCurrency(0)}</td>
-                <td className="px-4 py-4 text-right align-top">
-                    <div className="tabular-nums">{taxLabel}</div>
-                </td>
-                <td className="px-4 py-4 text-right align-top font-semibold tabular-nums">{formatCurrency(toNumber(item.total_amount))}</td>
-            </tr>
-        );
+        return {
+            reference: item.product?.sku || String(item.id),
+            description: (
+                <>
+                    <div>{item.product?.name || '-'}</div>
+                    {item.product?.description && <div className="text-[10px] font-normal text-slate-500">{item.product.description}</div>}
+                </>
+            ),
+            unit: item.product?.unit || 'UN',
+            quantity: formatDocumentQuantity(quantity),
+            unitPrice: formatDocumentMoney(unitPrice, settings),
+            discount: discount > 0 ? formatDocumentMoney(discount, settings) : '-',
+            netPrice: formatDocumentMoney(netUnitPrice, settings),
+            tax: taxLabelForItem(item),
+            taxAmount: formatDocumentMoney(toNumber(item.tax_amount), settings),
+            total: formatDocumentMoney(item.total_amount, settings),
+        };
     });
 
     return (
-        <ReportShell>
-            <Head title={`Nota de débito #${note.debit_note_number}`} />
+        <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+            <Head title={`Nota de débito #${documentNumber}`} />
 
             {isDownloading && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="rounded-2xl bg-white px-6 py-5 shadow-xl">
+                    <div className="rounded-lg bg-white px-5 py-4 shadow-xl">
                         <div className="flex items-center gap-3">
-                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-600" />
-                            <p className="text-lg font-semibold text-slate-700">{t('Generating PDF...')}</p>
+                            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-sm font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="document-print-container space-y-6">
-                <ReportHero
-                    title="Nota de Débito"
-                    subtitle="Acréscimo sobre a compra original"
-                    issuerTitle="Emitente"
-                    issuerLines={[
-                        issuer.company_name || 'Empresa',
-                        issuer.company_address,
-                        [issuer.company_city, issuer.company_state, issuer.company_zipcode].filter(Boolean).join(', '),
-                        issuer.company_country,
-                        issuer.company_telephone ? `Telefone: ${issuer.company_telephone}` : null,
-                        issuer.company_email ? `E-mail: ${issuer.company_email}` : null,
-                        issuer.tax_number ? `${issuerTaxLabel}: ${issuer.tax_number}` : null,
-                    ].filter(Boolean) as React.ReactNode[]}
-                    documentLabel="Documento"
-                    documentNumber={`#${note.debit_note_number}`}
-                    statusPills={[
-                        { label: 'Débito', tone: 'info' },
-                        { label: documentStatus.label, tone: documentStatus.tone },
-                        { label: 'IVA adicional', tone: 'warning' },
-                    ]}
-                    meta={[
-                        { label: 'Data', value: formatDate(note.debit_note_date) },
-                        { label: 'Factura original', value: note.invoice?.invoice_number ? `#${note.invoice.invoice_number}` : '-' },
-                        { label: 'Devolução', value: note.purchase_return?.return_number ? `#${note.purchase_return.return_number}` : '-' },
-                        { label: 'Motivo', value: formatReason(note.reason) },
-                    ]}
-                    note={note.notes || 'A nota de débito corrige um acréscimo ou regulariza valores em falta.'}
-                />
-
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <ReportCard title="Fornecedor" subtitle="Destino do débito">
-                        <ReportKeyValueGrid
-                            columns={2}
-                            items={[
-                                { label: 'Nome', value: counterparty.company_name || note.vendor?.name || '-' },
-                                { label: counterpartyTaxLabel || 'NUIT', value: counterparty.tax_number || '-' },
-                                { label: 'E-mail', value: counterparty.email || note.vendor?.email || '-' },
-                                { label: 'Estado', value: documentStatus.label },
-                            ]}
-                        />
-                    </ReportCard>
-
-                    <ReportCard title="Impacto financeiro" subtitle="Valores em débito e pendentes">
-                        <ReportKeyValueGrid
-                            columns={2}
-                            items={[
-                                { label: 'Total da nota', value: formatCurrency(toNumber(note.total_amount)) },
-                                { label: 'Valor aplicado', value: formatCurrency(toNumber(note.applied_amount)) },
-                                { label: 'Saldo remanescente', value: formatCurrency(toNumber(note.balance_amount)) },
-                                { label: 'Motivo', value: formatReason(note.reason) },
-                            ]}
-                        />
-                    </ReportCard>
-                </div>
-
-                <ReportTable headers={['Descrição', 'Qtd', 'Preço líquido', 'Desconto', 'IVA', 'Total']}>
-                    {itemRows}
-                </ReportTable>
-
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
-                    <ReportCard title="Aplicações" subtitle="Liquidação da nota">
-                        {note.applications.length > 0 ? (
-                            <ReportTable headers={['Pagamento', 'Data', 'Valor aplicado']}>
-                                {note.applications.map((application) => (
-                                    <tr key={application.id} className="report-page-break-inside-avoid">
-                                        <td className="px-4 py-3 font-medium">{application.payment?.payment_number || '-'}</td>
-                                        <td className="px-4 py-3">{formatDate(application.application_date)}</td>
-                                        <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatCurrency(toNumber(application.applied_amount))}</td>
-                                    </tr>
-                                ))}
-                            </ReportTable>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                                Sem aplicações registadas.
-                            </div>
-                        )}
-                    </ReportCard>
-
-                    <ReportSummaryCard
-                        title="Resumo"
-                        subtitle="Totais da correcção"
-                        rows={[
-                            { label: 'Subtotal', value: formatCurrency(toNumber(note.subtotal)) },
-                            { label: 'Desconto', value: `-${formatCurrency(toNumber(note.discount_amount))}` },
-                            { label: 'IVA', value: formatCurrency(toNumber(note.tax_amount)) },
-                            { label: 'Total', value: formatCurrency(toNumber(note.total_amount)), emphasis: true },
-                            { label: 'Valor aplicado', value: formatCurrency(toNumber(note.applied_amount)) },
-                            { label: 'Saldo', value: formatCurrency(toNumber(note.balance_amount)) },
-                        ]}
-                    />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                    <ReportPill tone="info">Débito</ReportPill>
-                    <ReportPill tone={documentStatus.tone}>{documentStatus.label}</ReportPill>
-                    <ReportPill tone="warning">IVA adicional</ReportPill>
-                </div>
-            </div>
-        </ReportShell>
+            <CommercialDocumentTemplate
+                title="NOTA DE DÉBITO"
+                subtitle="Acréscimo ou regularização de valores"
+                documentLabel="Nota de débito"
+                documentNumber={documentNumber}
+                copyLabel={note.status === 'cancelled' ? 'CANCELADA' : 'ORIGINAL'}
+                watermark={note.status === 'cancelled' ? 'CANCELADA' : undefined}
+                issuer={{
+                    title: 'Emitente',
+                    name: issuer.company_name || 'Empresa',
+                    logoPath: settings.logo_dark || settings.logo_light || null,
+                    address: issuer.company_address,
+                    cityLine: buildPartyCityLine(issuer),
+                    countryLine: buildPartyCountryLine(issuer),
+                    taxLabel: issuerTaxLabel,
+                    taxNumber: issuer.tax_number,
+                    phone: issuer.company_telephone,
+                    email: issuer.company_email,
+                    website: settings.company_website || settings.website,
+                    registration: issuer.registration_number,
+                }}
+                recipient={{
+                    title: 'Para',
+                    name: counterparty.company_name || counterparty.name || note.vendor?.name || 'Fornecedor',
+                    address: billing.address_line_1,
+                    cityLine: [billing.city, billing.state, billing.zip_code].filter(Boolean).join(', '),
+                    countryLine: billing.country,
+                    taxLabel: counterpartyTaxLabel,
+                    taxNumber: counterparty.tax_number,
+                    phone: counterparty.phone,
+                    email: counterparty.email || note.vendor?.email,
+                }}
+                statusPills={[
+                    { label: statusLabel[note.status] || note.status || 'Rascunho', tone: note.status === 'cancelled' ? 'danger' : 'warning' },
+                    { label: 'IVA adicional', tone: 'warning' },
+                ]}
+                meta={[
+                    { label: 'Data', value: formatDate(note.debit_note_date, page.props) },
+                    { label: 'Factura original', value: note.invoice?.invoice_number || '-' },
+                    { label: 'Devolução', value: note.purchase_return?.return_number || '-' },
+                    { label: 'Motivo', value: formatReason(note.reason) },
+                    { label: 'Moeda', value: 'Metical' },
+                    { label: 'Série', value: note.document_series || '-' },
+                    { label: 'Sequência', value: note.document_sequence || '-' },
+                    { label: 'Operador', value: authUser?.name || '-' },
+                ]}
+                lines={lines}
+                totals={[
+                    { label: 'Subtotal', value: formatDocumentMoney(note.subtotal, settings) },
+                    { label: 'Descontos', value: formatDocumentMoney(note.discount_amount, settings) },
+                    { label: 'Valor tributável', value: formatDocumentMoney(Math.max(toNumber(note.subtotal) - toNumber(note.discount_amount), 0), settings) },
+                    { label: 'IVA adicional', value: formatDocumentMoney(note.tax_amount, settings) },
+                    { label: 'Total adicional', value: formatDocumentMoney(note.total_amount, settings), emphasis: true },
+                    { label: 'Valor aplicado', value: formatDocumentMoney(note.applied_amount, settings) },
+                    { label: 'Saldo remanescente', value: formatDocumentMoney(note.balance_amount, settings) },
+                    { label: 'Total por extenso', value: moneyToPortugueseWords(note.total_amount) },
+                ]}
+                observations={note.notes || [
+                    `Motivo: ${formatReason(note.reason)}`,
+                    'A nota de débito regulariza valores adicionais ou em falta.',
+                    'IVA adicional indicado conforme aplicável.',
+                ].join('\n')}
+                validationCode={`${documentNumber}-${note.id}`}
+                issuedBy={authUser?.name || '-'}
+                printedBy={authUser?.name || '-'}
+                printedAt={new Date().toLocaleString('pt-MZ')}
+            />
+        </div>
     );
 }

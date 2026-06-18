@@ -244,7 +244,7 @@ function CreateContent({ customers = [], warehouses = [], categories = [] }: Cre
             onSuccess: (response: any) => {
                 setProcessing(false);
                 setCompletedSale({
-                    pos_number: response.props?.pos_number || nextPosNumber,
+                    pos_number: response.props?.pos_number || freshPosNumber,
                     items: cart,
                     subtotal: getSubtotal(),
                     tax: getTaxAmount(),
@@ -255,7 +255,9 @@ function CreateContent({ customers = [], warehouses = [], categories = [] }: Cre
                     payment_method: paymentMethod,
                     paid_amount: parseFloat(paidAmount || '0'),
                     operator_name: auth?.user?.name || '',
-                    document_series: response.props?.document_series || ''
+                    document_series: response.props?.document_series || '',
+                    created_at: new Date().toISOString(),
+                    pos_date: new Date().toISOString(),
                 });
                 // Close payment modal first, then show receipt
                 setShowPaymentModal(false);

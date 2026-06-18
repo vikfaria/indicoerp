@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import { useTranslation } from 'react-i18next';
+import { saveElementAsPdf } from '@/utils/pdf';
 import {
-    formatCurrency,
     formatDate,
     getCompanyTaxLabel,
     resolveDocumentIssuer,
     resolveSalesDocumentCounterparty,
 } from '@/utils/helpers';
-import { saveElementAsPdf } from '@/utils/pdf';
 import {
-    ReportCard,
-    ReportHero,
-    ReportKeyValueGrid,
-    ReportPill,
-    ReportShell,
-    ReportSummaryCard,
-    ReportTable,
-} from '@/components/print/report-kit';
+    buildCommercialDocumentPdfOptions,
+    buildPartyCityLine,
+    buildPartyCountryLine,
+    buildStructuredDocumentNumber,
+    COMMERCIAL_DOCUMENT_CONTAINER_CLASS,
+    CommercialDocumentTemplate,
+    formatDocumentMoney,
+    formatDocumentQuantity,
+    moneyToPortugueseWords,
+} from '@/components/documents/commercial-document-template';
 import { SalesReturn } from './types';
 
 interface PrintProps {
@@ -25,40 +26,53 @@ interface PrintProps {
     [key: string]: any;
 }
 
-const toNumber = (value: unknown): number => Number(value ?? 0);
+const toNumber = (value: unknown): number => Number(value ?? 0) || 0;
 
-const statusMeta: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
-    draft: { label: 'Rascunho', tone: 'neutral' },
-    approved: { label: 'Aprovada', tone: 'info' },
-    completed: { label: 'Concluída', tone: 'success' },
-    cancelled: { label: 'Cancelada', tone: 'danger' },
+const statusLabel: Record<string, string> = {
+    draft: 'Rascunho',
+    approved: 'Aprovada',
+    completed: 'Concluída',
+    cancelled: 'Cancelada',
 };
 
 const formatReason = (reason?: string): string => {
-    if (!reason) {
-        return '-';
+    if (!reason) return '-';
+
+    return reason.split('_').map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(' ');
+};
+
+const taxLabelForItem = (item: any): string => {
+    const taxes = item.taxes || [];
+    if (taxes.length > 0) {
+        return taxes.map((tax: any) => `${tax.tax_name || tax.name || 'IVA'} ${tax.tax_rate || tax.rate}%`).join(', ');
     }
 
-    return reason
-        .split('_')
-        .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-        .join(' ');
+    return toNumber(item.tax_percentage) > 0 ? `IVA ${item.tax_percentage}%` : '0%';
 };
+
+const sanitizeFilename = (value: string): string => value.replace(/[^\w.-]+/g, '-');
 
 export default function Print() {
     const { t } = useTranslation();
     const page = usePage<PrintProps>();
     const { return: salesReturn } = page.props;
     const [isDownloading, setIsDownloading] = useState(false);
-
+    const settings = (page.props as any).companyAllSetting || {};
     const returnData = salesReturn as PrintProps['return'];
     const issuer = resolveDocumentIssuer(returnData as Record<string, any>, page.props);
     const customer = resolveSalesDocumentCounterparty(returnData as Record<string, any>);
     const companyTaxLabel = issuer.tax_label || getCompanyTaxLabel(page.props);
-    const companyTaxNumber = issuer.tax_number || null;
     const customerTaxLabel = customer.tax_label || companyTaxLabel;
-    const documentStatus = statusMeta[returnData.status || 'draft'] || statusMeta.draft;
     const willCreateCreditNote = returnData.status === 'approved' || returnData.status === 'completed';
+    const documentNumber = buildStructuredDocumentNumber({
+        prefix: willCreateCreditNote ? 'NC' : 'GD',
+        series: returnData.document_series,
+        sequence: returnData.document_sequence,
+        number: returnData.return_number,
+        date: returnData.return_date,
+    });
+    const billing = customer.billing_address || returnData.customer_details?.billing_address || {};
+    const authUser = (page.props as any).auth?.user;
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -71,18 +85,13 @@ export default function Print() {
     const downloadPDF = async () => {
         setIsDownloading(true);
 
-        const printContent = document.querySelector('.document-print-container');
+        const printContent = document.querySelector(`.${COMMERCIAL_DOCUMENT_CONTAINER_CLASS}`);
         if (printContent) {
-            const opt = {
-                margin: 0.25,
-                filename: `sales-return-${returnData.return_number}.pdf`,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2 },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' as const },
-            };
-
             try {
-                await saveElementAsPdf(printContent as HTMLElement, opt);
+                await saveElementAsPdf(
+                    printContent as HTMLElement,
+                    buildCommercialDocumentPdfOptions(`devolucao-venda-${sanitizeFilename(documentNumber)}.pdf`),
+                );
                 setTimeout(() => window.close(), 1000);
             } catch (error) {
                 console.error('PDF generation failed:', error);
@@ -92,143 +101,111 @@ export default function Print() {
         setIsDownloading(false);
     };
 
-    const itemRows = (returnData.items ?? []).map((item, index) => {
-        const taxes = item.taxes ?? [];
-        const taxLabel = taxes.length > 0
-            ? taxes.map((tax) => `${tax.tax_name} (${tax.tax_rate}%)`).join(', ')
-            : item.tax_percentage > 0
-                ? `${item.tax_percentage}%`
-                : '0%';
+    const lines = (returnData.items || []).map((item: any) => {
+        const quantity = toNumber(item.return_quantity || item.quantity);
+        const unitPrice = toNumber(item.unit_price);
+        const discount = toNumber(item.discount_amount);
+        const netUnitPrice = quantity > 0 ? Math.max(((unitPrice * quantity) - discount) / quantity, 0) : unitPrice;
 
-        return (
-            <tr key={index} className="report-page-break-inside-avoid">
-                <td className="px-4 py-4 align-top">
-                    <div className="font-semibold text-slate-900">{item.product?.name || '-'}</div>
-                    {item.product?.sku && <div className="mt-1 text-xs text-slate-500">SKU: {item.product.sku}</div>}
-                    {item.product?.description && <div className="mt-1 text-xs leading-5 text-slate-500">{item.product.description}</div>}
-                </td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">{item.return_quantity || item.quantity}</td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">{formatCurrency(item.unit_price)}</td>
-                <td className="px-4 py-4 text-right align-top tabular-nums">
-                    {toNumber(item.discount_amount) > 0 ? `-${formatCurrency(item.discount_amount)}` : formatCurrency(0)}
-                </td>
-                <td className="px-4 py-4 text-right align-top">
-                    <div className="tabular-nums">{taxLabel}</div>
-                </td>
-                <td className="px-4 py-4 text-right align-top font-semibold tabular-nums">{formatCurrency(item.total_amount)}</td>
-            </tr>
-        );
+        return {
+            reference: item.product?.sku || String(item.product_id || item.id),
+            description: (
+                <>
+                    <div>{item.product?.name || '-'}</div>
+                    {item.product?.description && <div className="text-[10px] font-normal text-slate-500">{item.product.description}</div>}
+                </>
+            ),
+            unit: item.product?.unit || 'UN',
+            quantity: formatDocumentQuantity(quantity),
+            unitPrice: formatDocumentMoney(unitPrice, settings),
+            discount: discount > 0 ? formatDocumentMoney(discount, settings) : '-',
+            netPrice: formatDocumentMoney(netUnitPrice, settings),
+            tax: taxLabelForItem(item),
+            taxAmount: formatDocumentMoney(toNumber(item.tax_amount), settings),
+            total: formatDocumentMoney(item.total_amount, settings),
+        };
     });
 
     return (
-        <ReportShell>
-            <Head title={`Devolução de venda #${returnData.return_number}`} />
+        <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
+            <Head title={`Devolução de venda #${documentNumber}`} />
 
             {isDownloading && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="rounded-2xl bg-white px-6 py-5 shadow-xl">
+                    <div className="rounded-lg bg-white px-5 py-4 shadow-xl">
                         <div className="flex items-center gap-3">
-                            <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-emerald-600" />
-                            <p className="text-lg font-semibold text-slate-700">{t('Generating PDF...')}</p>
+                            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-emerald-600" />
+                            <p className="text-sm font-semibold text-slate-700">{t('Generating PDF...')}</p>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="document-print-container space-y-6">
-                <ReportHero
-                    title={willCreateCreditNote ? 'Nota de Crédito' : 'Nota / Guia de Devolução'}
-                    subtitle={willCreateCreditNote ? 'Regularização da venda original' : 'Documento de devolução física'}
-                    issuerTitle="Emitente"
-                    issuerLines={[
-                        issuer.company_name || 'Empresa',
-                        issuer.company_address,
-                        [issuer.company_city, issuer.company_state, issuer.company_zipcode].filter(Boolean).join(', '),
-                        issuer.company_country,
-                        issuer.company_telephone ? `Telefone: ${issuer.company_telephone}` : null,
-                        issuer.company_email ? `E-mail: ${issuer.company_email}` : null,
-                        companyTaxNumber ? `${companyTaxLabel}: ${companyTaxNumber}` : null,
-                    ].filter(Boolean) as React.ReactNode[]}
-                    documentLabel="Documento"
-                    documentNumber={`#${returnData.return_number}`}
-                    statusPills={[
-                        { label: 'Devolução', tone: 'info' },
-                        { label: documentStatus.label, tone: documentStatus.tone },
-                        { label: willCreateCreditNote ? 'Gera nota de crédito' : 'A aguardar aprovação', tone: willCreateCreditNote ? 'success' : 'warning' },
-                    ]}
-                    meta={[
-                        { label: 'Data', value: formatDate(returnData.return_date) },
-                        { label: 'Factura original', value: returnData.original_invoice?.invoice_number ? `#${returnData.original_invoice.invoice_number}` : '-' },
-                        { label: 'Armazém', value: returnData.warehouse?.name || '-' },
-                        { label: 'Motivo', value: formatReason(returnData.reason) },
-                    ]}
-                    note={willCreateCreditNote ? 'Impacto no stock: devolução física registada.' : 'Este documento pode ser convertido em nota de crédito após aprovação.'}
-                />
-
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <ReportCard title="Cliente" subtitle="Dados da devolução">
-                        <ReportKeyValueGrid
-                            columns={2}
-                            items={[
-                                { label: 'Nome', value: customer.company_name || customer.name || returnData.customer?.name || '-' },
-                                { label: customerTaxLabel || 'NUIT', value: customer.tax_number || '-' },
-                                { label: 'E-mail', value: customer.email || '-' },
-                                { label: 'Código', value: returnData.customer_details?.customer_code || '-' },
-                                { label: 'Morada', value: customer.billing_address?.address_line_1 || '-', span: 2 },
-                                { label: 'Cidade', value: [customer.billing_address?.city, customer.billing_address?.state, customer.billing_address?.zip_code].filter(Boolean).join(' - ') || '-', span: 2 },
-                            ]}
-                        />
-                    </ReportCard>
-
-                    <ReportCard title="Contexto operacional" subtitle="Regularização e referência">
-                        <ReportKeyValueGrid
-                            columns={2}
-                            items={[
-                                { label: 'Estado', value: documentStatus.label },
-                                { label: 'Gera nota de crédito', value: willCreateCreditNote ? 'Sim' : 'Não' },
-                                { label: 'Motivo', value: formatReason(returnData.reason) },
-                                { label: 'Observação', value: returnData.notes || '-' },
-                            ]}
-                        />
-                    </ReportCard>
-                </div>
-
-                <ReportTable headers={['Descrição', 'Qtd', 'Preço líquido', 'Desconto', 'IVA', 'Total']}>
-                    {itemRows}
-                </ReportTable>
-
-                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
-                    <ReportCard title="Notas" subtitle="Detalhes adicionais">
-                        <div className="space-y-4 text-sm leading-6 text-slate-700">
-                            <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Motivo</div>
-                                <div className="mt-1">{formatReason(returnData.reason)}</div>
-                            </div>
-                            <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Notas</div>
-                                <div className="mt-1 whitespace-pre-line">{returnData.notes || 'Sem notas adicionais.'}</div>
-                            </div>
-                        </div>
-                    </ReportCard>
-
-                    <ReportSummaryCard
-                        title="Resumo"
-                        subtitle="Totais da devolução"
-                        rows={[
-                            { label: 'Subtotal', value: formatCurrency(returnData.subtotal) },
-                            { label: 'Desconto', value: `-${formatCurrency(returnData.discount_amount)}` },
-                            { label: 'IVA', value: formatCurrency(returnData.tax_amount) },
-                            { label: 'Total', value: formatCurrency(returnData.total_amount), emphasis: true },
-                        ]}
-                    />
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                    <ReportPill tone="info">Devolução de venda</ReportPill>
-                    <ReportPill tone={documentStatus.tone}>{documentStatus.label}</ReportPill>
-                    {willCreateCreditNote ? <ReportPill tone="success">Regulariza factura</ReportPill> : <ReportPill tone="warning">Pendência de aprovação</ReportPill>}
-                </div>
-            </div>
-        </ReportShell>
+            <CommercialDocumentTemplate
+                title={willCreateCreditNote ? 'NOTA DE CRÉDITO' : 'GUIA DE DEVOLUÇÃO'}
+                subtitle={willCreateCreditNote ? 'Regularização da venda original' : 'Documento de devolução física'}
+                documentLabel={willCreateCreditNote ? 'Nota de crédito' : 'Guia de devolução'}
+                documentNumber={documentNumber}
+                copyLabel={returnData.status === 'cancelled' ? 'CANCELADA' : 'ORIGINAL'}
+                watermark={returnData.status === 'cancelled' ? 'CANCELADA' : undefined}
+                issuer={{
+                    title: 'Emitente',
+                    name: issuer.company_name || 'Empresa',
+                    logoPath: settings.logo_dark || settings.logo_light || null,
+                    address: issuer.company_address,
+                    cityLine: buildPartyCityLine(issuer),
+                    countryLine: buildPartyCountryLine(issuer),
+                    taxLabel: companyTaxLabel,
+                    taxNumber: issuer.tax_number,
+                    phone: issuer.company_telephone,
+                    email: issuer.company_email,
+                    website: settings.company_website || settings.website,
+                    registration: issuer.registration_number,
+                }}
+                recipient={{
+                    title: 'Para',
+                    name: customer.company_name || customer.name || returnData.customer?.name || 'Cliente',
+                    address: billing.address_line_1,
+                    cityLine: [billing.city, billing.state, billing.zip_code].filter(Boolean).join(', '),
+                    countryLine: billing.country,
+                    taxLabel: customerTaxLabel,
+                    taxNumber: customer.tax_number,
+                    phone: customer.phone,
+                    email: customer.email || returnData.customer?.email,
+                }}
+                statusPills={[
+                    { label: statusLabel[returnData.status] || returnData.status || 'Rascunho', tone: returnData.status === 'cancelled' ? 'danger' : willCreateCreditNote ? 'success' : 'warning' },
+                    { label: willCreateCreditNote ? 'Gera nota de crédito' : 'Devolução física', tone: willCreateCreditNote ? 'success' : 'info' },
+                ]}
+                meta={[
+                    { label: 'Data', value: formatDate(returnData.return_date, page.props) },
+                    { label: 'Factura original', value: returnData.original_invoice?.invoice_number || '-' },
+                    { label: 'Motivo', value: formatReason(returnData.reason) },
+                    { label: 'Armazém', value: returnData.warehouse?.name || '-' },
+                    { label: 'Moeda', value: 'Metical' },
+                    { label: 'Série', value: returnData.document_series || '-' },
+                    { label: 'Sequência', value: returnData.document_sequence || '-' },
+                    { label: 'Operador', value: authUser?.name || '-' },
+                ]}
+                lines={lines}
+                totals={[
+                    { label: 'Subtotal', value: formatDocumentMoney(returnData.subtotal, settings) },
+                    { label: 'Descontos', value: formatDocumentMoney(returnData.discount_amount, settings) },
+                    { label: 'Valor tributável', value: formatDocumentMoney(Math.max(toNumber(returnData.subtotal) - toNumber(returnData.discount_amount), 0), settings) },
+                    { label: 'IVA regularizado', value: formatDocumentMoney(returnData.tax_amount, settings) },
+                    { label: 'Total creditado', value: formatDocumentMoney(returnData.total_amount, settings), emphasis: true },
+                    { label: 'Total por extenso', value: moneyToPortugueseWords(returnData.total_amount) },
+                ]}
+                observations={returnData.notes || [
+                    `Motivo: ${formatReason(returnData.reason)}`,
+                    willCreateCreditNote ? 'IVA regularizado conforme documento original.' : 'Documento de devolução física. Pode originar nota de crédito após aprovação.',
+                    'Impacto no stock quando aplicável.',
+                ].join('\n')}
+                validationCode={`${documentNumber}-${returnData.id}`}
+                issuedBy={authUser?.name || '-'}
+                printedBy={authUser?.name || '-'}
+                printedAt={new Date().toLocaleString('pt-MZ')}
+            />
+        </div>
     );
 }

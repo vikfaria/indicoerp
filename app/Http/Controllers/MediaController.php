@@ -90,10 +90,12 @@ class MediaController extends Controller
             }
 
             $directories = $directoriesQuery->get(['id', 'name', 'slug']);
+            $creator = $this->resolveMediaCreator($user);
 
             return response()->json([
                 'media' => $media,
-                'directories' => $directories
+                'directories' => $directories,
+                'storage' => $creator ? $this->buildStorageQuotaPayload($creator) : null,
             ]);
 
         }
@@ -376,7 +378,7 @@ class MediaController extends Controller
         $user = auth()->user();
         if ($user->type === 'superadmin') return null;
 
-        $creator = ($user->type === 'company') ? $user : User::find($user->created_by);
+        $creator = $this->resolveMediaCreator($user);
         if (!$creator) {
             return response()->json([
                 'message' => __('Creator not found'),
@@ -384,20 +386,81 @@ class MediaController extends Controller
             ], 422);
         }
 
-        if ($creator->storage_limit == -1) return null;
-
-        $limit = $creator->storage_limit * 1024; // Convert KB to Bytes
-        $uploadSize = collect($files)->sum('size');
-        $currentUsage = Media::where('created_by', $creator->id)->sum('size');
-
-        if (($currentUsage + $uploadSize) > $limit) {
+        $quota = $this->buildStorageQuotaPayload($creator, $files);
+        if (($quota['status'] ?? null) === 'exceeded') {
             return response()->json([
                 'message' => __('Storage limit exceeded'),
-                'errors' => [__('Please delete files or upgrade plan')]
+                'errors' => [__('Please delete files or upgrade plan')],
+                'error_code' => 'storage_limit_exceeded',
+                'storage' => $quota,
             ], 422);
         }
 
         return null;
+    }
+
+    private function resolveMediaCreator(User $user): ?User
+    {
+        return match ($user->type) {
+            'company' => $user,
+            default => User::find($user->created_by),
+        };
+    }
+
+    private function buildStorageQuotaPayload(User $user, ?array $pendingFiles = null): array
+    {
+        if ((int) $user->storage_limit === -1) {
+            return [
+                'status' => 'unlimited',
+                'limit_bytes' => -1,
+                'current_bytes' => (int) Media::where('created_by', $user->id)->sum('size'),
+                'available_bytes' => null,
+                'usage_percent' => null,
+                'is_unlimited' => true,
+            ];
+        }
+
+        $currentBytes = (int) Media::where('created_by', $user->id)->sum('size');
+        $uploadBytes = $pendingFiles ? $this->sumUploadedFileSizes($pendingFiles) : 0;
+        $limitBytes = max(0, (int) $user->storage_limit * 1024);
+        $projectedUsage = $currentBytes + $uploadBytes;
+        $availableBytes = max($limitBytes - $currentBytes, 0);
+
+        if ($limitBytes === 0) {
+            $status = $projectedUsage > 0 ? 'exceeded' : 'within_limit';
+            $usagePercent = $projectedUsage > 0 ? 100 : 0;
+        } elseif ($projectedUsage > $limitBytes) {
+            $status = 'exceeded';
+            $usagePercent = (int) round(($projectedUsage / $limitBytes) * 100);
+        } elseif ((int) round(($currentBytes / $limitBytes) * 100) >= 80) {
+            $status = 'near_limit';
+            $usagePercent = (int) round(($currentBytes / $limitBytes) * 100);
+        } else {
+            $status = 'within_limit';
+            $usagePercent = (int) round(($currentBytes / $limitBytes) * 100);
+        }
+
+        return [
+            'status' => $status,
+            'limit_bytes' => $limitBytes,
+            'current_bytes' => $currentBytes,
+            'available_bytes' => $limitBytes > 0 ? $availableBytes : null,
+            'usage_percent' => $usagePercent,
+            'requested_bytes' => $uploadBytes,
+            'projected_bytes' => $projectedUsage,
+            'is_unlimited' => false,
+        ];
+    }
+
+    private function sumUploadedFileSizes(array $files): int
+    {
+        return (int) collect($files)->sum(function ($file): int {
+            if (is_object($file) && method_exists($file, 'getSize')) {
+                return (int) $file->getSize();
+            }
+
+            return (int) data_get($file, 'size', 0);
+        });
     }
 
     public function getImageUrl(Request $request)
