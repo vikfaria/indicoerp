@@ -84,22 +84,16 @@ class JournalEntry extends Model
 
         static::creating(function ($journalEntry) {
             if (empty($journalEntry->journal_number)) {
-                // Try to use the new numbering service if available
-                try {
-                    $service = app(\App\Services\JournalNumberingService::class);
-                    $numbering = $service->generateNumber(
-                        $journalEntry->created_by ?? creatorId(),
-                        $journalEntry->journal_date?->toDateString() ?? date('Y-m-d'),
-                        $journalEntry->accounting_journal_id
-                    );
-                    $journalEntry->journal_number = $numbering['journal_number'];
-                    $journalEntry->fiscal_year = $journalEntry->fiscal_year ?? $numbering['fiscal_year'];
-                    $journalEntry->period_number = $journalEntry->period_number ?? $numbering['period_number'];
-                    $journalEntry->accounting_period_id = $journalEntry->accounting_period_id ?? $numbering['accounting_period_id'];
-                } catch (\Throwable) {
-                    // Fallback to legacy numbering
-                    $journalEntry->journal_number = static::generateJournalNumber();
-                }
+                $service = app(\App\Services\JournalNumberingService::class);
+                $numbering = $service->generateNumber(
+                    $journalEntry->created_by ?? creatorId(),
+                    $journalEntry->journal_date?->toDateString() ?? date('Y-m-d'),
+                    $journalEntry->accounting_journal_id
+                );
+                $journalEntry->journal_number = $numbering['journal_number'];
+                $journalEntry->fiscal_year = $journalEntry->fiscal_year ?? $numbering['fiscal_year'];
+                $journalEntry->period_number = $journalEntry->period_number ?? $numbering['period_number'];
+                $journalEntry->accounting_period_id = $journalEntry->accounting_period_id ?? $numbering['accounting_period_id'];
             }
 
             // Always set fiscal_year if missing

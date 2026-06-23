@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MzVatCode;
+use Workdo\Account\Models\JournalEntry;
 use Workdo\Account\Models\ChartOfAccount;
 use Illuminate\Support\Facades\DB;
 
@@ -260,23 +261,25 @@ class VatCalculationService
             }
         }
 
-        // Insert the journal entry
-        $entryId = DB::table('journal_entries')->insertGetId([
+        // Insert the journal entry through the model so numbering/validation hooks stay active
+        $entry = JournalEntry::query()->create([
             'journal_date' => $date,
             'description' => "Lançamento IVA — {$documentReference}",
             'total_debit' => collect($lines)->sum('debit_amount'),
             'total_credit' => collect($lines)->sum('credit_amount'),
             'status' => 'posted',
             'accounting_journal_id' => $journalId,
+            'entry_type' => 'automatic',
+            'reference_type' => 'vat',
+            'reference_id' => null,
+            'creator_id' => $companyId,
             'created_by' => $companyId,
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
 
         // Insert the lines
         foreach ($lines as $line) {
             DB::table('journal_entry_items')->insert([
-                'journal_entry_id' => $entryId,
+                'journal_entry_id' => $entry->id,
                 'account_id' => $line['account_id'],
                 'debit_amount' => $line['debit_amount'],
                 'credit_amount' => $line['credit_amount'],
@@ -286,7 +289,6 @@ class VatCalculationService
             ]);
         }
 
-        return $entryId;
+        return $entry->id;
     }
 }
-
