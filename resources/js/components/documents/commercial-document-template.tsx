@@ -97,6 +97,15 @@ const asLine = (...parts: Array<ReactNode | null | undefined | false>): string =
 
 const toNumber = (value: unknown): number => Number(value ?? 0) || 0;
 
+const toText = (value: ReactNode): string => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+
+    return '';
+};
+
+const isExtensoTotalLabel = (label: ReactNode): boolean => toText(label).toLowerCase().includes('total por extenso');
+
 export const isMozambiqueSettings = (settings?: Record<string, any> | null): boolean => {
     const country = String(settings?.company_country || '').toLowerCase();
     const symbol = String(settings?.currencySymbol || settings?.currency_symbol || '').toUpperCase();
@@ -288,6 +297,52 @@ const DocumentMetaGrid = ({ meta = [] }: { meta?: CommercialDocumentMeta[] }) =>
     );
 };
 
+const TotalsSummary = ({ totals = [] }: { totals?: CommercialDocumentTotal[] }) => {
+    const summaryRows = totals.filter((row) => !isExtensoTotalLabel(row.label));
+    const extensoRow = totals.find((row) => isExtensoTotalLabel(row.label));
+
+    if (summaryRows.length === 0 && !extensoRow) {
+        return null;
+    }
+
+    return (
+        <div className="border-2 border-slate-950 bg-white">
+            <div className="border-b-2 border-slate-950 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-700">
+                Resumo financeiro
+            </div>
+
+            <div className="divide-y divide-slate-950/10">
+                {summaryRows.map((row, index) => (
+                    <div
+                        key={index}
+                        className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 ${
+                            row.emphasis ? 'bg-slate-50 py-2.5' : 'py-1.5'
+                        }`}
+                    >
+                        <div className={`text-right text-[10.5px] leading-[1.35] ${row.emphasis ? 'font-black' : 'font-bold'}`}>
+                            {row.label}:
+                        </div>
+                        <div className={`tabular-nums ${row.emphasis ? 'text-[13px] font-black' : 'text-[11px] font-bold'}`}>
+                            {row.value}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {extensoRow && (
+                <div className="border-t-2 border-slate-950 px-3 py-2">
+                    <div className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-700">
+                        {extensoRow.label}
+                    </div>
+                    <div className="mt-1 text-right text-[10.5px] font-semibold leading-[1.45] text-slate-950">
+                        {extensoRow.value}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export function CommercialDocumentTemplate({
     title,
     subtitle,
@@ -423,7 +478,7 @@ export function CommercialDocumentTemplate({
                 <DocumentMetaGrid meta={meta} />
             </div>
 
-            <section className="mt-4 min-h-[124mm] overflow-hidden border-2 border-slate-950">
+            <section className="mt-4 min-h-[118mm] overflow-hidden border-2 border-slate-950">
                 <table className="commercial-lines-table w-full border-collapse text-[10px]">
                     <thead>
                         <tr className="border-b-2 border-slate-950 bg-white">
@@ -465,9 +520,9 @@ export function CommercialDocumentTemplate({
                 </table>
             </section>
 
-            <section className="commercial-page-break-avoid mt-4 grid gap-5 md:grid-cols-[1fr_330px]">
+            <section className="commercial-page-break-avoid mt-3 grid gap-4 md:grid-cols-[1fr_330px]">
                 <div className="space-y-4">
-                    <div className="min-h-[80px] border-2 border-slate-950 px-3 py-2 text-[10px] leading-[1.35]">
+                    <div className="min-h-[74px] border-2 border-slate-950 px-3 py-2 text-[10px] leading-[1.35]">
                         <div className="mb-1 font-black">Observações / Condições</div>
                         <div className="whitespace-pre-line text-slate-800">{observations || 'Sem observações adicionais.'}</div>
                         {legalNotice && <div className="mt-2 border border-slate-950 px-2 py-1 font-semibold text-slate-950">{legalNotice}</div>}
@@ -487,22 +542,7 @@ export function CommercialDocumentTemplate({
                     )}
                 </div>
 
-                <div className="grid grid-cols-[1fr_112px] border-2 border-slate-950 text-[12px]">
-                    <div className="border-r-2 border-slate-950 py-2">
-                        {totals.map((row, index) => (
-                            <div key={index} className={`px-3 text-right ${row.emphasis ? 'text-base font-black' : 'font-black'}`}>
-                                {row.label}:
-                            </div>
-                        ))}
-                    </div>
-                    <div className="py-2">
-                        {totals.map((row, index) => (
-                            <div key={index} className={`px-3 text-right tabular-nums ${row.emphasis ? 'text-base font-black' : 'font-bold'}`}>
-                                {row.value}
-                            </div>
-                        ))}
-                    </div>
-                </div>
+                <TotalsSummary totals={totals} />
             </section>
 
             <footer className="commercial-page-break-avoid mt-4 border-t-2 border-slate-950 pt-1.5 text-[8.5px] leading-4 text-slate-700">
