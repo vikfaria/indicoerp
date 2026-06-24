@@ -244,12 +244,23 @@ if (!function_exists('ActivatedModule')) {
             $user = Auth::user();
         }
 
-        $cacheSuffix = $user ? ('user:' . $user->id) : 'guest:admin';
+        $activationCache = app(AssistantActivationCacheService::class);
+        $companyId = null;
+
+        if ($user) {
+            $companyId = $user->type === 'company'
+                ? (int) $user->id
+                : ((int) ($user->created_by ?: 0) ?: null);
+        }
+
+        $companyVersion = $companyId ? $activationCache->currentCompanyVersion($companyId) : 'guest';
+        $cacheSuffix = ($user ? ('user:' . $user->id) : 'guest:admin') . ':company_version:' . $companyVersion;
         if (array_key_exists($cacheSuffix, $runtimeCache)) {
             return $runtimeCache[$cacheSuffix];
         }
 
-        $cacheKey = 'user:activated_modules:' . $cacheSuffix . ':module_version:' . app(AssistantActivationCacheService::class)->currentModuleVersion();
+        $cacheKey = 'user:activated_modules:' . $cacheSuffix
+            . ':module_version:' . $activationCache->currentModuleVersion();
 
         $modules = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
             $moduleService = new Module();
@@ -322,7 +333,13 @@ if (!function_exists('Module_is_active')) {
             return true;
         }
 
-        $activeKey = 'user:' . $user->id;
+        $companyId = $user->type === 'company'
+            ? (int) $user->id
+            : ((int) ($user->created_by ?: 0) ?: null);
+        $companyVersion = $companyId
+            ? app(AssistantActivationCacheService::class)->currentCompanyVersion($companyId)
+            : 'none';
+        $activeKey = 'user:' . $user->id . ':company_version:' . $companyVersion;
         if (!array_key_exists($activeKey, $runtimeActiveMapCache)) {
             $runtimeActiveMapCache[$activeKey] = array_flip(ActivatedModule($user->id));
         }

@@ -76,7 +76,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
 
     const buildBlockedTooltip = (title: string, activation: MenuAssistantActivation) => ({
         children: (
-            <div className="space-y-2 max-w-sm">
+            <div className="space-y-2 max-w-[280px]">
                 <p className="text-sm font-medium leading-none">{title}</p>
                 <p className="text-xs text-muted-foreground">
                     {activation.moduleLabels && activation.moduleLabels.length > 0
@@ -89,31 +89,27 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                 {activation.criticalItems && activation.criticalItems.length > 0 && (
                     <div className="space-y-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 p-2">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-900">
-                            {t('Pendências exactas')}
+                            {t('Principais pendências')}
                         </p>
-                        <div className="max-h-48 space-y-1 overflow-auto pr-1">
-                            {activation.criticalItems.slice(0, 3).map((item, index) => (
-                                <div key={`${item.moduleKey ?? 'module'}-${item.key ?? item.code ?? index}`} className="rounded-md bg-white/90 px-2 py-1 shadow-sm ring-1 ring-amber-200/60">
-                                    <p className="text-xs font-medium text-slate-900">
-                                        {item.label ?? t('Pendência sem título')}
-                                    </p>
-                                    {item.message && (
-                                        <p className="mt-0.5 text-[11px] leading-snug text-slate-600">
-                                            {item.message}
-                                        </p>
-                                    )}
-                                </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {activation.criticalItems.slice(0, 2).map((item, index) => (
+                                <span
+                                    key={`${item.moduleKey ?? 'module'}-${item.key ?? item.code ?? index}`}
+                                    className="inline-flex items-center rounded-full bg-white/90 px-2 py-1 text-[11px] font-medium text-slate-700 ring-1 ring-amber-200/70"
+                                >
+                                    {item.label ?? t('Pendência sem título')}
+                                </span>
                             ))}
+                            {activation.criticalItems.length > 2 && (
+                                <span className="inline-flex items-center rounded-full bg-white/90 px-2 py-1 text-[11px] text-slate-500 ring-1 ring-amber-200/70">
+                                    +{activation.criticalItems.length - 2}
+                                </span>
+                            )}
                         </div>
-                        {activation.criticalItems.length > 3 && (
-                            <p className="text-[11px] text-muted-foreground">
-                                {t('Mostrando as 3 primeiras pendências exactas.')}
-                            </p>
-                        )}
                     </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                    {activation.ctaMessage ?? t('Abra o onboarding para resolver este bloqueio.')}
+                    {activation.ctaMessage ?? t('Abra o onboarding para ver os detalhes e resolver este bloqueio.')}
                 </p>
                 <Link
                     href={activation.ctaHref ?? route('onboarding.index')}
@@ -148,7 +144,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                         <CollapsibleTrigger asChild>
                                             <SidebarMenuButton
                                                 tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
-                                                showTooltipWhenExpanded={itemIsBlocked}
+                                                showTooltipWhenExpanded={false}
                                                 isActive={shouldBeActive}
                                                 data-current={false}
                                                 data-blocked={itemIsBlocked}
@@ -182,7 +178,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                         <CollapsibleTrigger asChild>
                                                                             <SidebarMenuSubButton
                                                                                 tooltip={subItemActivation ? buildBlockedTooltip(subItemTitle, subItemActivation) : undefined}
-                                                                                showTooltipWhenExpanded={subItemIsBlocked}
+                                                                                showTooltipWhenExpanded={false}
                                                                                 isActive={subItemShouldBeActive}
                                                                                 data-current={false}
                                                                                 data-blocked={subItemIsBlocked}
@@ -209,7 +205,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                                                     <SidebarMenuSubItem key={subSubItem.title}>
                                                                                         <SidebarMenuSubButton
                                                                                             tooltip={subSubItemActivation ? buildBlockedTooltip(subSubItemTitle, subSubItemActivation) : undefined}
-                                                                                            showTooltipWhenExpanded={subSubItemIsBlocked}
+                                                                                            showTooltipWhenExpanded={false}
                                                                                             asChild
                                                                                             isActive={isSubSubActive}
                                                                                             data-current={isSubSubActive}
@@ -240,7 +236,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                                             <SidebarMenuSubItem key={subItem.title}>
                                                                 <SidebarMenuSubButton
                                                                     tooltip={subItemActivation ? buildBlockedTooltip(subItemTitle, subItemActivation) : undefined}
-                                                                    showTooltipWhenExpanded={subItemIsBlocked}
+                                                                    showTooltipWhenExpanded={false}
                                                                     asChild
                                                                     isActive={subItemActive}
                                                                     data-current={subItemActive}
@@ -267,7 +263,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                         <DropdownMenuTrigger asChild>
                                             <SidebarMenuButton
                                                 tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
-                                                showTooltipWhenExpanded={itemIsBlocked}
+                                                showTooltipWhenExpanded={false}
                                                 isActive={shouldBeActive}
                                                 data-blocked={itemIsBlocked}
                                                 className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
@@ -337,7 +333,7 @@ export function NavMain({ items = [], searchQuery = "" }: { items: NavItem[], se
                                 isActive={shouldBeActive}
                                 data-current={false}
                                 data-blocked={itemIsBlocked}
-                                showTooltipWhenExpanded={itemIsBlocked}
+                                showTooltipWhenExpanded={false}
                                 tooltip={itemActivation ? buildBlockedTooltip(itemTitle, itemActivation) : itemTitle}
                                 className={itemIsBlocked ? 'data-[blocked=true]:bg-amber-50/80 data-[blocked=true]:text-amber-900 data-[blocked=true]:hover:bg-amber-100' : undefined}
                             >

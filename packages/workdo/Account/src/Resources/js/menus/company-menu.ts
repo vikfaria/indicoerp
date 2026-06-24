@@ -39,24 +39,19 @@ export const accountCompanyMenu = (t: (key: string) => string) => [
             },
             {
                 title: t('Banking'),
+                href: route('account.bank-accounts.index'),
                 permission: 'manage-bank-accounts',
-                children: [
-                    {
-                        title: t('Bank Accounts'),
-                        href: route('account.bank-accounts.index'),
-                        permission: 'manage-bank-accounts',
-                    },
-                    {
-                        title: t('Bank Transactions'),
-                        href: route('account.bank-transactions.index'),
-                        permission: 'manage-bank-transactions',
-                    },
-                    {
-                        title: t('Bank Transfers'),
-                        href: route('account.bank-transfers.index'),
-                        permission: 'manage-bank-transfers',
-                    },
-                ],
+                activePaths: [route('account.bank-accounts.index')],
+            },
+            {
+                title: t('Bank Transactions'),
+                href: route('account.bank-transactions.index'),
+                permission: 'manage-bank-transactions',
+            },
+            {
+                title: t('Bank Transfers'),
+                href: route('account.bank-transfers.index'),
+                permission: 'manage-bank-transfers',
             },
             {
                 title: t('Chart Of Accounts'),

@@ -100,6 +100,37 @@ class AssistantActivationPlanModuleCheckTest extends TestCase
         $response->assertJsonPath('component', 'Account/BankAccounts/Index');
     }
 
+    public function test_it_invalidates_stale_active_module_cache_before_bank_account_feature_gate_runs(): void
+    {
+        $company = $this->makeCompany(901008, ['Hrm']);
+        $this->enableModule('Account');
+
+        foreach ([
+            'manage-bank-accounts',
+            'manage-any-bank-accounts',
+            'manage-own-bank-accounts',
+        ] as $permissionName) {
+            Permission::firstOrCreate(
+                ['name' => $permissionName, 'guard_name' => 'web'],
+                [
+                    'add_on' => 'general',
+                    'module' => 'tests',
+                    'label' => $permissionName,
+                ]
+            );
+        }
+
+        $this->assertNotContains('Account', ActivatedModule($company->id));
+
+        $response = $this->withSession(['company_role_checked' => true])
+            ->actingAs($company)
+            ->get(route('account.bank-accounts.index'), $this->inertiaHeaders());
+
+        $response->assertOk();
+        $response->assertHeader('X-Inertia', 'true');
+        $response->assertJsonPath('component', 'Account/BankAccounts/Index');
+    }
+
     public function test_it_blocks_a_known_non_core_module_and_uses_the_resolver_payload_when_available(): void
     {
         $company = $this->makeCompany(901003, ['Account']);
