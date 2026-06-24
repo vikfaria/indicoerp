@@ -1,11 +1,19 @@
 import { useTranslation } from 'react-i18next';
 import { DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { CustomerPaymentViewProps } from './types';
 import { formatDate, formatCurrency } from '@/utils/helpers';
+import { Download, Printer } from 'lucide-react';
 
 export default function View({ payment }: CustomerPaymentViewProps) {
     const { t } = useTranslation();
+    const printUrl = route('account.customer-payments.print', payment.id);
+
+    const openReceipt = (download = false) => {
+        const url = `${printUrl}${download ? '?download=pdf' : '?print=1'}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+    };
 
     const paymentMethodLabel = (method?: string) => {
         const labels: Record<string, string> = {
@@ -32,9 +40,25 @@ export default function View({ payment }: CustomerPaymentViewProps) {
 
     return (
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-                <DialogTitle>{t('Payment Details')} - {payment.payment_number || `#${payment.id}`}</DialogTitle>
-            </DialogHeader>
+            <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-start md:justify-between">
+                <DialogHeader className="space-y-1">
+                    <DialogTitle>{t('Payment Details')} - {payment.payment_number || `#${payment.id}`}</DialogTitle>
+                    <p className="text-sm text-muted-foreground">
+                        {t('Receipt ready for printing or PDF download.')}
+                    </p>
+                </DialogHeader>
+
+                <div className="flex flex-wrap gap-2 print:hidden">
+                    <Button variant="outline" size="sm" onClick={() => openReceipt(true)}>
+                        <Download className="mr-2 h-4 w-4" />
+                        {t('Download PDF')}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => openReceipt(false)}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        {t('Print')}
+                    </Button>
+                </div>
+            </div>
 
             <div className="space-y-6 mt-3">
                 {/* Payment Information */}

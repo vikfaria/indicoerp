@@ -116,6 +116,10 @@ Route::middleware(['web', 'auth', 'verified', 'PlanModuleCheck:Account'])->group
         Route::patch('/{customerPayment}/update-status', [CustomerPaymentController::class, 'updateStatus'])->name('update-status');
     });
 
+    Route::prefix('account/customer-payments')->name('account.customer-payments.')->group(function () {
+        Route::get('/{customerPayment}/print', [CustomerPaymentController::class, 'print'])->name('print');
+    });
+
     Route::prefix('account/revenue-categories')->name('account.revenue-categories.')->group(function () {
         Route::get('/', [RevenueCategoriesController::class, 'index'])->name('index');
         Route::post('/', [RevenueCategoriesController::class, 'store'])->name('store');

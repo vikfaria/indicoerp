@@ -118,6 +118,34 @@ class CustomerPaymentController extends Controller
         }
     }
 
+    public function print(CustomerPayment $customerPayment)
+    {
+        if (!(
+            Auth::user()->can('view-customer-payments')
+            || Auth::user()->can('manage-customer-payments')
+        ) || $customerPayment->created_by !== creatorId()) {
+            return back()->with('error', __('Permission denied'));
+        }
+
+        $customerPayment->load([
+            'customer',
+            'bankAccount.branch',
+            'branch',
+            'allocations.invoice',
+            'creditNoteApplications.creditNote',
+        ]);
+
+        $customerProfile = CustomerProfile::query()
+            ->where('created_by', creatorId())
+            ->where('user_id', $customerPayment->customer_id)
+            ->first();
+
+        return Inertia::render('Account/CustomerPayments/Print', [
+            'customerPayment' => $customerPayment,
+            'customerProfile' => $customerProfile,
+        ]);
+    }
+
     public function store(StoreCustomerPaymentRequest $request)
     {
         if(Auth::user()->can('create-customer-payments')){
