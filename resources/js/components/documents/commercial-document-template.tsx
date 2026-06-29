@@ -8,10 +8,11 @@ export const COMMERCIAL_DOCUMENT_CONTAINER_CLASS = 'commercial-document-pdf-root
 export const buildCommercialDocumentPdfOptions = (filename: string) => ({
     margin: 0,
     filename,
-    fitToPage: true,
-    fitToPageMarginMm: 4,
-    fitToPageMinScale: 0.55,
     image: { type: 'jpeg' as const, quality: 0.98 },
+    pagebreak: {
+        mode: ['css', 'legacy'],
+        avoid: ['.commercial-page-break-avoid'],
+    },
     html2canvas: {
         scale: 2,
         useCORS: true,
@@ -87,6 +88,10 @@ export interface CommercialDocumentTemplateProps {
     statusPills?: CommercialDocumentPill[];
     watermark?: ReactNode;
     footerNote?: ReactNode;
+    singlePageLineLimit?: number;
+    firstPageLineLimit?: number;
+    continuationPageLineLimit?: number;
+    lastPageLineLimit?: number;
 }
 
 const empty = (value: unknown): boolean => value === null || value === undefined || value === '';
@@ -105,6 +110,66 @@ const toText = (value: ReactNode): string => {
 };
 
 const isExtensoTotalLabel = (label: ReactNode): boolean => toText(label).toLowerCase().includes('total por extenso');
+
+const DEFAULT_SINGLE_PAGE_LINE_LIMIT = 8;
+const DEFAULT_FIRST_PAGE_LINE_LIMIT = 14;
+const DEFAULT_CONTINUATION_PAGE_LINE_LIMIT = 22;
+const DEFAULT_LAST_PAGE_LINE_LIMIT = 10;
+
+const clampLimit = (value: number | undefined, fallback: number): number => {
+    const numeric = Number(value);
+
+    return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : fallback;
+};
+
+const paginateCommercialLines = (
+    lines: CommercialDocumentLine[],
+    {
+        singlePageLineLimit,
+        firstPageLineLimit,
+        continuationPageLineLimit,
+        lastPageLineLimit,
+    }: {
+        singlePageLineLimit?: number;
+        firstPageLineLimit?: number;
+        continuationPageLineLimit?: number;
+        lastPageLineLimit?: number;
+    },
+): CommercialDocumentLine[][] => {
+    const normalizedLines = lines.length > 0 ? lines : [];
+    const singleLimit = clampLimit(singlePageLineLimit, DEFAULT_SINGLE_PAGE_LINE_LIMIT);
+    const firstLimit = clampLimit(firstPageLineLimit, DEFAULT_FIRST_PAGE_LINE_LIMIT);
+    const continuationLimit = clampLimit(continuationPageLineLimit, DEFAULT_CONTINUATION_PAGE_LINE_LIMIT);
+    const lastLimit = clampLimit(lastPageLineLimit, DEFAULT_LAST_PAGE_LINE_LIMIT);
+
+    if (normalizedLines.length <= singleLimit) {
+        return [normalizedLines];
+    }
+
+    const pages: CommercialDocumentLine[][] = [];
+    let remaining = [...normalizedLines];
+
+    pages.push(remaining.splice(0, Math.min(firstLimit, remaining.length)));
+
+    if (remaining.length === 0) {
+        return pages;
+    }
+
+    const middlePageCount = Math.max(0, Math.ceil((remaining.length - lastLimit) / continuationLimit));
+
+    for (let index = 0; index < middlePageCount; index += 1) {
+        const pagesAfterThis = middlePageCount - index - 1;
+        const linesToLeave = lastLimit + (pagesAfterThis * continuationLimit);
+        const take = Math.min(continuationLimit, Math.max(1, remaining.length - linesToLeave));
+        pages.push(remaining.splice(0, take));
+    }
+
+    if (remaining.length > 0) {
+        pages.push(remaining);
+    }
+
+    return pages;
+};
 
 export const isMozambiqueSettings = (settings?: Record<string, any> | null): boolean => {
     const country = String(settings?.company_country || '').toLowerCase();
@@ -364,71 +429,64 @@ export function CommercialDocumentTemplate({
     statusPills = [],
     watermark,
     footerNote = 'Processado por Índico ERP',
+    singlePageLineLimit,
+    firstPageLineLimit,
+    continuationPageLineLimit,
+    lastPageLineLimit,
 }: CommercialDocumentTemplateProps) {
     const logoPath = issuer.logoPath || null;
+    const pages = paginateCommercialLines(lines, {
+        singlePageLineLimit,
+        firstPageLineLimit,
+        continuationPageLineLimit,
+        lastPageLineLimit,
+    });
+    const totalPages = pages.length;
 
-    return (
-        <div className={`${COMMERCIAL_DOCUMENT_CONTAINER_CLASS} commercial-document relative bg-white font-sans text-slate-950`}>
-            <style>{`
-                @page {
-                    size: A4;
-                    margin: 6mm;
-                }
+    const renderLinesTable = (pageLines: CommercialDocumentLine[]) => (
+        <table className="commercial-lines-table w-full border-collapse text-[10px]">
+            <thead>
+                <tr className="border-b-2 border-slate-950 bg-white">
+                    <th className="w-[12%] px-1 py-1 text-left font-black">Referência</th>
+                    <th className="w-[28%] px-1 py-1 text-left font-black">Designação</th>
+                    <th className="w-[6%] px-1 py-1 text-center font-black">Unid.</th>
+                    <th className="w-[7%] px-1 py-1 text-right font-black">Quant.</th>
+                    <th className="w-[10%] px-1 py-1 text-right font-black">Preço</th>
+                    <th className="w-[8%] px-1 py-1 text-right font-black">Desc.</th>
+                    <th className="w-[10%] px-1 py-1 text-right font-black">Pr. Líquido</th>
+                    <th className="w-[8%] px-1 py-1 text-right font-black">IVA</th>
+                    <th className="w-[11%] px-1 py-1 text-right font-black">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {pageLines.length > 0 ? pageLines.map((line, index) => (
+                    <tr key={index} className="commercial-page-break-avoid align-top">
+                        <td className="px-1 py-1 font-mono text-[9px] leading-tight text-slate-800">{line.reference || '-'}</td>
+                        <td className="px-1 py-1">
+                            <div className="text-[9.5px] font-semibold leading-tight text-slate-950">{line.description}</div>
+                        </td>
+                        <td className="px-1 py-1 text-center text-[9.5px]">{line.unit || 'UN'}</td>
+                        <td className="px-1 py-1 text-right tabular-nums">{line.quantity || '-'}</td>
+                        <td className="px-1 py-1 text-right tabular-nums">{line.unitPrice || '-'}</td>
+                        <td className="px-1 py-1 text-right tabular-nums">{line.discount || '-'}</td>
+                        <td className="px-1 py-1 text-right tabular-nums">{line.netPrice || '-'}</td>
+                        <td className="px-1 py-1 text-right">
+                            <div className="tabular-nums">{line.tax || '0%'}</div>
+                            {line.taxAmount && <div className="text-[9px] text-slate-500">{line.taxAmount}</div>}
+                        </td>
+                        <td className="px-1 py-1 text-right font-bold tabular-nums">{line.total || '-'}</td>
+                    </tr>
+                )) : (
+                    <tr>
+                        <td colSpan={9} className="px-3 py-12 text-center text-slate-500">Sem linhas registadas.</td>
+                    </tr>
+                )}
+            </tbody>
+        </table>
+    );
 
-                body {
-                    -webkit-print-color-adjust: exact;
-                    color-adjust: exact;
-                    background: #f3f4f6;
-                }
-
-                .commercial-document {
-                    width: 210mm;
-                    min-height: 297mm;
-                    margin: 0 auto;
-                    padding: 8mm;
-                    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
-                }
-
-                .commercial-lines-table th,
-                .commercial-lines-table td {
-                    border-right: 1px dotted #475569;
-                }
-
-                .commercial-lines-table th:last-child,
-                .commercial-lines-table td:last-child {
-                    border-right: 0;
-                }
-
-                .commercial-lines-table {
-                    table-layout: fixed;
-                }
-
-                @media print {
-                    body {
-                        background: #fff;
-                    }
-
-                    .commercial-document {
-                        width: auto;
-                        min-height: auto;
-                        margin: 0;
-                        padding: 0;
-                        box-shadow: none;
-                    }
-
-                    .commercial-page-break-avoid {
-                        page-break-inside: avoid;
-                        break-inside: avoid;
-                    }
-                }
-            `}</style>
-
-            {watermark && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-8xl font-black uppercase tracking-[0.3em] text-slate-200/35">
-                    {watermark}
-                </div>
-            )}
-
+    const renderFullHeader = () => (
+        <>
             <header className="relative grid gap-10 md:grid-cols-[1.04fr_0.96fr]">
                 <div>
                     <div className="mb-2 min-h-[46px]">
@@ -477,86 +535,184 @@ export function CommercialDocumentTemplate({
             <div className="mt-5">
                 <DocumentMetaGrid meta={meta} />
             </div>
+        </>
+    );
 
-            <section className="mt-4 min-h-[118mm] overflow-hidden border-2 border-slate-950">
-                <table className="commercial-lines-table w-full border-collapse text-[10px]">
-                    <thead>
-                        <tr className="border-b-2 border-slate-950 bg-white">
-                            <th className="w-[12%] px-1 py-1 text-left font-black">Referência</th>
-                            <th className="w-[28%] px-1 py-1 text-left font-black">Designação</th>
-                            <th className="w-[6%] px-1 py-1 text-center font-black">Unid.</th>
-                            <th className="w-[7%] px-1 py-1 text-right font-black">Quant.</th>
-                            <th className="w-[10%] px-1 py-1 text-right font-black">Preço</th>
-                            <th className="w-[8%] px-1 py-1 text-right font-black">Desc.</th>
-                            <th className="w-[10%] px-1 py-1 text-right font-black">Pr. Líquido</th>
-                            <th className="w-[8%] px-1 py-1 text-right font-black">IVA</th>
-                            <th className="w-[11%] px-1 py-1 text-right font-black">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {lines.length > 0 ? lines.map((line, index) => (
-                            <tr key={index} className="commercial-page-break-avoid align-top">
-                                <td className="px-1 py-1 font-mono text-[9px] text-slate-800">{line.reference || '-'}</td>
-                                <td className="px-1 py-1">
-                                    <div className="text-[9.5px] font-semibold leading-tight text-slate-950">{line.description}</div>
-                                </td>
-                                <td className="px-1 py-1 text-center text-[9.5px]">{line.unit || 'UN'}</td>
-                                <td className="px-1 py-1 text-right tabular-nums">{line.quantity || '-'}</td>
-                                <td className="px-1 py-1 text-right tabular-nums">{line.unitPrice || '-'}</td>
-                                <td className="px-1 py-1 text-right tabular-nums">{line.discount || '-'}</td>
-                                <td className="px-1 py-1 text-right tabular-nums">{line.netPrice || '-'}</td>
-                                <td className="px-1 py-1 text-right">
-                                    <div className="tabular-nums">{line.tax || '0%'}</div>
-                                    {line.taxAmount && <div className="text-[10px] text-slate-500">{line.taxAmount}</div>}
-                                </td>
-                                <td className="px-1 py-1 text-right font-bold tabular-nums">{line.total || '-'}</td>
-                            </tr>
-                        )) : (
-                            <tr>
-                                <td colSpan={9} className="px-3 py-12 text-center text-slate-500">Sem linhas registadas.</td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </section>
+    const renderContinuationHeader = () => (
+        <header className="commercial-page-break-avoid mb-3 grid items-start gap-4 border-b-2 border-slate-950 pb-2 md:grid-cols-[1fr_auto]">
+            <div>
+                <div className="text-[13px] font-black uppercase leading-tight">{issuer.name || issuer.legalName || 'Empresa'}</div>
+                <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-600">Continuação</div>
+            </div>
+            <div className="text-right">
+                <div className="text-[12px] font-black">{documentLabel}-{title}</div>
+                <div className="text-[15px] font-black">Nº {documentNumber}</div>
+                <div className="text-[9px] font-black uppercase text-slate-700">{copyLabel}</div>
+            </div>
+        </header>
+    );
 
-            <section className="commercial-page-break-avoid mt-3 grid gap-4 md:grid-cols-[1fr_330px]">
-                <div className="space-y-4">
-                    <div className="min-h-[74px] border-2 border-slate-950 px-3 py-2 text-[10px] leading-[1.35]">
-                        <div className="mb-1 font-black">Observações / Condições</div>
-                        <div className="whitespace-pre-line text-slate-800">{observations || 'Sem observações adicionais.'}</div>
-                        {legalNotice && <div className="mt-2 border border-slate-950 px-2 py-1 font-semibold text-slate-950">{legalNotice}</div>}
-                    </div>
+    const renderFinalSection = () => (
+        <section className="commercial-page-break-avoid mt-3 grid gap-4 md:grid-cols-[1fr_330px]">
+            <div className="space-y-4">
+                <div className="min-h-[58px] border-2 border-slate-950 px-3 py-2 text-[10px] leading-[1.35]">
+                    <div className="mb-1 font-black">Observações / Condições</div>
+                    <div className="whitespace-pre-line text-slate-800">{observations || 'Sem observações adicionais.'}</div>
+                    {legalNotice && <div className="mt-2 border border-slate-950 px-2 py-1 font-semibold text-slate-950">{legalNotice}</div>}
+                </div>
 
-                    {bankDetails.length > 0 && (
-                        <div className="border border-slate-950 px-3 py-2 text-[9.5px]">
-                            <div className="mb-1 font-black">Dados bancários</div>
-                            <div className="grid grid-cols-2 gap-2">
-                                {bankDetails.filter((item) => !empty(item.value)).map((item, index) => (
-                                    <div key={index}>
-                                        <span className="font-bold">{item.label}:</span> {item.value}
-                                    </div>
-                                ))}
-                            </div>
+                {bankDetails.length > 0 && (
+                    <div className="border border-slate-950 px-3 py-2 text-[9.5px]">
+                        <div className="mb-1 font-black">Dados bancários</div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {bankDetails.filter((item) => !empty(item.value)).map((item, index) => (
+                                <div key={index}>
+                                    <span className="font-bold">{item.label}:</span> {item.value}
+                                </div>
+                            ))}
                         </div>
-                    )}
-                </div>
-
-                <TotalsSummary totals={totals} />
-            </section>
-
-            <footer className="commercial-page-break-avoid mt-4 border-t-2 border-slate-950 pt-1.5 text-[8.5px] leading-4 text-slate-700">
-                <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                    <div>
-                        <span className="font-bold">{footerNote}</span>
-                        {issuedBy && <> | Emitido por: {issuedBy}</>}
-                        {printedBy && <> | Impresso por: {printedBy}</>}
-                        {printedAt && <> | Impresso em: {printedAt}</>}
-                        {validationCode && <> | Código de validação: <span className="font-mono">{validationCode}</span></>}
                     </div>
-                    <div className="font-bold">Página 1 de 1</div>
+                )}
+            </div>
+
+            <TotalsSummary totals={totals} />
+        </section>
+    );
+
+    const renderFooter = (pageIndex: number) => (
+        <footer className="commercial-page-break-avoid mt-4 border-t-2 border-slate-950 pt-1.5 text-[8.5px] leading-4 text-slate-700">
+            <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                <div>
+                    <span className="font-bold">{footerNote}</span>
+                    {issuedBy && <> | Emitido por: {issuedBy}</>}
+                    {printedBy && <> | Impresso por: {printedBy}</>}
+                    {printedAt && <> | Impresso em: {printedAt}</>}
+                    {validationCode && <> | Código de validação: <span className="font-mono">{validationCode}</span></>}
                 </div>
-            </footer>
+                <div className="font-bold">Página {pageIndex + 1} de {totalPages}</div>
+            </div>
+        </footer>
+    );
+
+    return (
+        <div className={`${COMMERCIAL_DOCUMENT_CONTAINER_CLASS} bg-white font-sans text-slate-950`}>
+            <style>{`
+                @page {
+                    size: A4;
+                    margin: 0;
+                }
+
+                body {
+                    -webkit-print-color-adjust: exact;
+                    color-adjust: exact;
+                    background: #f3f4f6;
+                }
+
+                .commercial-document-pdf-root,
+                .commercial-document-pdf-root * {
+                    box-sizing: border-box;
+                }
+
+                .commercial-document-pdf-root {
+                    width: 210mm;
+                    margin: 0 auto;
+                    background: #fff;
+                }
+
+                .commercial-document-page {
+                    position: relative;
+                    display: flex;
+                    flex-direction: column;
+                    width: 210mm;
+                    height: 296.5mm;
+                    min-height: 296.5mm;
+                    margin: 0 auto;
+                    overflow: hidden;
+                    padding: 8mm;
+                    background: #fff;
+                    box-shadow: none;
+                    page-break-after: always;
+                    break-after: page;
+                }
+
+                .commercial-document-page:last-child {
+                    page-break-after: auto;
+                    break-after: auto;
+                }
+
+                .commercial-lines-frame {
+                    flex: 1 1 auto;
+                    min-height: 0;
+                    overflow: hidden;
+                }
+
+                .commercial-lines-table {
+                    table-layout: fixed;
+                }
+
+                .commercial-lines-table th,
+                .commercial-lines-table td {
+                    border-right: 1px dotted #475569;
+                }
+
+                .commercial-lines-table th:last-child,
+                .commercial-lines-table td:last-child {
+                    border-right: 0;
+                }
+
+                .commercial-page-break-avoid {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
+                }
+
+                @media print {
+                    body {
+                        background: #fff;
+                    }
+
+                    .commercial-document-pdf-root {
+                        margin: 0;
+                    }
+
+                    .commercial-document-page {
+                        margin: 0;
+                        box-shadow: none;
+                    }
+                }
+            `}</style>
+
+            {pages.map((pageLines, pageIndex) => {
+                const isFirstPage = pageIndex === 0;
+                const isLastPage = pageIndex === totalPages - 1;
+
+                return (
+                    <section key={pageIndex} className="commercial-document-page">
+                        {watermark && (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-8xl font-black uppercase tracking-[0.3em] text-slate-200/35">
+                                {watermark}
+                            </div>
+                        )}
+
+                        <div className="relative flex min-h-0 flex-1 flex-col">
+                            {isFirstPage ? renderFullHeader() : renderContinuationHeader()}
+
+                            <section className="commercial-lines-frame mt-4 border-2 border-slate-950">
+                                {renderLinesTable(pageLines)}
+                            </section>
+
+                            {!isLastPage && (
+                                <div className="commercial-page-break-avoid mt-2 text-right text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                                    Continua na página seguinte
+                                </div>
+                            )}
+
+                            {isLastPage && renderFinalSection()}
+
+                            {renderFooter(pageIndex)}
+                        </div>
+                    </section>
+                );
+            })}
         </div>
     );
 }
