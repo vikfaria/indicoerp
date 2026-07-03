@@ -5,14 +5,12 @@ import AuthenticatedLayout from "@/layouts/authenticated-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Package, Image } from "lucide-react";
-import { formatCurrency, getImagePath } from "@/utils/helpers";
+import { formatCurrency, formatDate, getImagePath } from "@/utils/helpers";
 import { ImageSlider } from "@/components/ui/image-slider";
+import { Item, StockSummary, WarehouseStockSummary } from './types';
 
 interface ShowItemPageProps {
-    item: {
-        id: number;
-        name: string;
-        sku?: string;
+    item: Item & {
         description?: string;
         sale_price?: number;
         purchase_price?: number;
@@ -23,10 +21,8 @@ interface ShowItemPageProps {
         images?: string[] | string;
         gallery?: string[];
         additional_images?: string[];
-        warehouse_stocks?: Array<{
-            warehouse_name: string;
-            quantity: number;
-        }>;
+        warehouse_stocks?: WarehouseStockSummary[];
+        stock_summary?: StockSummary;
         category?: {
             id: number;
             name: string;
@@ -43,6 +39,26 @@ interface ShowItemPageProps {
         created_at: string;
     };
 }
+
+const formatStockQuantity = (value?: number | null) => {
+    const amount = Number(value || 0);
+
+    return new Intl.NumberFormat('pt-MZ', {
+        minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+        maximumFractionDigits: 2,
+    }).format(amount);
+};
+
+const getStockBadgeVariant = (status?: string) => {
+    switch (status) {
+        case 'empty':
+            return 'destructive' as const;
+        case 'distributed':
+            return 'secondary' as const;
+        default:
+            return 'default' as const;
+    }
+};
 
 export default function Show() {
     const { t } = useTranslation();
@@ -114,31 +130,90 @@ export default function Show() {
                                     {item.purchase_price && (
                                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                                             <label className="text-sm font-medium text-blue-700">{t('Purchase Price')}</label>
-                                            <p className="text-xl font-bold text-blue-800 mt-1">{formatCurrency(item.purchase_price)}</p>
+                                        <p className="text-xl font-bold text-blue-800 mt-1">{formatCurrency(item.purchase_price)}</p>
                                         </div>
                                     )}
                                     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                                         <label className="text-sm font-medium text-orange-700">{t('Total Quantity')}</label>
-                                        <p className="text-xl font-bold text-orange-800 mt-1">{Math.floor(item.total_quantity) || 0}</p>
+                                        <p className="text-xl font-bold text-orange-800 mt-1">{formatStockQuantity(item.total_quantity)}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {item.warehouse_stocks && item.warehouse_stocks.length > 0 && (
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">{t('Warehouse Stock')}</h3>
-                                    <div className="bg-gray-50 p-4 rounded-lg">
-                                        <div className="space-y-2">
-                                            {item.warehouse_stocks.map((stock, index) => (
-                                                <div key={index} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                                                    <span className="font-medium text-gray-700">{stock.warehouse_name}</span>
-                                                    <span className="text-lg font-semibold text-gray-900">{Math.floor(stock.quantity)}</span>
-                                                </div>
-                                            ))}
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">{t('Warehouse Stock')}</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                    <div className="bg-slate-50 p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-slate-700">{t('Stock status')}</label>
+                                        <div className="mt-2">
+                                            <Badge variant={getStockBadgeVariant(item.stock_summary?.status ?? (item.total_quantity && item.total_quantity > 0 ? 'available' : 'empty'))}>
+                                                {item.stock_summary?.status_label ?? (item.total_quantity && item.total_quantity > 0 ? t('Available') : t('Out of stock'))}
+                                            </Badge>
                                         </div>
                                     </div>
+                                    <div className="bg-slate-50 p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-slate-700">{t('Warehouses with stock')}</label>
+                                        <p className="text-xl font-bold text-slate-900 mt-1">
+                                            {item.stock_summary?.active_warehouse_count ?? item.active_warehouse_count ?? 0}/{item.stock_summary?.warehouse_count ?? item.warehouse_stock_count ?? 0}
+                                        </p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-slate-700">{t('Last updated')}</label>
+                                        <p className="text-sm font-semibold text-slate-900 mt-2">
+                                            {item.stock_summary?.last_updated_at ? formatDate(item.stock_summary.last_updated_at) : '-'}
+                                        </p>
+                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-lg border">
+                                        <label className="text-sm font-medium text-slate-700">{t('Total Quantity')}</label>
+                                        <p className="text-xl font-bold text-slate-900 mt-1">{formatStockQuantity(item.total_quantity)}</p>
+                                    </div>
                                 </div>
-                            )}
+
+                                <div className="mt-4 overflow-hidden rounded-lg border bg-white">
+                                    {item.warehouse_stocks && item.warehouse_stocks.length > 0 ? (
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full divide-y divide-gray-200">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">{t('Warehouse')}</th>
+                                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">{t('Quantity')}</th>
+                                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">{t('Share')}</th>
+                                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">{t('Status')}</th>
+                                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">{t('Updated')}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 bg-white">
+                                                    {item.warehouse_stocks.map((stock, index) => (
+                                                        <tr key={`${stock.warehouse_id}-${index}`}>
+                                                            <td className="px-4 py-3">
+                                                                <div className="font-medium text-gray-900">{stock.warehouse_name}</div>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                                                                {formatStockQuantity(stock.quantity)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm text-gray-600">
+                                                                {Number(stock.share_percent || 0).toFixed(1)}%
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right">
+                                                                <Badge variant={getStockBadgeVariant(stock.status)}>
+                                                                    {stock.status_label}
+                                                                </Badge>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-sm text-gray-600">
+                                                                {stock.updated_at ? formatDate(stock.updated_at) : '-'}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ) : (
+                                        <div className="p-6 text-center text-gray-500">
+                                            {t('No warehouse stock registered yet.')}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-800 mb-4">{t('Additional Details')}</h3>
@@ -227,5 +302,3 @@ export default function Show() {
         </AuthenticatedLayout>
     );
 }
-
-

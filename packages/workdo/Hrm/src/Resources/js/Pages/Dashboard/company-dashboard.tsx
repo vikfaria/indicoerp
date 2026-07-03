@@ -467,7 +467,7 @@ export default function HrmIndex({ message, stats, configuration_progress }: Hrm
                                             >
                                                 {step.available ? (
                                                     <>
-                                                        {step.completed ? t('Open') : t('Go to step')}
+                                                        {step.completed ? t('Open step') : t('Go to step')}
                                                         <ArrowRight className="h-4 w-4 ml-2" />
                                                     </>
                                                 ) : (

@@ -19,6 +19,34 @@ export interface Item {
         unit_name: string;
     };
     image?: string;
+    total_quantity?: number;
+    warehouse_stock_count?: number;
+    active_warehouse_count?: number;
+    stock_status?: 'empty' | 'available' | 'distributed';
+    stock_status_label?: string;
+    last_stock_update_at?: string | null;
+    stock_summary?: StockSummary;
+    warehouse_stocks?: WarehouseStockSummary[];
+}
+
+export interface WarehouseStockSummary {
+    warehouse_id: number;
+    warehouse_name: string;
+    quantity: number;
+    status: 'empty' | 'available';
+    status_label: string;
+    updated_at?: string | null;
+    share_percent?: number;
+}
+
+export interface StockSummary {
+    total_quantity: number;
+    warehouse_count: number;
+    active_warehouse_count: number;
+    status: 'empty' | 'available' | 'distributed';
+    status_label: string;
+    last_updated_at?: string | null;
+    warehouse_stocks: WarehouseStockSummary[];
 }
 
 export interface ItemFormData {

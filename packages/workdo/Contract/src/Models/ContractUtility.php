@@ -2,10 +2,11 @@
 
 namespace Workdo\Contract\Models;
 
+use App\Services\MozambiqueReferenceCatalogDefaultsService;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Workdo\Contract\Models\ContractType;
+
 class ContractUtility extends Model
 {
     public static function defaultdata($company_id = null)
@@ -13,6 +14,7 @@ class ContractUtility extends Model
         if (!empty($company_id)) {
             // Set contract prefix
             setSetting('contract_prefix', 'CON', $company_id);
+            app(MozambiqueReferenceCatalogDefaultsService::class)->seedContractForCompany((int) $company_id);
         }
     }
 

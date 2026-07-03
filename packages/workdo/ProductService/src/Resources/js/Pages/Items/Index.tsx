@@ -17,9 +17,30 @@ import { Pagination } from "@/components/ui/pagination";
 import { SearchInput } from "@/components/ui/search-input";
 import { ListGridToggle } from '@/components/ui/list-grid-toggle';
 import NoRecordsFound from '@/components/no-records-found';
-import { formatCurrency, getImagePath } from '@/utils/helpers';
+import { Badge } from '@/components/ui/badge';
+import { formatCurrency, formatDate, getImagePath } from '@/utils/helpers';
 import { Item, ItemsIndexProps, ItemFilters } from './types';
 import { usePageButtons } from '@/hooks/usePageButtons';
+
+const formatStockQuantity = (value?: number | null) => {
+    const amount = Number(value || 0);
+
+    return new Intl.NumberFormat('pt-MZ', {
+        minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+        maximumFractionDigits: 2,
+    }).format(amount);
+};
+
+const getStockBadgeVariant = (status?: string) => {
+    switch (status) {
+        case 'empty':
+            return 'destructive' as const;
+        case 'distributed':
+            return 'secondary' as const;
+        default:
+            return 'default' as const;
+    }
+};
 
 export default function Index() {
     const { t } = useTranslation();
@@ -153,10 +174,56 @@ export default function Index() {
             render: (value: string, item: Item) => item.unit_relation?.unit_name || '-'
         },
         {
-            key: 'total_quantity',
-            header: t('Quantity'),
+            key: 'stock_summary',
+            header: t('Warehouse Stock'),
             sortable: false,
-            render: (value: number) => Math.floor(value) || 0
+            render: (_: any, item: Item) => {
+                const stockSummary = item.stock_summary;
+                const totalQuantity = stockSummary?.total_quantity ?? item.total_quantity ?? 0;
+                const warehouseCount = stockSummary?.warehouse_count ?? item.warehouse_stock_count ?? 0;
+                const activeWarehouseCount = stockSummary?.active_warehouse_count ?? item.active_warehouse_count ?? 0;
+                const status = stockSummary?.status ?? item.stock_status ?? (totalQuantity > 0 ? 'available' : 'empty');
+                const statusLabel = stockSummary?.status_label ?? item.stock_status_label ?? (totalQuantity > 0 ? t('Available') : t('Out of stock'));
+                const stockWarehouses = stockSummary?.warehouse_stocks ?? item.warehouse_stocks ?? [];
+                const lastUpdatedAt = stockSummary?.last_updated_at ?? item.last_stock_update_at;
+
+                return (
+                    <div className="min-w-[280px] space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={getStockBadgeVariant(status)} className="text-[11px]">
+                                {statusLabel}
+                            </Badge>
+                            <span className="text-base font-semibold text-gray-900">
+                                {formatStockQuantity(totalQuantity)}
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            {t('Warehouses with stock')}: {activeWarehouseCount}/{warehouseCount}
+                        </p>
+                        {lastUpdatedAt && (
+                            <p className="text-xs text-gray-500">
+                                {t('Last updated')}: {formatDate(lastUpdatedAt)}
+                            </p>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                            {stockWarehouses.slice(0, 2).map((warehouse) => (
+                                <span
+                                    key={warehouse.warehouse_id}
+                                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-700"
+                                >
+                                    <span className="max-w-[120px] truncate">{warehouse.warehouse_name}</span>
+                                    <span className="font-semibold">{formatStockQuantity(warehouse.quantity)}</span>
+                                </span>
+                            ))}
+                            {stockWarehouses.length > 2 && (
+                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-500">
+                                    +{stockWarehouses.length - 2}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
         },
         {
             key: 'type',
@@ -437,10 +504,6 @@ export default function Index() {
                                                             <span className="text-sm font-medium">{formatCurrency(item.purchase_price)}</span>
                                                         </div>
                                                     )}
-                                                    <div className="flex justify-between">
-                                                        <span className="text-sm text-gray-600">{t('Quantity')}</span>
-                                                        <span className="text-sm font-medium">{Math.floor(item.total_quantity) || 0}</span>
-                                                    </div>
                                                     {item.category && (
                                                         <div className="flex justify-between">
                                                             <span className="text-sm text-gray-600">{t('Category')}</span>
@@ -453,6 +516,48 @@ export default function Index() {
                                                             <span className="text-sm font-medium">{item.unit_relation.unit_name}</span>
                                                         </div>
                                                     )}
+                                                    {(() => {
+                                                        const stockSummary = item.stock_summary;
+                                                        const totalQuantity = stockSummary?.total_quantity ?? item.total_quantity ?? 0;
+                                                        const warehouseCount = stockSummary?.warehouse_count ?? item.warehouse_stock_count ?? 0;
+                                                        const activeWarehouseCount = stockSummary?.active_warehouse_count ?? item.active_warehouse_count ?? 0;
+                                                        const status = stockSummary?.status ?? item.stock_status ?? (totalQuantity > 0 ? 'available' : 'empty');
+                                                        const statusLabel = stockSummary?.status_label ?? item.stock_status_label ?? (totalQuantity > 0 ? t('Available') : t('Out of stock'));
+                                                        const stockWarehouses = stockSummary?.warehouse_stocks ?? item.warehouse_stocks ?? [];
+
+                                                        return (
+                                                            <div className="rounded-lg border bg-gray-50/80 p-3 space-y-2">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-sm font-medium text-gray-700">{t('Warehouse Stock')}</span>
+                                                                    <Badge variant={getStockBadgeVariant(status)} className="text-[11px]">
+                                                                        {statusLabel}
+                                                                    </Badge>
+                                                                </div>
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <span className="text-2xl font-semibold text-gray-900">{formatStockQuantity(totalQuantity)}</span>
+                                                                    <span className="text-xs text-gray-500 text-right">
+                                                                        {t('Warehouses with stock')}: {activeWarehouseCount}/{warehouseCount}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {stockWarehouses.slice(0, 2).map((warehouse) => (
+                                                                        <span
+                                                                            key={warehouse.warehouse_id}
+                                                                            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] text-gray-700 border"
+                                                                        >
+                                                                            <span className="max-w-[110px] truncate">{warehouse.warehouse_name}</span>
+                                                                            <span className="font-semibold">{formatStockQuantity(warehouse.quantity)}</span>
+                                                                        </span>
+                                                                    ))}
+                                                                    {stockWarehouses.length > 2 && (
+                                                                        <span className="inline-flex items-center rounded-full bg-white px-2 py-1 text-[11px] text-gray-500 border">
+                                                                            +{stockWarehouses.length - 2}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 <div className="flex items-center justify-between pt-3 border-t">

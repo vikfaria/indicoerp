@@ -4,6 +4,7 @@ namespace Workdo\ProductService\Http\Controllers;
 
 use App\Models\Warehouse;
 use App\Services\InventoryCostingService;
+use App\Services\WarehouseStockSummaryService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -26,7 +27,14 @@ class ProductServiceItemController extends Controller
     {
         if(Auth::user()->can('manage-product-service-item')){
             $items = ProductServiceItem::select('id', 'name', 'sku', 'sale_price', 'purchase_price', 'tax_ids', 'category_id', 'unit', 'type', 'image', 'description', 'long_description', 'created_at')
-                ->with(['category:id,name', 'unitRelation:id,unit_name', 'warehouseStocks:product_id,quantity'])
+                ->with([
+                    'category:id,name',
+                    'unitRelation:id,unit_name',
+                    'warehouseStocks' => function ($query) {
+                        $query->select('id', 'product_id', 'warehouse_id', 'quantity', 'updated_at')
+                            ->with('warehouse:id,name');
+                    },
+                ])
                 ->where(function($q) {
                     if(Auth::user()->can('manage-any-product-service-item')) {
                         $q->where('created_by', creatorId());
@@ -44,11 +52,11 @@ class ProductServiceItemController extends Controller
                 ->paginate(request('per_page', 10))
                 ->withQueryString();
 
-            // Add total quantity for each item
-            $items->getCollection()->transform(function ($item) {
-                $item->total_quantity = $item->warehouseStocks->sum('quantity');
-                return $item;
-            });
+            $items->setCollection(
+                $items->getCollection()->map(function (ProductServiceItem $item) {
+                    return $this->transformItemStockData($item);
+                })
+            );
 
             $categories = ProductServiceCategory::where('created_by', creatorId())->get(['id', 'name']);
 
@@ -154,7 +162,14 @@ class ProductServiceItemController extends Controller
     public function show(ProductServiceItem $item)
     {
         if(Auth::user()->can('view-product-service-item')){
-            $item->load(['category', 'unitRelation', 'warehouseStocks.warehouse:id,name']);
+            $item->load([
+                'category',
+                'unitRelation',
+                'warehouseStocks' => function ($query) {
+                    $query->select('id', 'product_id', 'warehouse_id', 'quantity', 'updated_at')
+                        ->with('warehouse:id,name');
+                },
+            ]);
 
             // Load taxes if tax_ids exist
             $taxes = [];
@@ -168,15 +183,8 @@ class ProductServiceItemController extends Controller
                 }
             }
 
-            $itemData = $item->toArray();
+            $itemData = $this->transformItemStockData($item);
             $itemData['taxes'] = $taxes;
-            $itemData['total_quantity'] = $item->warehouseStocks->sum('quantity');
-            $itemData['warehouse_stocks'] = $item->warehouseStocks->map(function($stock) {
-                return [
-                    'warehouse_name' => $stock->warehouse->name,
-                    'quantity' => $stock->quantity
-                ];
-            });
 
             return Inertia::render('ProductService/Items/Show', [
                 'item' => $itemData,
@@ -327,7 +335,12 @@ class ProductServiceItemController extends Controller
     {
         if(Auth::user()->can('manage-stock')){
             $stocks = ProductServiceItem::select('id', 'name', 'sku')
-                ->with(['warehouseStocks:product_id,warehouse_id,quantity'])
+                ->with([
+                    'warehouseStocks' => function ($query) {
+                        $query->select('id', 'product_id', 'warehouse_id', 'quantity', 'updated_at')
+                            ->with('warehouse:id,name');
+                    },
+                ])
                 ->where('created_by', creatorId())
                 ->where('type', '!=', 'service')
                 ->when(request('name'), fn($q) => $q->where('name', 'like', '%' . request('name') . '%'))
@@ -336,11 +349,11 @@ class ProductServiceItemController extends Controller
                 ->paginate(request('per_page', 10))
                 ->withQueryString();
 
-            // Add total quantity for each item
-            $stocks->getCollection()->transform(function ($item) {
-                $item->total_quantity = $item->warehouseStocks->sum('quantity');
-                return $item;
-            });
+            $stocks->setCollection(
+                $stocks->getCollection()->map(function (ProductServiceItem $item) {
+                    return $this->transformItemStockData($item);
+                })
+            );
 
             $warehouses = \App\Models\Warehouse::where('created_by', creatorId())->where('is_active', true)->get(['id', 'name']);
 
@@ -440,5 +453,27 @@ class ProductServiceItemController extends Controller
             });
         }
         return back()->with('error', __('Permission denied'));
+    }
+
+    /**
+     * Normalize item + warehouse stock relations into frontend-friendly payload.
+     */
+    private function transformItemStockData(ProductServiceItem $item): array
+    {
+        $summary = app(WarehouseStockSummaryService::class)->summarize($item->warehouseStocks);
+        $itemData = $item->toArray();
+
+        unset($itemData['warehouseStocks']);
+
+        $itemData['total_quantity'] = $summary['total_quantity'];
+        $itemData['warehouse_stock_count'] = $summary['warehouse_count'];
+        $itemData['active_warehouse_count'] = $summary['active_warehouse_count'];
+        $itemData['stock_status'] = $summary['status'];
+        $itemData['stock_status_label'] = $summary['status_label'];
+        $itemData['last_stock_update_at'] = $summary['last_updated_at'];
+        $itemData['stock_summary'] = $summary;
+        $itemData['warehouse_stocks'] = $summary['warehouse_stocks'];
+
+        return $itemData;
     }
 }

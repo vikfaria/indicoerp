@@ -2,6 +2,7 @@
 
 namespace Workdo\Hrm\Models;
 
+use App\Services\MozambiqueReferenceCatalogDefaultsService;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -32,6 +33,8 @@ class HrmModel extends Model
                     'creator_id' => $company_id,
                 ]
             );
+
+            app(MozambiqueReferenceCatalogDefaultsService::class)->seedHrmForCompany((int) $company_id);
         }
 
         $hrRolePermissions = [

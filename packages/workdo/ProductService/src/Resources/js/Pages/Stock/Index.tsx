@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Plus, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchInput } from "@/components/ui/search-input";
@@ -15,12 +16,41 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { formatDate } from '@/utils/helpers';
+import { StockSummary, WarehouseStockSummary } from '../Items/types';
+
+const formatStockQuantity = (value?: number | null) => {
+    const amount = Number(value || 0);
+
+    return new Intl.NumberFormat('pt-MZ', {
+        minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+        maximumFractionDigits: 2,
+    }).format(amount);
+};
+
+const getStockBadgeVariant = (status?: string) => {
+    switch (status) {
+        case 'empty':
+            return 'destructive' as const;
+        case 'distributed':
+            return 'secondary' as const;
+        default:
+            return 'default' as const;
+    }
+};
 
 interface StockItem {
     id: number;
     name: string;
     sku: string;
     total_quantity: number;
+    warehouse_stock_count?: number;
+    active_warehouse_count?: number;
+    stock_status?: 'empty' | 'available' | 'distributed';
+    stock_status_label?: string;
+    last_stock_update_at?: string | null;
+    stock_summary?: StockSummary;
+    warehouse_stocks?: WarehouseStockSummary[];
 }
 
 interface Warehouse {
@@ -112,10 +142,56 @@ export default function Index() {
             sortable: false
         },
         {
-            key: 'total_quantity',
-            header: t('Quantity'),
+            key: 'stock_summary',
+            header: t('Warehouse Stock'),
             sortable: false,
-            render: (value: number) => Math.floor(value) || 0
+            render: (_: any, item: StockItem) => {
+                const stockSummary = item.stock_summary;
+                const totalQuantity = stockSummary?.total_quantity ?? item.total_quantity ?? 0;
+                const warehouseCount = stockSummary?.warehouse_count ?? item.warehouse_stock_count ?? 0;
+                const activeWarehouseCount = stockSummary?.active_warehouse_count ?? item.active_warehouse_count ?? 0;
+                const status = stockSummary?.status ?? item.stock_status ?? (totalQuantity > 0 ? 'available' : 'empty');
+                const statusLabel = stockSummary?.status_label ?? item.stock_status_label ?? (totalQuantity > 0 ? t('Available') : t('Out of stock'));
+                const stockWarehouses = stockSummary?.warehouse_stocks ?? item.warehouse_stocks ?? [];
+                const lastUpdatedAt = stockSummary?.last_updated_at ?? item.last_stock_update_at;
+
+                return (
+                    <div className="min-w-[280px] space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={getStockBadgeVariant(status)} className="text-[11px]">
+                                {statusLabel}
+                            </Badge>
+                            <span className="text-base font-semibold text-gray-900">
+                                {formatStockQuantity(totalQuantity)}
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            {t('Warehouses with stock')}: {activeWarehouseCount}/{warehouseCount}
+                        </p>
+                        {lastUpdatedAt && (
+                            <p className="text-xs text-gray-500">
+                                {t('Last updated')}: {formatDate(lastUpdatedAt)}
+                            </p>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                            {stockWarehouses.slice(0, 2).map((warehouse) => (
+                                <span
+                                    key={warehouse.warehouse_id}
+                                    className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-700"
+                                >
+                                    <span className="max-w-[120px] truncate">{warehouse.warehouse_name}</span>
+                                    <span className="font-semibold">{formatStockQuantity(warehouse.quantity)}</span>
+                                </span>
+                            ))}
+                            {stockWarehouses.length > 2 && (
+                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-500">
+                                    +{stockWarehouses.length - 2}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
         },
         {
             key: 'actions',
