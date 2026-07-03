@@ -442,6 +442,9 @@ export function CommercialDocumentTemplate({
         lastPageLineLimit,
     });
     const totalPages = pages.length;
+    const documentHeading = [toText(documentLabel), toText(title)]
+        .filter((part) => part.trim().length > 0)
+        .join('-') || 'Documento';
 
     const renderLinesTable = (pageLines: CommercialDocumentLine[]) => (
         <table className="commercial-lines-table w-full border-collapse text-[10px]">
@@ -515,7 +518,7 @@ export function CommercialDocumentTemplate({
 
             <section className="mt-3 grid items-end gap-3 md:grid-cols-[1fr_auto_1fr]">
                 <div className="border-t-2 border-slate-950 pt-1.5">
-                    <div className="text-[15px] font-black">{documentLabel}-{title}</div>
+                    <div className="text-[15px] font-black">{documentHeading}</div>
                     {subtitle && <div className="mt-0.5 text-[10.5px] font-semibold text-slate-700">{subtitle}</div>}
                 </div>
                 <div className="px-6 text-center text-[18px] font-black">Nº&nbsp;&nbsp;{documentNumber}</div>
@@ -545,7 +548,7 @@ export function CommercialDocumentTemplate({
                 <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-600">Continuação</div>
             </div>
             <div className="text-right">
-                <div className="text-[12px] font-black">{documentLabel}-{title}</div>
+                <div className="text-[12px] font-black">{documentHeading}</div>
                 <div className="text-[15px] font-black">Nº {documentNumber}</div>
                 <div className="text-[9px] font-black uppercase text-slate-700">{copyLabel}</div>
             </div>

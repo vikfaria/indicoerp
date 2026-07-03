@@ -21,6 +21,9 @@ class UserController extends Controller
     {
         if(Auth::user()->can('manage-users')){
             $users = User::query()
+                ->with(['roles' => function ($query) {
+                    $query->select('roles.id', 'name', 'label');
+                }])
                 ->where(function($q) {
                     if(Auth::user()->can('manage-any-users')) {
                         $q->where('created_by', creatorId());
@@ -46,6 +49,26 @@ class UserController extends Controller
                 ->paginate(request('per_page', 10))
                 ->withQueryString();
 
+            $users->getCollection()->transform(function (User $user) {
+                $primaryRole = $user->roles->first();
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'mobile_no' => $user->mobile_no,
+                    'role_id' => $primaryRole?->id,
+                    'role_name' => $primaryRole?->name,
+                    'role_label' => $primaryRole?->label ?? $primaryRole?->name ?? $user->type,
+                    'role' => $primaryRole?->name ?? $user->type,
+                    'type' => $user->type,
+                    'is_enable_login' => (bool) $user->is_enable_login,
+                    'is_disable' => $user->is_disable,
+                    'avatar' => $user->avatar,
+                    'created_at' => optional($user->created_at)?->toDateTimeString(),
+                ];
+            });
+
             $roles = Role::where('created_by', creatorId())->pluck('label', 'id');
 
             return Inertia::render('users/index', [
@@ -69,7 +92,11 @@ class UserController extends Controller
             $validated = $request->validated();
             $validated['is_enable_login'] = $request->boolean('is_enable_login', true);
 
-            $role = Role::find($validated['type']);
+            $role = !empty($validated['type'])
+                ? Role::query()
+                    ->where('created_by', creatorId())
+                    ->find($validated['type'])
+                : null;
             $enableEmailVerification = admin_setting('enableEmailVerification');
 
             $user = new User();
@@ -77,7 +104,7 @@ class UserController extends Controller
             $user->email = $validated['email'];
             $user->mobile_no = $validated['mobile_no'];
             $user->password = Hash::make($validated['password']);
-            $user->type = Auth::user()->type == 'superadmin' ? 'company' : ($role->name ?? 'staff');
+            $user->type = Auth::user()->type == 'superadmin' ? 'company' : ($role?->name ?? 'staff');
             $user->is_enable_login = $validated['is_enable_login'];
             $user->lang = company_setting('defaultLanguage') ?? 'en';
             $user->email_verified_at = $enableEmailVerification === 'on' ? null : now();
@@ -126,12 +153,28 @@ class UserController extends Controller
         if(Auth::user()->can('edit-users')){
             $validated = $request->validated();
             $validated['is_enable_login'] = $request->boolean('is_enable_login', true);
+            $role = null;
+
+            if (!empty($validated['type'])) {
+                $role = Role::query()
+                    ->where('created_by', creatorId())
+                    ->findOrFail($validated['type']);
+            }
 
             $user->name = $validated['name'];
             $user->email = $validated['email'];
             $user->mobile_no = $validated['mobile_no'];
             $user->is_enable_login = $validated['is_enable_login'];
+            if ($role) {
+                $user->type = $role->name;
+            }
             $user->save();
+
+            if ($role) {
+                $user->syncRoles([$role]);
+                $user->unsetRelation('roles');
+                $user->load('roles.permissions');
+            }
 
             return back()->with('success', __('The user details are updated successfully.'));
         }

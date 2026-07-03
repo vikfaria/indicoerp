@@ -1,9 +1,11 @@
 import { Head } from '@inertiajs/react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AuthenticatedLayout from "@/layouts/authenticated-layout";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { LineChart, PieChart, BarChart } from '@/components/charts';
 import CalendarView from "@/components/calendar-view";
 import { 
@@ -25,12 +27,47 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     MoreHorizontal,
-    User as UserIcon
+    User as UserIcon,
+    BadgeCheck,
+    Clock3,
+    Gauge,
+    Target,
+    Sparkles,
+    ArrowRight,
+    Building2
 } from 'lucide-react';
 import { getImagePath,formatDate, formatTime,formatDateTime } from '@/utils/helpers';
+import { cn } from '@/lib/utils';
 
 interface HrmProps {
     message: string;
+    configuration_progress?: {
+        progress_percent: number;
+        completed_total: number;
+        pending_total: number;
+        blocked_total: number;
+        next_step: {
+            key: string;
+            label: string;
+            description: string;
+            href: string;
+            state: string;
+            state_label: string;
+            available: boolean;
+        } | null;
+        steps: Array<{
+            key: string;
+            label: string;
+            description: string;
+            href: string;
+            completed: boolean;
+            available: boolean;
+            order: number;
+            state: string;
+            state_label: string;
+            evidence: string;
+        }>;
+    } | null;
     stats: {
         total_employees: number;
         present_today: number;
@@ -86,8 +123,26 @@ interface HrmProps {
     };
 }
 
-export default function HrmIndex({ message, stats }: HrmProps) {
+export default function HrmIndex({ message, stats, configuration_progress }: HrmProps) {
     const { t } = useTranslation();
+    const configurationProgress = configuration_progress ?? null;
+    const orderedSteps = useMemo(
+        () => [...(configurationProgress?.steps ?? [])].sort((left, right) => left.order - right.order),
+        [configurationProgress]
+    );
+    const nextStep = useMemo(
+        () => configurationProgress?.next_step ?? orderedSteps.find((step) => !step.completed) ?? null,
+        [configurationProgress, orderedSteps]
+    );
+    const [isProgressOpen, setIsProgressOpen] = useState(Boolean(configurationProgress && configurationProgress.progress_percent < 100));
+
+    const openStep = (href?: string | null) => {
+        if (!href) {
+            return;
+        }
+
+        window.location.href = href;
+    };
     
     return (
         <AuthenticatedLayout
@@ -97,6 +152,68 @@ export default function HrmIndex({ message, stats }: HrmProps) {
             <Head title={t('HRM Dashboard')} />
             
             <div className="space-y-6">
+                {configurationProgress && (
+                    <Card className="overflow-hidden border-emerald-200 bg-gradient-to-r from-emerald-50 via-white to-cyan-50 shadow-sm">
+                        <CardContent className="p-6">
+                            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 text-emerald-700">
+                                        <Sparkles className="h-4 w-4" />
+                                        <span className="text-xs font-semibold uppercase tracking-[0.24em]">{t('HRM setup')}</span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
+                                            {t('Prepare the HRM module before using it')}
+                                        </h2>
+                                        <p className="max-w-3xl text-sm leading-6 text-slate-600">
+                                            {t('Follow the recommended setup order to configure branches, teams, attendance, leave and payroll without breaking the flow for new users.')}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                                            {`${configurationProgress.progress_percent.toFixed(1)}% ${t('complete')}`}
+                                        </Badge>
+                                        <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">
+                                            {`${configurationProgress.completed_total} ${t('completed')}`}
+                                        </Badge>
+                                        <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">
+                                            {`${configurationProgress.pending_total} ${t('pending')}`}
+                                        </Badge>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="h-2 w-full overflow-hidden rounded-full bg-white shadow-inner">
+                                            <div
+                                                className="h-full rounded-full bg-emerald-500 transition-all"
+                                                style={{ width: `${Math.max(0, Math.min(100, configurationProgress.progress_percent))}%` }}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            {nextStep
+                                                ? `${t('Next recommended step')}: ${nextStep.label}`
+                                                : t('All HRM setup steps are complete.')}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col gap-3 sm:flex-row lg:flex-col xl:flex-row">
+                                    <Button onClick={() => setIsProgressOpen(true)} className="bg-slate-900 text-white hover:bg-slate-800">
+                                        <Target className="h-4 w-4 mr-2" />
+                                        {t('View setup progress')}
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => openStep(nextStep?.href ?? route('hrm.branches.index'))}
+                                        disabled={!nextStep?.available || !nextStep?.href}
+                                    >
+                                        <ArrowRight className="h-4 w-4 mr-2" />
+                                        {nextStep ? t('Continue setup') : t('Open setup')}
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Key Metrics Row */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <div onClick={() => window.location.href = route('hrm.employees.index')} className="cursor-pointer">
@@ -227,6 +344,147 @@ export default function HrmIndex({ message, stats }: HrmProps) {
                         </Card>
                     </div>
                 </div>
+
+                <Dialog open={isProgressOpen} onOpenChange={setIsProgressOpen}>
+                    <DialogContent className="max-w-6xl">
+                        <DialogHeader>
+                            <div className="flex items-center gap-2">
+                                <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
+                                    <Gauge className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <DialogTitle>{t('HRM configuration progress')}</DialogTitle>
+                                    <DialogDescription>
+                                        {t('Complete the steps in priority order to prepare the module for daily use.')}
+                                    </DialogDescription>
+                                </div>
+                            </div>
+                        </DialogHeader>
+
+                        <div className="grid gap-4 md:grid-cols-4">
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">{t('Progress')}</p>
+                                <p className="mt-2 text-3xl font-semibold text-slate-900">{configurationProgress ? `${configurationProgress.progress_percent.toFixed(1)}%` : '0.0%'}</p>
+                                <p className="mt-1 text-xs text-slate-500">{t('Overall setup completion')}</p>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700">{t('Completed')}</p>
+                                <p className="mt-2 text-3xl font-semibold text-emerald-900">{configurationProgress?.completed_total ?? 0}</p>
+                                <p className="mt-1 text-xs text-emerald-700">{t('Steps already configured')}</p>
+                            </div>
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-amber-700">{t('Pending')}</p>
+                                <p className="mt-2 text-3xl font-semibold text-amber-900">{configurationProgress?.pending_total ?? 0}</p>
+                                <p className="mt-1 text-xs text-amber-700">{t('Steps still required')}</p>
+                            </div>
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                                <p className="text-xs font-medium uppercase tracking-[0.18em] text-rose-700">{t('Blocked')}</p>
+                                <p className="mt-2 text-3xl font-semibold text-rose-900">{configurationProgress?.blocked_total ?? 0}</p>
+                                <p className="mt-1 text-xs text-rose-700">{t('Steps blocked by permissions')}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                            {orderedSteps.length > 0 ? orderedSteps.map((step, index) => (
+                                <div
+                                    key={step.key}
+                                    className={cn(
+                                        'rounded-2xl border p-4 transition',
+                                        step.completed
+                                            ? 'border-emerald-200 bg-emerald-50/60'
+                                            : step.state === 'blocked'
+                                                ? 'border-rose-200 bg-rose-50/60'
+                                                : 'border-amber-200 bg-amber-50/60'
+                                    )}
+                                >
+                                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                        <div className="flex items-start gap-4">
+                                            <div
+                                                className={cn(
+                                                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold',
+                                                    step.completed
+                                                        ? 'bg-emerald-600 text-white'
+                                                        : step.state === 'blocked'
+                                                            ? 'bg-rose-600 text-white'
+                                                            : 'bg-amber-500 text-white'
+                                                )}
+                                            >
+                                                {String(index + 1).padStart(2, '0')}
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <h3 className="text-base font-semibold text-slate-900">{step.label}</h3>
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={cn(
+                                                            step.completed
+                                                                ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
+                                                                : step.state === 'blocked'
+                                                                    ? 'border-rose-200 bg-rose-100 text-rose-700'
+                                                                    : 'border-amber-200 bg-amber-100 text-amber-700'
+                                                        )}
+                                                    >
+                                                        {step.completed ? (
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <BadgeCheck className="h-3.5 w-3.5" />
+                                                                {t('Completed')}
+                                                            </span>
+                                                        ) : step.state === 'blocked' ? (
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Clock className="h-3.5 w-3.5" />
+                                                                {t('Blocked')}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Clock3 className="h-3.5 w-3.5" />
+                                                                {t('Pending')}
+                                                            </span>
+                                                        )}
+                                                    </Badge>
+                                                </div>
+                                                <p className="max-w-3xl text-sm leading-6 text-slate-600">{step.description}</p>
+                                                <p className="text-xs text-slate-500">{step.evidence}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-3 lg:items-end">
+                                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                <span className="font-medium uppercase tracking-[0.16em]">{t('Priority')}</span>
+                                                <span>{String(index + 1).padStart(2, '0')}</span>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant={step.completed ? 'outline' : 'default'}
+                                                className={cn(
+                                                    step.completed
+                                                        ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                                        : step.state === 'blocked'
+                                                            ? 'border-rose-200 bg-rose-600 text-white hover:bg-rose-700'
+                                                            : 'bg-slate-900 text-white hover:bg-slate-800'
+                                                )}
+                                                onClick={() => openStep(step.href)}
+                                                disabled={!step.available || !step.href}
+                                            >
+                                                {step.available ? (
+                                                    <>
+                                                        {step.completed ? t('Open') : t('Go to step')}
+                                                        <ArrowRight className="h-4 w-4 ml-2" />
+                                                    </>
+                                                ) : (
+                                                    t('Permission required')
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                                    {t('No HRM setup steps are available for this company.')}
+                                </div>
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Attendance Trends Chart */}
                 {/* <Card>

@@ -78,6 +78,9 @@ export default function Print() {
     const paymentStatus = totalPaid >= totalAmount && totalAmount > 0 ? 'Pago' : totalPaid > 0 ? 'Parcial' : 'Pendente';
     const changeAmount = Math.max(totalPaid - totalAmount, 0);
     const isReceiptLike = paymentStatus === 'Pago';
+    const documentLabel = isReceiptLike ? 'Recibo' : 'Factura';
+    const documentTitle = isReceiptLike ? '' : 'FACTURA';
+    const documentFilePrefix = isReceiptLike ? 'recibo' : 'factura';
     const documentNumber = buildStructuredDocumentNumber({
         prefix: isReceiptLike ? 'FR' : 'FT',
         series: invoiceData.document_series,
@@ -108,7 +111,7 @@ export default function Print() {
             try {
                 await saveElementAsPdf(
                     printContent as HTMLElement,
-                    buildCommercialDocumentPdfOptions(`factura-${sanitizeFilename(documentNumber)}.pdf`),
+                    buildCommercialDocumentPdfOptions(`${documentFilePrefix}-${sanitizeFilename(documentNumber)}.pdf`),
                 );
                 setTimeout(() => window.close(), 1000);
             } catch (error) {
@@ -147,7 +150,7 @@ export default function Print() {
 
     return (
         <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
-            <Head title={`Factura #${documentNumber}`} />
+            <Head title={`${documentLabel} #${documentNumber}`} />
 
             {isDownloading && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -161,9 +164,9 @@ export default function Print() {
             )}
 
             <CommercialDocumentTemplate
-                title={isReceiptLike ? 'FACTURA-RECIBO' : 'FACTURA'}
+                title={documentTitle}
                 subtitle="Documento fiscal de venda"
-                documentLabel="Factura"
+                documentLabel={documentLabel}
                 documentNumber={documentNumber}
                 copyLabel={invoiceData.is_cancelled ? 'ANULADO' : 'ORIGINAL'}
                 watermark={invoiceData.is_cancelled ? 'ANULADO' : undefined}

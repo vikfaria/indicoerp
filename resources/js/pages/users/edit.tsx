@@ -15,6 +15,7 @@ export default function Edit({ user, onSuccess, roles = {} }: EditUserProps) {
         name: user.name,
         email: user.email,
         mobile_no: user.mobile_no,
+        type: user.role_id ? String(user.role_id) : '',
         is_enable_login: user.is_enable_login,
     });
 
@@ -64,6 +65,27 @@ export default function Edit({ user, onSuccess, roles = {} }: EditUserProps) {
                         placeholder="+1234567890"
                         error={errors.mobile_no}
                     />
+                </div>
+                <div>
+                    <Label htmlFor="edit_type">{t('Role')}</Label>
+                    <Select value={data.type} onValueChange={(value) => setData('type', value)}>
+                        <SelectTrigger id="edit_type">
+                            <SelectValue placeholder={t('Select role')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {Object.entries(roles).map(([id, label]) => (
+                                <SelectItem key={id} value={id}>
+                                    {label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {Object.keys(roles).length === 0 && (
+                        <p className="mt-1 text-xs text-gray-500">
+                            {t('No roles available for this company.')}
+                        </p>
+                    )}
+                    <InputError message={errors.type} />
                 </div>
 
                 <div>

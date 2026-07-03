@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreUserRequest extends FormRequest
 {
@@ -13,7 +14,14 @@ class StoreUserRequest extends FormRequest
 
     public function rules(): array
     {
-        $typeRule = auth()->user()->type === 'superadmin' ? 'nullable' : 'required|exists:roles,id';
+        $typeRule = auth()->user()->type === 'superadmin'
+            ? ['nullable']
+            : [
+                'required',
+                Rule::exists('roles', 'id')->where(static function ($query): void {
+                    $query->where('created_by', creatorId());
+                }),
+            ];
         
         return [
             'name' => 'required|string|max:255',

@@ -6,6 +6,9 @@ export interface User {
     email: string;
     mobile_no: string;
     role: string;
+    role_id?: number | null;
+    role_name?: string | null;
+    role_label?: string | null;
     type: string;
     is_enable_login: boolean;
     is_disable?: number;
@@ -27,6 +30,7 @@ export interface EditUserFormData {
     name: string;
     email: string;
     mobile_no: string;
+    type: string;
     is_enable_login: boolean;
 }
 

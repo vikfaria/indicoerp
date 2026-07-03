@@ -12,6 +12,13 @@ use Workdo\Hrm\Models\Attendance;
 use Workdo\Hrm\Models\LeaveApplication;
 use Workdo\Hrm\Models\Branch;
 use Workdo\Hrm\Models\Department;
+use Workdo\Hrm\Models\Designation;
+use Workdo\Hrm\Models\EmployeeDocumentType;
+use Workdo\Hrm\Models\LeaveType;
+use Workdo\Hrm\Models\AllowanceType;
+use Workdo\Hrm\Models\DeductionType;
+use Workdo\Hrm\Models\LoanType;
+use Workdo\Hrm\Models\HolidayType;
 use Workdo\Hrm\Models\Promotion;
 use Workdo\Hrm\Models\Termination;
 use Carbon\Carbon;
@@ -98,6 +105,31 @@ class DashboardController extends Controller
 
         // Total Departments
         $totalDepartments = Department::where('created_by', $creatorId)->count();
+        $totalDesignations = Designation::where('created_by', $creatorId)->count();
+        $totalDocumentTypes = EmployeeDocumentType::where('created_by', $creatorId)->count();
+        $totalLeaveTypes = LeaveType::where('created_by', $creatorId)->count();
+        $totalAllowanceTypes = AllowanceType::where('created_by', $creatorId)->count();
+        $totalDeductionTypes = DeductionType::where('created_by', $creatorId)->count();
+        $totalLoanTypes = LoanType::where('created_by', $creatorId)->count();
+        $totalHolidayTypes = HolidayType::where('created_by', $creatorId)->count();
+        $totalShifts = Shift::where('created_by', $creatorId)->count();
+
+        $workingDaysSetting = getCompanyAllSetting($creatorId)['working_days'] ?? '';
+        $workingDaysConfigured = false;
+
+        if (is_string($workingDaysSetting) && $workingDaysSetting !== '') {
+            $decodedWorkingDays = json_decode($workingDaysSetting, true);
+            $workingDaysConfigured = is_array($decodedWorkingDays)
+                && count(array_filter($decodedWorkingDays, static fn ($day) => $day !== null && $day !== '')) > 0;
+        }
+
+        $companyProfileConfigured = collect([
+            company_setting('mz_company_sector_activity', $creatorId),
+            company_setting('mz_company_operation_province', $creatorId),
+            company_setting('mz_company_labour_regime', $creatorId),
+            company_setting('mz_company_collective_agreements', $creatorId),
+            company_setting('mz_company_labour_directorate', $creatorId),
+        ])->every(static fn ($value): bool => trim((string) $value) !== '');
 
         // Total Promotions (current month)
         $totalPromotions = Promotion::where('created_by', $creatorId)
@@ -299,8 +331,253 @@ class DashboardController extends Controller
                 'employees_on_leave_today' => $employeesOnLeaveToday,
                 'employees_without_attendance' => $employeesWithoutAttendance,
             ],
+            'configuration_progress' => $this->buildConfigurationProgress(
+                $creatorId,
+                $totalBranches,
+                $totalDepartments,
+                $totalDesignations,
+                $totalDocumentTypes,
+                $workingDaysConfigured,
+                $totalShifts,
+                $totalHolidayTypes,
+                $totalLeaveTypes,
+                $totalAllowanceTypes,
+                $totalDeductionTypes,
+                $totalLoanTypes,
+                $companyProfileConfigured,
+                $totalEmployees
+            ),
             'message' => __('HRM Dashboard - Complete overview of your workforce.')
         ]);
+    }
+
+    private function buildConfigurationProgress(
+        int $creatorId,
+        int $totalBranches,
+        int $totalDepartments,
+        int $totalDesignations,
+        int $totalDocumentTypes,
+        bool $workingDaysConfigured,
+        int $totalShifts,
+        int $totalHolidayTypes,
+        int $totalLeaveTypes,
+        int $totalAllowanceTypes,
+        int $totalDeductionTypes,
+        int $totalLoanTypes,
+        bool $companyProfileConfigured,
+        int $totalEmployees
+    ): array {
+        $steps = [
+            $this->buildProgressStep(
+                'branches',
+                __('Branches'),
+                __('Create the operating branches before assigning teams and records.'),
+                route('hrm.branches.index'),
+                $totalBranches > 0,
+                Auth::user()->can('manage-branches'),
+                1,
+                $totalBranches > 0
+                    ? __(':count branch configured.', ['count' => $totalBranches])
+                    : __('No branches configured yet.')
+            ),
+            $this->buildProgressStep(
+                'departments',
+                __('Departments'),
+                __('Organize employees by department after defining the branch structure.'),
+                route('hrm.departments.index'),
+                $totalDepartments > 0,
+                Auth::user()->can('manage-departments'),
+                2,
+                $totalDepartments > 0
+                    ? __(':count department configured.', ['count' => $totalDepartments])
+                    : __('No departments configured yet.')
+            ),
+            $this->buildProgressStep(
+                'designations',
+                __('Designations'),
+                __('Define job roles and reporting lines before importing employees.'),
+                route('hrm.designations.index'),
+                $totalDesignations > 0,
+                Auth::user()->can('manage-designations'),
+                3,
+                $totalDesignations > 0
+                    ? __(':count designation configured.', ['count' => $totalDesignations])
+                    : __('No designations configured yet.')
+            ),
+            $this->buildProgressStep(
+                'document-types',
+                __('Employee document types'),
+                __('Prepare the document categories that will be attached to employee records.'),
+                route('hrm.employee-document-types.index'),
+                $totalDocumentTypes > 0,
+                Auth::user()->can('manage-employee-document-types'),
+                4,
+                $totalDocumentTypes > 0
+                    ? __(':count document type configured.', ['count' => $totalDocumentTypes])
+                    : __('No employee document types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'working-days',
+                __('Working days'),
+                __('Define the company work week so leaves and attendance are calculated correctly.'),
+                route('hrm.working-days.index'),
+                $workingDaysConfigured,
+                Auth::user()->can('manage-working-days'),
+                5,
+                $workingDaysConfigured
+                    ? __('Working days are already configured.')
+                    : __('No working days selected yet.')
+            ),
+            $this->buildProgressStep(
+                'shifts',
+                __('Shifts'),
+                __('Create the shifts used for attendance and employee scheduling.'),
+                route('hrm.shifts.index'),
+                $totalShifts > 0,
+                Auth::user()->can('manage-shifts'),
+                6,
+                $totalShifts > 0
+                    ? __(':count shift configured.', ['count' => $totalShifts])
+                    : __('No shifts configured yet.')
+            ),
+            $this->buildProgressStep(
+                'holiday-types',
+                __('Holiday types'),
+                __('Classify the holiday rules before recording calendar exceptions.'),
+                route('hrm.holiday-types.index'),
+                $totalHolidayTypes > 0,
+                Auth::user()->can('manage-holiday-types'),
+                7,
+                $totalHolidayTypes > 0
+                    ? __(':count holiday type configured.', ['count' => $totalHolidayTypes])
+                    : __('No holiday types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'leave-types',
+                __('Leave types'),
+                __('Set the leave policies that employees will use in requests and balances.'),
+                route('hrm.leave-types.index'),
+                $totalLeaveTypes > 0,
+                Auth::user()->can('manage-leave-types'),
+                8,
+                $totalLeaveTypes > 0
+                    ? __(':count leave type configured.', ['count' => $totalLeaveTypes])
+                    : __('No leave types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'allowance-types',
+                __('Allowance types'),
+                __('Prepare the allowance catalog before running payroll.'),
+                route('hrm.allowance-types.index'),
+                $totalAllowanceTypes > 0,
+                Auth::user()->can('manage-allowance-types'),
+                9,
+                $totalAllowanceTypes > 0
+                    ? __(':count allowance type configured.', ['count' => $totalAllowanceTypes])
+                    : __('No allowance types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'deduction-types',
+                __('Deduction types'),
+                __('Register the deduction rules that will be applied on salary runs.'),
+                route('hrm.deduction-types.index'),
+                $totalDeductionTypes > 0,
+                Auth::user()->can('manage-deduction-types'),
+                10,
+                $totalDeductionTypes > 0
+                    ? __(':count deduction type configured.', ['count' => $totalDeductionTypes])
+                    : __('No deduction types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'loan-types',
+                __('Loan types'),
+                __('Define the loan categories before assigning employee advances.'),
+                route('hrm.loan-types.index'),
+                $totalLoanTypes > 0,
+                Auth::user()->can('manage-loan-types'),
+                11,
+                $totalLoanTypes > 0
+                    ? __(':count loan type configured.', ['count' => $totalLoanTypes])
+                    : __('No loan types configured yet.')
+            ),
+            $this->buildProgressStep(
+                'payroll-compliance',
+                __('Profile and payroll compliance'),
+                __('Complete the legal HR profile and Mozambique payroll settings before going live.'),
+                route('hrm.mozambique-payroll-compliance.index'),
+                $companyProfileConfigured,
+                Auth::user()->can('manage-payrolls'),
+                12,
+                $companyProfileConfigured
+                    ? __('HR legal profile is completed.')
+                    : __('Company legal profile is still incomplete.')
+            ),
+            $this->buildProgressStep(
+                'employees',
+                __('Employees'),
+                __('Create the employee records only after the master data is ready.'),
+                route('hrm.employees.index'),
+                $totalEmployees > 0,
+                Auth::user()->can('manage-employees'),
+                13,
+                $totalEmployees > 0
+                    ? __(':count employee registered.', ['count' => $totalEmployees])
+                    : __('No employees registered yet.')
+            ),
+        ];
+
+        usort($steps, static fn (array $left, array $right): int => $left['order'] <=> $right['order']);
+
+        $completedSteps = array_values(array_filter($steps, static fn (array $step): bool => (bool) $step['completed']));
+        $blockedSteps = array_values(array_filter($steps, static fn (array $step): bool => $step['state'] === 'blocked'));
+        $pendingSteps = array_values(array_filter($steps, static fn (array $step): bool => $step['state'] === 'pending'));
+        $nextStep = $pendingSteps[0] ?? ($blockedSteps[0] ?? null);
+        $totalSteps = count($steps);
+        $completedTotal = count($completedSteps);
+        $progressPercent = $totalSteps > 0 ? round(($completedTotal / $totalSteps) * 100, 1) : 0;
+
+        return [
+            'progress_percent' => $progressPercent,
+            'completed_total' => $completedTotal,
+            'pending_total' => $totalSteps - $completedTotal,
+            'blocked_total' => count($blockedSteps),
+            'next_step' => $nextStep ? [
+                'key' => $nextStep['key'],
+                'label' => $nextStep['label'],
+                'description' => $nextStep['description'],
+                'href' => $nextStep['href'],
+                'state' => $nextStep['state'],
+                'state_label' => $nextStep['state_label'],
+                'available' => $nextStep['available'],
+            ] : null,
+            'steps' => $steps,
+        ];
+    }
+
+    private function buildProgressStep(
+        string $key,
+        string $label,
+        string $description,
+        string $href,
+        bool $completed,
+        bool $available,
+        int $order,
+        string $evidence
+    ): array {
+        $state = $completed ? 'completed' : ($available ? 'pending' : 'blocked');
+
+        return [
+            'key' => $key,
+            'label' => $label,
+            'description' => $description,
+            'href' => $href,
+            'completed' => $completed,
+            'available' => $available,
+            'order' => $order,
+            'state' => $state,
+            'state_label' => $completed ? __('Completed') : ($available ? __('Pending') : __('Blocked')),
+            'evidence' => $evidence,
+        ];
     }
 
     private function employeeDashboard(Request $request)
